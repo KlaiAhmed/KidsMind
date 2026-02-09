@@ -1,0 +1,64 @@
+services:
+  # 1️⃣ Database Service
+  db:
+    image: postgres:17-alpine
+    container_name: postgres-db
+    restart: always
+    environment:
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 2️⃣ API Core Service
+  api-core:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    depends_on:
+      - db:
+          condition: service_healthy
+    image: api-core
+    container_name: api-core-container
+    ports:
+      - "${API_PORT}:8000"
+    develop:
+      watch:
+        - action: sync
+          path: ./services/api
+          target: /app
+          ignore:
+            - .venv/
+            - __pycache__/
+
+  # 3️⃣ AI Service
+  ai-service:
+    build:
+      context: ./services/ai
+      dockerfile: Dockerfile
+    depends_on:
+      - db:
+          condition: service_healthy
+    image: ai-service
+    container_name: ai-service-container
+    ports:
+      - "${AI_PORT}:8001"
+    develop:
+      watch:
+        - action: sync
+          path: ./services/ai
+          target: /app
+          ignore:
+            - .venv/
+            - __pycache__/
+  
+  volumes:
+    postgres_data:

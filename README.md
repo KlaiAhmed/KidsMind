@@ -5,15 +5,17 @@
  This project is built following the tech stack suggested by **VAERDIA** and utilizes a microservices architecture orchestrated via Docker.
 
 
-## 🏗 Technical Architecture
+## 🏗️ System Architecture & Services
 
- The project follows a **Monorepo** structure, separating frontend applications from backend services:
+ The project follows a **Monorepo** structure, separating frontend applications from backend services and its built using a microservices architecture, with each component isolated in its own Docker container.
 
 ### Core Services
-1.   **API Core**: Manages users, profiles, content, quizzes, sessions, and statistics.
-2.   **AI Service**: Handles response generation, moderation, and conversational memory using LangChain & GPT-4.
-3.   **Voice Service**: Dedicated to STT (Whisper) and TTS (Text-to-Speech).
-4.   **Content Engine & Analytics**: Adaptive exercise engine and scoring system.
+| Service Name | Port (Host:Container) | Description |
+| :--- | :--- | :--- |
+| **api-core** | `8000:8000` | The main backend (FastAPI). Handles routing, business logic, and database interactions. |
+| **ai-service** | `8001:8001` | Dedicated service for AI model inference and heavy processing. |
+| **postgres-db**| `5432:5432` | PostgreSQL database storing application data. |
+| **voice-service**| `9000:9000` | Dedicated to STT (Whisper) and TTS (Text-to-Speech). |
 
 ### Tech Stack
 * **Frontend**: React + shadcn/ui (Web), React Native (Mobile)
@@ -38,7 +40,9 @@ kidsmind/
 ├── infrastructure/
 │   ├── DB/               # DB config (Postgre SQL)
 │   └── storage/          # Media storage (MinIO/S3)
-├── docker-compose.yml    # Orchestration
+├── docker-compose.yml    # Main Orchestration file
+├── .env.example          # Template for Environment Variables
+├── .gitignore
 └── README.md
 ```
 
@@ -48,16 +52,59 @@ kidsmind/
 
 - **Docker & Docker Compose**
 - **Node.js** (for local frontend dev)
-- **Python 3.11+** (for local backend dev)
-
+- **Physical Device** (iOS/Android) with **Expo Go** installed (for mobile testing)
 
 ## Installation
 
-### Clone the repository
+### 1. Clone the repository
 ```bash
 git clone https://gitlab.com/ahmedklai-group/KidsMind-project
 cd kidsMind
 ```
+
+### 2. Configure Environment Variables
+The project uses a .env file to manage sensitive credentials and configuration. A template is provided in .env.example.
+```bash
+# Copy the example file to create your own .env
+cp .env.example .env
+```
+Open the newly created .env file and fill in your desired database credentials and ports.
+
+### 3. Build & Run Backend Services
+The entire backend stack (API, AI Service, and PostgreSQL) is containerized using Docker. You do not need to install Python or PostgreSQL locally.
+```bash
+# Build the images and start all containers
+docker compose up --build
+```
+
+### 4. Client Setup
+
+**Web Client:**
+```bash
+# Navigate to the web-client folder
+cd apps/web-client
+
+# Install dependencies
+npm install
+
+# Start the development server
+npm run dev
+``` 
+
+**Mobile Client**
+```bash
+# Navigate to the mobile-client folder
+cd apps/mobile-client
+
+# Install dependencies
+npm install
+
+# Start the Expo development server
+npx expo start
+``` 
+Scan the QR code with your phone using the Expo Go app.
+
+**Note:** Ensure your phone and computer are on the same Wi-Fi network.
 
 ## ✨Key Features
 
@@ -74,8 +121,8 @@ cd kidsMind
 
 
 ## 🔒 Security & Compliance
-- **RBAC:** View screen time, subject progression, and history.
-- **Data Protection:** Create child profiles with age group and grade level
+- **RBAC (Role-Based Access Control):** Strict separation between Admin , Parent (Owner) and Child (User) permissions.
+- **Data Protection:** All sensitive data is encrypted, Child profiles are anonymized where possible.
 - **Moderation:** Prompt filtering and response post-filtering to block inappropriate content.
 
 ---

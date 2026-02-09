@@ -1,7 +1,6 @@
 import uvicorn
 from fastapi import FastAPI, HTTPException
 
-settings = Settings()
 app = FastAPI()
 
 @app.get("/health/ai")
