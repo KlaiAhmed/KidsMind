@@ -1,21 +1,7 @@
-# Python
-.venv/
-__pycache__/
-*.py[cod]
-*$py.class
+app/.venv/
+app/__pycache__/
+app/*.py[cod]
+app/*$py.class
 
-# Environment/Secrets
-.env
-.env.*
-!.env.example
-
-# IDEs and OS
-.vscode/
-.idea/
-.DS_Store
-Thumbs.db
-
-# Docker/Build
-Dockerfile
-docker-compose.yml
-.dockerignore
+app/.env
+app/README.md

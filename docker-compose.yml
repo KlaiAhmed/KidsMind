@@ -9,7 +9,7 @@ services:
       - POSTGRES_PASSWORD=${DB_PASSWORD}
       - POSTGRES_DB=${DB_NAME}
     ports:
-      - "5432:5432"
+      - "${DB_PORT}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -50,7 +50,7 @@ services:
     image: ai-service
     container_name: ai-service-container
     ports:
-      - "${AI_PORT}:8001"
+      - "${AI_PORT}:8000"
     develop:
       watch:
         - action: sync

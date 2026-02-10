@@ -1,27 +1,23 @@
-# 1️⃣ Match the base image to your target version
-FROM python:3.14-slim 
+# 1️⃣ Base image
+FROM python:3.14-slim
 
-# 2️⃣ Install uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
-
-# 3️⃣ Environment setup
-ENV UV_SYSTEM_PYTHON=1
-ENV PYTHONDONTWRITEBYTECODE=1 
+# 2️⃣ Environment
+ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
+# 3️⃣ Workdir
 WORKDIR /app
 
-# 4️⃣ Install dependencies using a cache mount for speed
-RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=uv.lock,target=uv.lock \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --frozen --no-dev --no-install-project
+# 4️⃣ Install Python dependencies
+COPY requirements.txt .
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir -r requirements.txt
 
-# 5️⃣ Copy the rest of the application
-COPY . .
+# 5️⃣ Copy application source
+COPY app/ .
 
-# 6️⃣ Compile bytecode for faster startup
-RUN uv pip install --system --no-cache-dir -e .
+# 6️⃣ Precompile python bytecode to speed startup 
+RUN python -m compileall -q .
 
-# 5️⃣ Run uvicorn
-CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000","--reload"]
+# 7️⃣ Run uvicorn directly 
+CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000","--reload"]
