@@ -1,9 +1,7 @@
 services:
   # Database Service
   db:
-    build: 
-      context: ./infra/DB
-    image: postgres-db
+    image: postgres:18.2-alpine
     container_name: postgres-db-container
     restart: always
     environment:
@@ -24,30 +22,31 @@ services:
   api-core:
     build:
       context: ./services/api
+    image: api-core
+    container_name: api-core-container
     depends_on:
       db:
         condition: service_healthy
-    image: api-core
-    container_name: api-core-container
+      ai-service:
+        condition: service_started
+      stt-service:
+        condition: service_started
     ports:
       - "${API_PORT}:8000"
-    env_file: .env
-    develop:
-      watch:
-        - action: sync
-          path: ./services/api
-          target: /app
-          ignore:
-            - app/.venv/
-            - "**/__pycache__/"
-            - Dockerfile
-            - requirements.txt
-            - .dockerignore
-            - .env
-        - action: rebuild
-          path: ./services/api/requirements.txt
+    env_file:
+      - .env
+      - ./services/api/app/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./services/api/app:/app:rw
+    command: >
+      uvicorn main:app --host 0.0.0.0 --port 8000 --reload 
+      --reload-dir /app 
+      --reload-exclude '**/.git/**' 
+      --reload-exclude '**/__pycache__/**'
 
-  # AI Service
+  # AI Service 
   ai-service:
     build:
       context: ./services/ai
@@ -55,23 +54,19 @@ services:
     container_name: ai-service-container
     ports:
       - "${AI_PORT}:8000"
-    env_file: .env
-    develop:
-      watch:
-        - action: sync
-          path: ./services/ai
-          target: /app
-          ignore:
-            - app/.venv/
-            - "**/__pycache__/"
-            - Dockerfile
-            - requirements.txt
-            - .dockerignore
-            - .env
-        - action: rebuild
-          path: ./services/ai/requirements.txt
+    env_file:
+      - .env
+      - ./services/ai/app/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./services/ai/app:/app:rw
+    command: >
+      uvicorn main:app --host 0.0.0.0 --port 8000 --reload 
+      --reload-dir /app 
+      --reload-exclude '**/.git/**'
 
-  # STT Service
+  # STT Service 
   stt-service:
     build:
       context: ./services/stt
@@ -79,33 +74,27 @@ services:
     container_name: stt-service-container
     ports:
       - "${STT_PORT}:8000"
-    env_file: 
+    env_file:
       - .env
       - ./services/stt/app/.env
     environment:
+      - PYTHONUNBUFFERED=1
       - HF_HOME=/app/model_cache
+      - TORCH_HOME=/app/model_cache
+      - XDG_CACHE_HOME=/app/model_cache
+      - CTRANSLATE2_CACHE=/app/model_cache
     volumes:
+      - ./services/stt/app:/app:rw
       - stt_cache:/app/model_cache
-    develop:
-      watch:
-        - action: sync
-          path: ./services/stt
-          target: /app
-          ignore:
-            - app/.venv/
-            - "**/__pycache__/"
-            - Dockerfile
-            - requirements.txt
-            - .dockerignore
-            - .env
-        - action: rebuild
-          path: ./services/stt/requirements.txt
+    command: >
+      uvicorn main:app --host 0.0.0.0 --port 8000 --reload 
+      --reload-dir /app 
+      --reload-exclude /app/model_cache 
+      --reload-exclude '**/.git/**'
 
-  # MinIO Service
+  # MinIO Service 
   minio:
-    build: 
-      context: ./infra/storage
-    image: minio-storage
+    image: minio/minio:latest
     container_name: minio-storage-container
     ports:
       - "${MINIO_API_PORT}:9000"

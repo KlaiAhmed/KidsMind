@@ -1,23 +1,43 @@
-# 1️⃣ Base image
-FROM python:3.14-slim
+# Build Stage
+FROM python:3.12-slim AS builder
 
-# 2️⃣ Environment
+WORKDIR /build
+
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# 3️⃣ Workdir
-WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    python3-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-# 4️⃣ Install Python dependencies
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
 COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -r requirements.txt
+    pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-# 5️⃣ Copy application source
+# Runtime Stage
+FROM python:3.12-slim
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PATH="/opt/venv/bin:$PATH"
+
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+COPY --from=builder /opt/venv /opt/venv
+
 COPY app/ .
 
-# 6️⃣ Precompile python bytecode to speed startup 
+RUN chown -R appuser:appuser /app
+
+USER appuser
+
 RUN python -m compileall -q .
 
-# 7️⃣ Run uvicorn directly 
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000","--reload"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

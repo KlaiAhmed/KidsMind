@@ -1,50 +1,43 @@
-# --- STAGE 1: Builder ---
+# STAGE 1: Builder 
 FROM python:3.10-slim AS builder
 
 WORKDIR /build
 
-# Install EVERY tool needed for compilation
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    python3-dev \
-    cmake \
-    pkg-config \
     gcc \
-    g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Create a virtual environment to keep things clean
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 COPY requirements.txt .
 
-# Install dependencies into the virtual environment
 RUN pip install --no-cache-dir -r requirements.txt
 
-
-# --- STAGE 2: Final Runtime ---
+# STAGE 2: Runtime 
 FROM python:3.10-slim
 
 WORKDIR /app
 
-# Install ONLY runtime dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg \
-    libgomp1 \
+RUN apt-get update && apt-get install -y --no-install-recommends wget xz-utils \
+    && wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz \
+    && tar -xvf ffmpeg-release-amd64-static.tar.xz \
+    && mv ffmpeg-*-static/ffmpeg /usr/local/bin/ \
+    && mv ffmpeg-*-static/ffprobe /usr/local/bin/ \
+    && rm -rf ffmpeg-release-amd64-static.tar.xz ffmpeg-*-static \
+    && apt-get purge -y wget xz-utils \
+    && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy the entire virtual environment from the builder
-COPY --from=builder /opt/venv /opt/venv
+RUN groupadd -r appuser && useradd -r -g appuser appuser
 
-# Ensure the app uses the virtual environment
+COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 
-# Copy app code
-COPY app/ .
+COPY --chown=appuser:appuser app/ .
 
-# Precompile
-RUN python -m compileall -q .
+USER appuser
 
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000","--reload"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

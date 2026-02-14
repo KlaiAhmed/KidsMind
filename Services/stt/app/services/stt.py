@@ -10,10 +10,8 @@ model = load_whisper_model()
 async def transcribe_audio(upload_file) -> Dict[str, Any]:
     start_time = time.time()
 
-    # Read bytes 
     audio_bytes = await upload_file.read()
 
-    # Decode 
     audio = decode_audio(io.BytesIO(audio_bytes))
 
     # Detect language
@@ -28,7 +26,6 @@ async def transcribe_audio(upload_file) -> Dict[str, Any]:
         language=detected_language,
     )
 
-    # Combine segments into full text
     text = " ".join(segment.text for segment in segments).strip()
 
     duration = time.time() - start_time
