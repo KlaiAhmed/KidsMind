@@ -2,7 +2,7 @@ services:
   # Database Service
   db:
     image: postgres:18.2-alpine
-    container_name: postgres-db-container
+    container_name: DB-service
     restart: always
     environment:
       - POSTGRES_USER=${DB_USER}
@@ -11,7 +11,7 @@ services:
     ports:
       - "${DB_PORT}:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - db_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 5s
@@ -22,10 +22,11 @@ services:
   api-core:
     build:
       context: ./services/api
-    image: api-core
-    container_name: api-core-container
+    container_name: api-core-service
     depends_on:
       db:
+        condition: service_healthy
+      storage-service:
         condition: service_healthy
       ai-service:
         condition: service_started
@@ -50,8 +51,6 @@ services:
   ai-service:
     build:
       context: ./services/ai
-    image: ai-service
-    container_name: ai-service-container
     ports:
       - "${AI_PORT}:8000"
     env_file:
@@ -70,8 +69,6 @@ services:
   stt-service:
     build:
       context: ./services/stt
-    image: stt-service
-    container_name: stt-service-container
     ports:
       - "${STT_PORT}:8000"
     env_file:
@@ -79,34 +76,49 @@ services:
       - ./services/stt/app/.env
     environment:
       - PYTHONUNBUFFERED=1
-      - HF_HOME=/app/model_cache
-      - TORCH_HOME=/app/model_cache
-      - XDG_CACHE_HOME=/app/model_cache
-      - CTRANSLATE2_CACHE=/app/model_cache
+      - HF_HOME=/model_cache
+      - TORCH_HOME=/model_cache
+      - XDG_CACHE_HOME=/model_cache
     volumes:
       - ./services/stt/app:/app:rw
-      - stt_cache:/app/model_cache
-    command: >
-      uvicorn main:app --host 0.0.0.0 --port 8000 --reload 
-      --reload-dir /app 
-      --reload-exclude /app/model_cache 
-      --reload-exclude '**/.git/**'
+      - stt_cache:/model_cache
+    command: 
+      uvicorn main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app 
 
-  # MinIO Service 
-  minio:
+  # Storage Service 
+  storage-service:
     image: minio/minio:latest
-    container_name: minio-storage-container
     ports:
-      - "${MINIO_API_PORT}:9000"
-      - "${MINIO_CONSOLE_PORT}:9001"
+      - "${STORAGE_API_PORT}:9000"
+      - "${STORAGE_CONSOLE_PORT}:9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_ROOT_USER: ${STORAGE_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${STORAGE_ROOT_PASSWORD}
     volumes:
-      - minio_data:/data
+      - storage_data:/data
     command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Bucket Provisioner Service
+  bucket-service:
+    image: minio/mc
+    entrypoint: ["/bin/sh", "/provision.sh"]
+    depends_on:
+      storage-service:
+        condition: service_healthy
+    environment:
+      STORAGE_SERVICE_URL: ${STORAGE_SERVICE_URL}
+      MINIO_ROOT_USER: ${STORAGE_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${STORAGE_ROOT_PASSWORD}
+    volumes:
+      - ./infra/storage/provision.sh:/provision.sh
+
 
 volumes:
-  postgres_data:
+  db_data:
   stt_cache:
-  minio_data:
+  storage_data:

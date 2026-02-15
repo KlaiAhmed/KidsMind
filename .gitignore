@@ -16,6 +16,7 @@ dist/
 *.egg-info/
 .pytest_cache/
 .mypy_cache/
+**/model_cache/
 
 node_modules/
 .npm
