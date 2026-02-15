@@ -3,10 +3,6 @@ from services.stt import transcribe_audio
 
 router = APIRouter(prefix="/stt", tags=["Speech-to-Text"])
 
-@router.get("/health")
-def health_check():
-    return {"status": "ok"}
-
 @router.post("/transcribe")
 async def transcribe(file: UploadFile = File(...)):
     if not file.content_type.startswith("audio/"):

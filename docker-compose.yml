@@ -1,8 +1,7 @@
 services:
   # Database Service
-  db:
+  db-service:
     image: postgres:18.2-alpine
-    container_name: DB-service
     environment:
       - POSTGRES_USER=${DB_USER}
       - POSTGRES_PASSWORD=${DB_PASSWORD}
@@ -21,9 +20,8 @@ services:
   api-core:
     build:
       context: ./services/api
-    container_name: api-core-service
     depends_on:
-      db:
+      db-service:
         condition: service_healthy
       storage-service:
         condition: service_healthy
