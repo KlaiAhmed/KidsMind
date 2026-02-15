@@ -3,6 +3,7 @@ from fastapi import FastAPI, HTTPException, Request
 import httpx
 from contextlib import asynccontextmanager
 from core.config import STT_SERVICE_URL, STORAGE_SERVICE_URL, AI_SERVICE_URL
+from prometheus_fastapi_instrumentator import Instrumentator
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -15,6 +16,8 @@ def create_app() -> FastAPI:
     return app
 
 app = create_app()
+
+Instrumentator().instrument(app).expose(app)
 
 @app.get("/health")
 def health_check():

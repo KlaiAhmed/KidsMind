@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from routers.stt import router as stt_router
 from core.config import SERVICE_NAME
 from models.whisper import load_whisper_model
+from prometheus_fastapi_instrumentator import Instrumentator
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -18,6 +19,8 @@ def create_app() -> FastAPI:
     return app
 
 app = create_app()
+
+Instrumentator().instrument(app).expose(app)
 
 @app.get("/health")
 def health_check():
