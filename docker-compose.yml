@@ -120,7 +120,7 @@ services:
       storage-service:
         condition: service_healthy
     environment:
-      STORAGE_SERVICE_URL: ${STORAGE_SERVICE_URL}
+      STORAGE_SERVICE_ENDPOINT: ${STORAGE_SERVICE_ENDPOINT}
       MINIO_ROOT_USER: ${STORAGE_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${STORAGE_ROOT_PASSWORD}
     volumes:

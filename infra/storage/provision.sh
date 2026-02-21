@@ -2,7 +2,7 @@
 set -eu
 
 ALIAS="myminio"
-ENDPOINT="$STORAGE_SERVICE_URL"
+ENDPOINT="$STORAGE_SERVICE_ENDPOINT"
 
 echo "Connecting to MinIO at $ENDPOINT with alias '$ALIAS'..."
 
