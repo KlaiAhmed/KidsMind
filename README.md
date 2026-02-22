@@ -14,9 +14,9 @@
 | :--- | :--- | :--- |
 | **api-core** | `8000:8000` | The main backend (FastAPI). Handles routing, business logic, and database interactions. |
 | **ai-service** | `8001:8000` | Dedicated service for AI model inference and heavy processing. |
-| **voice-service**| `8002:8000` | Dedicated to STT (Whisper) and TTS (Text-to-Speech). |
-| **postgres-db**| `5432:5432` | PostgreSQL database storing application data. |
-| **MinIO-service**| `9000:9000(API)` `9001:9001(Console)` | S3 compatible storage |
+| **stt-service**| `8002:8000` | Dedicated to STT (Whisper) and TTS (Text-to-Speech). |
+| **db-service**| `5432:5432` | PostgreSQL database storing application data. |
+| **storage-service**| `9000:9000(API)` `9001:9001(Console)` | S3 compatible storage |
 
 
 ### Tech Stack
@@ -38,9 +38,10 @@ kidsmind/
 ├── services/
 │   ├── api-core/         # Business Logic API (FastAPI)
 │   ├── ai-service/       # LLM & Logic Handling (FastAPI)
-│   └── voice-service/    # Audio Processing STT/TTS (FastAPI)
+│   └── stt-service/      # Audio Processing STT/TTS (FastAPI)
 ├── infrastructure/
 │   ├── DB/               # DB config (Postgre SQL)
+│   ├── monitoring/       # Monitoring services config (Prometheus/Grafana)
 │   └── storage/          # Media storage (MinIO/S3)
 ├── docker-compose.yml    # Main Orchestration file
 ├── .env.example          # Template for Environment Variables
