@@ -7,10 +7,8 @@ from services.detect_lang import detect_language
 
 model = load_whisper_model()
 
-async def transcribe_audio(upload_file) -> Dict[str, Any]:
+async def transcribe_audio(audio_bytes) -> Dict[str, Any]:
     start_time = time.time()
-
-    audio_bytes = await upload_file.read()
 
     audio = decode_audio(io.BytesIO(audio_bytes))
 

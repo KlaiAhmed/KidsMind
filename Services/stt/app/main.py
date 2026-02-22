@@ -4,11 +4,15 @@ from routers.stt import router as stt_router
 from core.config import SERVICE_NAME
 from models.whisper import load_whisper_model
 from prometheus_fastapi_instrumentator import Instrumentator
+import httpx
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     load_whisper_model()
-    yield
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        app.state.http_client = client
+        yield
 
 
 def create_app() -> FastAPI:

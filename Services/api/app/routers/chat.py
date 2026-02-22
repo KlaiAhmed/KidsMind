@@ -9,7 +9,7 @@ import httpx
 router = APIRouter(prefix="/chat", tags=["AI"])
 
 @router.post("/voice/message/{user_id}/{child_id}")
-async def generate_content(user_id: str, child_id: str, audio_file: UploadFile = Depends(validate_audio_file), context: str = Form(""), store_audio: bool = Form(True)):
+async def generate_content(user_id: str, child_id: str, audio_file: UploadFile = Depends(validate_audio_file), context: str = Form(""), store_audio: bool = Form(True), client: httpx.AsyncClient = Depends(get_client)):
     filename = None
     try:
         # Upload the audio to the storage service
@@ -17,15 +17,12 @@ async def generate_content(user_id: str, child_id: str, audio_file: UploadFile =
         filename = upload_result["filename"]
         audio_url = upload_result["url"]
         
-        print(f"Audio uploaded to: {audio_url}")
-
         # Send the audio URL and context to the STT service
-        async with httpx.AsyncClient() as client:
-            stt_response = await client.post(f"{STT_SERVICE_ENDPOINT}/stt/transcribe", json={"audio_url": audio_url, "context": context}, timeout=30.0)
+        stt_response = await client.post(f"{STT_SERVICE_ENDPOINT}/stt/transcribe", json={"audio_url": audio_url, "context": context}, timeout=30.0)
         stt_response.raise_for_status()
         stt_data = stt_response.json()
-        print(f"STT response: {stt_data}")
 
+        return {"message": "Audio file processed successfully!", "stt_data": stt_data}
 
     except httpx.RequestError as e:
         raise HTTPException(status_code=502, detail=f"Failed to contact STT service: {e}")
@@ -38,4 +35,4 @@ async def generate_content(user_id: str, child_id: str, audio_file: UploadFile =
         if filename and not store_audio:
             await run_in_threadpool(remove_audio, filename)
 
-    return {"message": "Audio file processed successfully!"}
+
