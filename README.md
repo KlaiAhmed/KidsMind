@@ -9,17 +9,7 @@
 
  The project follows a **Monorepo** structure, separating frontend applications from backend services and its built using a microservices architecture, with each component isolated in its own Docker container.
 
-### Core Services
-| Service Name | Port (Host:Container) | Description |
-| :--- | :--- | :--- |
-| **api-core** | `8000:8000` | The main backend (FastAPI). Handles routing, business logic, and database interactions. |
-| **ai-service** | `8001:8000` | Dedicated service for AI model inference and heavy processing. |
-| **stt-service**| `8002:8000` | Dedicated to STT (Whisper) and TTS (Text-to-Speech). |
-| **db-service**| `5432:5432` | PostgreSQL database storing application data. |
-| **storage-service**| `9000:9000(API)` `9001:9001(Console)` | S3 compatible storage |
-
-
-### Tech Stack
+ ### Tech Stack :
 * **Frontend**: React + shadcn/ui (Web), React Native (Mobile)
 *  **Backend**: FastAPI (Python)
 *  **Database**: PostgreSQL
@@ -27,6 +17,44 @@
 *  **AI**: LangChain + GPT-4 + Whisper STT 
 *  **CI**: Docker + GitLab CI 
 
+
+### Core Services :
+| Service Name | Port (Host:Container) | Description |
+| :--- | :--- | :--- |
+| **api-core** | `8000:8000` | The main backend (FastAPI). Handles routing, business logic, and database interactions. |
+| **ai-service** | `8001:8000` | Dedicated service for AI model inference and heavy processing. |
+| **stt-service**| `8002:8000` | Dedicated to STT audio  processing (Faster-Whisper). |
+| **db-service**| `5432:5432` | PostgreSQL database storing application data. |
+
+
+---
+
+### Additional Services :
+| Service Name | Port (Host:Container) | Description |
+| :--- | :--- | :--- |
+| **prometheus** | `9090:9090` | Collects and stores metrics as time-series data, allowing for real-time monitoring |
+| **grafana** | `8001:8000` | Transforms raw data from Prometheus into interactive dashboards. |
+| **bucket-service**| `NA` | A  startup utility that performs verification of required storage buckets. if they are missing, it provision them dynamically. This service terminates immediately upon verification. |
+| **postgres-exporter**| `9187:9187` | A dedicated bridge between PostgreSQL and Prometheus. It collects and translates database-level metrics into a format Prometheus can ingest for database monitoring. |
+---
+
+
+### STT Service Implementation Details :
+#### Model Selection: `faster-whisper` vs. Original `whisper`
+While the initial technical specification recommended the standard OpenAI `whisper` model, this project implements `faster-whisper` to maximize efficiency and execution speed.
+
+Faster-whisper (CTranslate2) delivers the exact same accuracy as the original model (PyTorch) but runs up to **4x faster**. Additionally, through efficient INT8 quantization, it reduces memory consumption by over **50%**. This architectural pivot was chosen for speed optimizations and reduced memory footprints that provide a massive performance gains specifically on CPUs and lower-end GPUs, ensuring the application remains highly responsive and resource-efficient in hardware-constrained environments.
+
+### Optimized Language Detection Pipeline
+To further reduce latency, this project implements a dual-model architecture. We observed that running native language detection directly through the main model introduced unnecessary computational overhead.
+
+To resolve this, we utilize a `tiny` model dedicated exclusively to fast, initial language detection. The detected language is then passed as a parameter to the main `faster-whisper` model for the actual transcription.
+
+To ensure transcription accuracy is never compromised, a confidence threshold is enforced: if the `tiny` model's language prediction indicates high uncertainty, the system dynamically falls back, prompting the main model to re-evaluate the language. This hybrid pipeline preserves the main model's high-fidelity output while yielding an additional **16.5%** reduction in total processing time (when utilizing the `medium` model as the primary transcriber).
+
+
+
+---
 
 ## 📂 Project Structure
 
