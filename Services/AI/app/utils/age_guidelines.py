@@ -1,4 +1,5 @@
 def age_guidelines (age):
+    """ Returns age-appropriate guidelines for content generation based on the specified age group. """
     if age == "3-6":
         return "Use very short sentences, simple vocabulary, lots of emojis/pictograms 🌟🧩, and frame learning as fun mini-games."
     elif age == "7-11":
