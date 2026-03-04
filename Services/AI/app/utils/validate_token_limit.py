@@ -1,5 +1,4 @@
 import tiktoken
-from fastapi import HTTPException, status
 from core.config import MODEL_NAME
 
 def validate_token_limit(text: str, limit: int = 2000) -> bool:

@@ -1,6 +1,5 @@
 from langchain_openai import ChatOpenAI
 from core.config import MODEL_NAME, API_KEY, BASE_URL
-import httpx
 
 
 llm = ChatOpenAI(

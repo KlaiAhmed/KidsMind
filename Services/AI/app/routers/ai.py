@@ -1,29 +1,24 @@
 from fastapi import APIRouter, HTTPException, Request
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from typing import Optional
 from pydantic import BaseModel, Field
 import time
 import logging
 
 # Local Imports
-from ai.chains import build_chain
-from ai.moderation import check_moderation
-from ai.dev_moderation import dev_check_moderation
+from services.chains import build_chain
+from services.moderation import check_moderation
+from services.dev_moderation import dev_check_moderation
 
 from utils.validate_token_limit import validate_token_limit
 from utils.age_guidelines import age_guidelines
 from utils.get_client import get_client
 
-from core.config import RATE_LIMIT, IS_PROD
+from core.config import IS_PROD
 
 
 router = APIRouter(tags=["AI"])
 
 logger = logging.getLogger(__name__)
-
-# Set up rate limiting per IP address
-limiter = Limiter(key_func=get_remote_address)
 
 # Build the AI chain once at startup to reuse across requests
 chain = build_chain()
@@ -35,7 +30,6 @@ class ChatRequest(BaseModel):
 
 
 @router.post("/chat")
-@limiter.limit(RATE_LIMIT)
 async def chat_with_ai(
     request: Request,
     payload: ChatRequest):
