@@ -1,3 +1,7 @@
+from utils.logging import setup_logging, RequestTracingMiddleware
+
+setup_logging()
+
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from routers.stt import router as stt_router
@@ -17,7 +21,7 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(title=SERVICE_NAME, lifespan=lifespan)
-
+    app.add_middleware(RequestTracingMiddleware)
     app.include_router(stt_router, prefix="/v1/stt", tags=["Speech-to-Text"])
 
     return app

@@ -1,3 +1,7 @@
+from utils.logging import setup_logging, RequestTracingMiddleware
+
+setup_logging()
+
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -13,6 +17,7 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Core API", lifespan=lifespan)
+    app.add_middleware(RequestTracingMiddleware)
     app.include_router(chat_router, prefix="/api/v1/chat", tags=["Chat"])
     return app
 
