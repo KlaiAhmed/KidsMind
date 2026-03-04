@@ -2,6 +2,27 @@
 
 A production-ready, high-performance Speech-to-Text microservice built on [faster-whisper](https://github.com/SYSTRAN/faster-whisper) and served via FastAPI. Designed for low-latency transcription within a containerized, security-hardened environment.
 
+## Table of Contents
+
+- [STT Service](#stt-service)
+  - [Table of Contents](#table-of-contents)
+  - [Features](#features)
+  - [Dual-Model Pipeline](#dual-model-pipeline)
+  - [API](#api)
+    - [`POST /v1/stt/transcriptions`](#post-v1stttranscriptions)
+    - [`GET /health`](#get-health)
+    - [`GET /metrics`](#get-metrics)
+  - [Configuration](#configuration)
+  - [Dependencies](#dependencies)
+  - [Repository Structure](#repository-structure)
+  - [Docker](#docker)
+    - [Build](#build)
+    - [Run](#run)
+    - [GPU (optional)](#gpu-optional)
+    - [Implementation Details](#implementation-details)
+  - [Security](#security)
+  - [Observability](#observability)
+
 ---
 
 ## Features

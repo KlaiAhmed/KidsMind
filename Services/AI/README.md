@@ -2,6 +2,36 @@
 
 A production-ready FastAPI microservice powering the KidsMind educational assistant. Designed around a **safety-first inference pipeline**, every request is moderated before and after LLM inference to ensure all content delivered to children aged 3–15 is appropriate, accurate, and encouraging.
 
+## Table of Contents
+
+- [KidsMind AI Service](#kidsmind-ai-service)
+  - [Table of Contents](#table-of-contents)
+  - [Mission](#mission)
+  - [Features](#features)
+  - [Safety-First Pipeline](#safety-first-pipeline)
+    - [Stage Details](#stage-details)
+  - [Prompt Engineering](#prompt-engineering)
+    - [System Prompt](#system-prompt)
+    - [Prompt Template Structure](#prompt-template-structure)
+    - [Age-Adaptive Guidelines](#age-adaptive-guidelines)
+  - [Moderation](#moderation)
+    - [Production — OpenAI Moderation API](#production--openai-moderation-api)
+    - [Development — Sightengine API](#development--sightengine-api)
+  - [API](#api)
+    - [`POST /v1/ai/chat`](#post-v1aichat)
+    - [`GET /`](#get-)
+    - [`GET /metrics`](#get-metrics)
+  - [Configuration](#configuration)
+  - [Dependencies](#dependencies)
+  - [Repository Structure](#repository-structure)
+  - [Docker](#docker)
+    - [Quick Start](#quick-start)
+    - [Multi-Stage Build](#multi-stage-build)
+  - [Security](#security)
+    - [Non-Root Execution](#non-root-execution)
+    - [Fail-Closed Moderation](#fail-closed-moderation)
+  - [Observability](#observability)
+
 ---
 
 ## Mission

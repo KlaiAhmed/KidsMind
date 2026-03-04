@@ -4,6 +4,15 @@
 
  This project is built following the tech stack suggested by **VAERDIA** and utilizes a microservices architecture orchestrated via Docker.
 
+## 📋 Table of Contents
+
+- [🏗️ System Architecture & Services](#-system-architecture--services)
+- [📂 Project Structure](#-project-structure)
+- [🚀 Getting Started](#-getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Installation](#installation)
+- [✨Key Features](#key-features)
+- [🔒 Security & Compliance](#-security--compliance)
 
 ## 🏗️ System Architecture & Services
 
