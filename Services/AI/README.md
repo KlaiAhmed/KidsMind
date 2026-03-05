@@ -61,21 +61,29 @@ Every request travels through five sequential stages. No stage is skippable.
 flowchart TD
     A([POST /v1/ai/chat]) --> B
 
-    B["① Token Validation\ntiktoken · message ≤ 2000 · context ≤ 1000"]
+    B["① Token Validation
+    tiktoken · message ≤ 2000 · context ≤ 1000"]
     B -->|Exceeds limit| R1([413 Request Entity Too Large])
     B --> C
 
-    C{"② Pre-Inference Moderation\nDev → Sightengine\nProd → OpenAI Moderation API"}
+    C{"② Pre-Inference Moderation
+    Dev → Sightengine
+    Prod → OpenAI Moderation API"}
     C -->|Flagged| R2([400 Inappropriate Content])
     C --> D
 
-    D["③ Prompt Engineering\nChatPromptTemplate\nage_group · age_guidelines · context · history"]
+    D["③ Prompt Engineering\nChatPromptTemplate
+    age_group · age_guidelines · context · history"]
     D --> E
 
-    E["④ LLM Inference\nChatOpenAI · temperature=0.5\nmax_tokens=400 · max_retries=2"]
+    E["④ LLM Inference
+    ChatOpenAI · temperature=0.5
+    max_tokens=400 · max_retries=2"]
     E --> F
 
-    F{"⑤ Post-Inference Moderation\nSame guard as stage ②\nApplied to LLM output"}
+    F{"⑤ Post-Inference Moderation
+    Same guard as stage ②
+    Applied to LLM output"}
     F -->|Flagged| R3([400 Filtered Response])
     F --> G
 

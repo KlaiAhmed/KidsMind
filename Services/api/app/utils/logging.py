@@ -11,7 +11,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp
 
-DEFAULT_SERVICE_NAME = "AI-Service"
+DEFAULT_SERVICE_NAME = "API-Core"
 
 request_id_var: ContextVar[str] = ContextVar("request_id", default="-")
 

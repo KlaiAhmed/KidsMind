@@ -1,9 +1,9 @@
-from fastapi import FastAPI
-from prometheus_fastapi_instrumentator import Instrumentator
-from utils.logging import setup_logging
+from utils.logging import setup_logging, RequestTracingMiddleware
 
 setup_logging()
 
+from fastapi import FastAPI
+from prometheus_fastapi_instrumentator import Instrumentator
 from routers.ai import router as ai_router
 from contextlib import asynccontextmanager
 import httpx
@@ -18,6 +18,7 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(title="AI Service", lifespan=lifespan)
+    app.add_middleware(RequestTracingMiddleware)
     app.include_router(ai_router, prefix="/v1/ai", tags=["AI"])
     Instrumentator().instrument(app).expose(app)
     return app
