@@ -10,5 +10,6 @@ dependencies = [
     "minio>=7.2.20",
     "prometheus-fastapi-instrumentator>=7.1.0",
     "python-multipart>=0.0.22",
+    "slowapi>=0.1.9",
     "uvicorn>=0.40.0",
 ]
