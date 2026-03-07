@@ -44,7 +44,7 @@ async def generate_content(
         # Send Response to AI Service
         ai_response = await client.post(
             f"{AI_SERVICE_ENDPOINT}/v1/ai/chat",
-            json={"message": stt_response.json()["text"], "context": context},
+            json={"message": stt_response.json(), "context": context},
             timeout=30.0,
         )
         ai_response.raise_for_status()

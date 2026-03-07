@@ -1,6 +1,6 @@
 services:
   # Database Service
-  db-service:
+  database:
     image: postgres:18.2-alpine
     environment:
       - POSTGRES_USER=${DB_USER}
@@ -20,9 +20,9 @@ services:
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:v0.19.0
     environment:
-      DATA_SOURCE_NAME: "postgresql://${DB_USER}:${DB_PASSWORD}@db-service:5432/${DB_NAME}?sslmode=disable"
+      DATA_SOURCE_NAME: "postgresql://${DB_USER}:${DB_PASSWORD}@database:5432/${DB_NAME}?sslmode=disable"
     depends_on:
-      db-service:
+      database:
         condition: service_healthy
     ports:
       - "${POSTGRES_EXPORTER_PORT}:9187"
@@ -32,9 +32,9 @@ services:
     build:
       context: ./services/api
     depends_on:
-      db-service:
+      database:
         condition: service_healthy
-      storage-service:
+      file-storage:
         condition: service_healthy
       ai-service:
         condition: service_started
@@ -101,7 +101,7 @@ services:
               capabilities: [gpu]
 
   # Storage Service 
-  storage-service:
+  file-storage:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z-cpuv1
     ports:
       - "${STORAGE_API_PORT}:9000"
@@ -119,12 +119,39 @@ services:
       timeout: 5s
       retries: 5
 
+  # Redis Cache Service
+  cache:
+    image: redis:8.6.1-alpine
+    container_name: cache-service
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - cache_data:/data
+    command: >
+      redis-server
+      --requirepass ${CACHE_PASSWORD}
+      --maxmemory 400mb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+      --appendfsync everysec
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${CACHE_PASSWORD}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+
   # Bucket Provisioner Service
-  bucket-service:
+  bucket-provisioner:
     image: minio/mc:RELEASE.2025-08-13T08-35-41Z-cpuv1
     entrypoint: ["/bin/sh", "/provision.sh"]
     depends_on:
-      storage-service:
+      file-storage:
         condition: service_healthy
     environment:
       STORAGE_SERVICE_ENDPOINT: ${STORAGE_SERVICE_ENDPOINT}
@@ -133,7 +160,7 @@ services:
     volumes:
       - ./infra/storage/provision.sh:/provision.sh
 
-  # Prometheus Service
+  # Prometheus Service for Monitoring
   prometheus:
     image: prom/prometheus:v3.9.1
     ports:
@@ -142,7 +169,7 @@ services:
       - prometheus_data:/prometheus
       - ./infra/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
     
-  # Grafana Service
+  # Grafana Service for Visualization
   grafana:
     image: grafana/grafana:12.3
     ports:
@@ -160,3 +187,4 @@ volumes:
   storage_data:
   grafana_data:
   prometheus_data:
+  cache_data:
