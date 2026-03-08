@@ -289,20 +289,11 @@ All secrets and runtime settings are injected via environment variables. No valu
 ai-service/
 ├── app/
 │   ├── core/
-│   │   ├── config.py         # Environment variable bindings and runtime config
-│   │   └── llm.py            # ChatOpenAI singleton (temperature, max_tokens, retries)
-│   ├── routers/
-│   │   └── ai.py             # POST /v1/ai/chat — pipeline orchestration
-│   ├── services/
-│   │   ├── chains.py         # LangChain chain builder: prompt | llm
-│   │   ├── prompts.py        # BASE_SYSTEM_PROMPT and ChatPromptTemplate factory
-│   │   ├── moderation.py     # Production moderation (OpenAI Moderation API)
-│   │   └── dev_moderation.py # Development moderation (Sightengine API)
-│   ├── utils/
-│   │   ├── validate_token_limit.py  # tiktoken-based token counter and gate
-│   │   ├── age_guidelines.py        # Age-group to guideline string resolver
-│   │   ├── get_client.py            # httpx.AsyncClient DI accessor
-│   │   └── logging.py               # Application entry point
+│   ├── schemas/              # Pydantic models for request/response validation
+│   ├── controllers           # Request handlers
+│   ├── routers/              # FastAPI route definitions
+│   ├── services/             # Business logic
+│   ├── utils/                # Helper functions
 │   └── main.py               # FastAPI factory, lifespan, Prometheus instrumentation
 ├── .dockerignore
 ├── Dockerfile                # Multi-stage build, non-root user

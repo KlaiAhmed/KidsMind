@@ -8,6 +8,6 @@ llm = ChatOpenAI(
     base_url= BASE_URL,
     temperature=0.5,
     max_tokens=400,
-    timeout=30,
+    timeout=60,
     max_retries=2
 )

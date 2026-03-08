@@ -1,16 +1,38 @@
+from fastapi import HTTPException
 import tiktoken
 from core.config import MODEL_NAME
+from utils.logger import logger
+from schemas.ChatRequest import ChatRequest
 
-def validate_token_limit(text: str, limit: int = 2000) -> bool:
-    """ Validates that the input text does not exceed the specified token limit (TikToken).
-    Returns True if within limit, False if it exceeds the limit. """
-    try:
-        encoding = tiktoken.encoding_for_model(MODEL_NAME)
-    except KeyError:
-        encoding = tiktoken.get_encoding("cl100k_base") # Default for gpt-4 +
-    
-    num_tokens = len(encoding.encode(text))
-    
-    if num_tokens > limit:
-        return False
-    return True
+# Initialize the tokenizer for the specified model
+try:
+    ENCODER = tiktoken.encoding_for_model(MODEL_NAME)
+except KeyError:
+    ENCODER = tiktoken.get_encoding("cl100k_base") # default for gpt-4 + models
+
+def validate_token_limit(
+    payload: ChatRequest, 
+    text_limit: int = 2000, 
+    context_limit: int = 1000
+) :
+    """
+    Validates if the number of tokens is within the specified limit.
+
+    Args:
+        payload (ChatRequest): The input data containing the text and optional context.
+        text_limit (int): The maximum allowed number of tokens for the text (default: 2000).
+        context_limit (Optional[int]): The maximum allowed number of tokens for the context (default: 1000).
+        
+    """
+    # Encode text
+    text_tokens = len(ENCODER.encode(payload.text))
+    if text_tokens > text_limit:
+        logger.warning(f"text token count: {text_tokens} exceeds limit of {text_limit}.")
+        raise HTTPException(status_code=422, detail=f"text exceeds token limit of {text_limit}.")
+
+    # Encode context if it exists
+    if payload.context:
+        context_tokens = len(ENCODER.encode(payload.context))
+        if context_tokens > context_limit:
+            logger.warning(f"Context token count: {context_tokens} exceeds limit of {context_limit}.")
+            raise HTTPException(status_code=422, detail=f"context exceeds token limit of {context_limit}.") 

@@ -1,10 +1,8 @@
 from core.config import GUARD_API_KEY, GUARD_API_URL, GUARD_MODEL_NAME
 from fastapi import HTTPException
 import httpx
-import logging
+from utils.logger import logger
 import time
-
-logger = logging.getLogger(__name__)
 
 KIDS_THRESHOLDS = {
     "violence": 0.4,
@@ -14,9 +12,8 @@ KIDS_THRESHOLDS = {
     "self-harm": 0.5
 }
 
-async def check_moderation(message: str, context: str, client: httpx.AsyncClient ) -> bool:
-    """ Checks if the content is appropriate for kids using OpenAI's moderation API.
-    Returns True if the content is safe, False if it fails moderation checks."""
+async def check_moderation(message: str, context: str, client: httpx.AsyncClient ) :
+    """ Checks if the content is appropriate for kids using OpenAI's moderation API."""
     try:
         timer= time.time()
 
@@ -36,7 +33,7 @@ async def check_moderation(message: str, context: str, client: httpx.AsyncClient
         logger.info("Processing moderation results.")
         # Check if the content is flagged (More Permissive)
         if results["flagged"]:
-            return False
+            raise HTTPException(status_code=400, detail="text contains inappropriate content for your age.")
 
         scores = results["category_scores"]
         
@@ -44,16 +41,14 @@ async def check_moderation(message: str, context: str, client: httpx.AsyncClient
             api_score = scores.get(category, 0)
             if api_score > threshold:
                 logger.warning(f"Content flagged for category '{category}' with score {api_score} exceeding threshold {threshold}.")
-                return False
+                raise HTTPException(status_code=400, detail=f"text contains inappropriate content for your age. Category: {category}")
                     
         timer = time.time() - timer
         logger.info(f"Moderation check completed in {timer:.2f} seconds with result: {results['flagged']}.")
                 
-        return True
-    except httpx.HTTPStatusError as e:
-        logger.error(f"HTTP error during moderation check: {e.response.status_code} - {e.response.text}")
-        raise HTTPException(status_code=e.response.status_code, detail="OpenAI Moderation API Error")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Unexpected error during moderation check: {e}")
-        raise HTTPException(status_code=500, detail="Internal Moderation Error")
+        raise HTTPException(status_code=500, detail="Internal Dev Moderation Error")
 

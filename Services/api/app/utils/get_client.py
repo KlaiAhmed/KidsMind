@@ -2,5 +2,8 @@ from fastapi import Request
 import httpx
 
 def get_client(request: Request) -> httpx.AsyncClient:
-    """Provide HTTP client from the app state."""
-    return request.app.state.http_client
+    """ Provides an HTTP client for making external API requests."""
+    client = getattr(request.app.state, "http_client", None)
+    if client is None:
+        raise RuntimeError("HTTP client not initialized — lifespan may not have run")
+    return client

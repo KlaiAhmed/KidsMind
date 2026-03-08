@@ -1,4 +1,4 @@
-from .prompts import build_prompt
+from services.prompts import build_prompt
 from core.llm import llm
 
 def build_chain():

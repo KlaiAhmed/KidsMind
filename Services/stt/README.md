@@ -16,11 +16,11 @@ A production-ready, high-performance Speech-to-Text microservice built on [faste
   - [Dependencies](#dependencies)
   - [Repository Structure](#repository-structure)
   - [Docker](#docker)
+    - [Host Machine Setup (Required for GPU)](#host-machine-setup-required-for-gpu)
+      - [Linux + Windows](#linux--windows)
     - [Build](#build)
-    - [Run](#run)
-    - [GPU (optional)](#gpu-optional)
+    - [Docker Compose](#docker-compose)
     - [Implementation Details](#implementation-details)
-  - [Security](#security)
   - [Observability](#observability)
 
 ---
@@ -251,34 +251,14 @@ It is the Docker Compose equivalent of `--gpus all` on the command line. Without
 
 ### Implementation Details
 
-The `Dockerfile` uses a **multi-stage build**:
-
 | Stage | Base Image | Purpose |
 |---|---|---|
-| `builder` | `python:3.10-slim` | Installs Python dependencies into an isolated virtualenv |
-| `runtime` | `nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04` | Ships CUDA + cuDNN runtime libs; copies only the virtualenv and app code |
+| `Image` | `nvidia/cuda:12.8.1-cudnn8-runtime-ubuntu24.04` | Ships CUDA + cuDNN runtime libs; copies only the virtualenv and app code |
 
-The `runtime` variant of the NVIDIA image is used (not `devel`) — it contains only the libraries needed to *run* CUDA code, not compile it, keeping the image as lean as possible. cuDNN 8 is required by CTranslate2, the engine underlying faster-whisper.
-
-`ffmpeg` is sourced from a static binary release and installed in the runtime stage to support all audio formats (MP3, OGG, FLAC, M4A, etc.) without pulling in a full `ffmpeg` apt package tree.
-
-> **Note on image size:** the NVIDIA base image adds CUDA + cuDNN, bringing the total image size to ~3–4 GB. This is unavoidable — `runtime` is already the smallest NVIDIA variant that works.
+> **Note on image size:** the NVIDIA base image adds CUDA + cuDNN, bringing the total image size to ~5–6 GB. This is unavoidable — `runtime` is already the smallest NVIDIA variant that works.
 
 ---
 
-## Security
-
-The runtime container enforces a **non-root execution model**:
-
-```dockerfile
-RUN groupadd -r appuser && useradd -r -g appuser appuser
-...
-USER appuser
-```
-
-This mitigates container breakout risks: if the process is compromised, the attacker operates as an unprivileged user with no write access outside explicitly chowned directories. The model cache directory (`/model_cache`) is the only path owned by `appuser` and intentionally scoped.
-
----
 
 ## Observability
 

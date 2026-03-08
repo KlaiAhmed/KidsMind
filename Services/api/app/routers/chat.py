@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request, UploadFile, Form, Depends
 from fastapi.concurrency import run_in_threadpool
 import httpx
-import logging
+from utils.logger import logger
 
 # Local imports
 from core.config import STT_SERVICE_ENDPOINT, AI_SERVICE_ENDPOINT, RATE_LIMIT
@@ -11,7 +11,7 @@ from utils.get_client import get_client
 from utils.limiter import limiter
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
+
 
 @router.post("/voice/{user_id}/{child_id}")
 @limiter.limit(RATE_LIMIT)

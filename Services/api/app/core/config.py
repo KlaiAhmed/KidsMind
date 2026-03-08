@@ -1,4 +1,5 @@
 from os import getenv
+from utils.require_env_var import _require
 
 # Is the app running in production ? Default is False (development mode).
 IS_PROD = getenv("IS_PROD", "False").strip().lower() == "true"
@@ -11,12 +12,13 @@ DB_SERVICE_ENDPOINT = getenv("DB_SERVICE_ENDPOINT", "http://db:5432")
 
 SERVICE_NAME = "KidsMind API Service"
 
-# File upload configuration 
+# File upload configuration ²
 MAX_SIZE = int(getenv("MAX_SIZE", 10 * 1024 * 1024))
 ALLOWED_CONTENT_TYPES = {"audio/mpeg", "audio/wav", "audio/x-wav", "audio/mp3"}
 
 # Storage service credentials
 STORAGE_ROOT_USER = getenv("STORAGE_ROOT_USERNAME", "admin")
-STORAGE_ROOT_PASSWORD = getenv("STORAGE_ROOT_PASSWORD")
+STORAGE_ROOT_PASSWORD = _require("STORAGE_ROOT_PASSWORD")
+
 
 RATE_LIMIT = getenv("RATE_LIMIT", "100/minute")

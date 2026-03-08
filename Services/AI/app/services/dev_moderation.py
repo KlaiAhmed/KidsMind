@@ -1,12 +1,9 @@
 from core.config import DEV_GUARD_API_KEY, DEV_API_USER, DEV_GUARD_API_URL
 from fastapi import HTTPException
 import httpx
-import logging
+from utils.logger import logger
 from pydantic import BaseModel
 import time
-
-logger = logging.getLogger(__name__)
-
 
 class ModerationResponse(BaseModel):
     moderation_classes: dict[str, float]
@@ -22,9 +19,8 @@ DEV_KIDS_THRESHOLDS = {
 }
 
 # Used only in Development mode for testing, using free Tier of Sightengine moderation API
-async def dev_check_moderation(message: str, context: str, client: httpx.AsyncClient ) -> bool:
-    """ Checks if the content is appropriate for kids using Sightengine moderation API(free Tier).
-    Returns True if the content is safe, False if it fails moderation checks.(Development mode only for testing)"""
+async def dev_check_moderation(message: str, context: str, client: httpx.AsyncClient ):
+    """ Checks if the content is appropriate for kids using Sightengine moderation API(free Tier)."""
     try:
         timer= time.time()
 
@@ -46,15 +42,13 @@ async def dev_check_moderation(message: str, context: str, client: httpx.AsyncCl
             api_score = scores.get(category, 0)
             if api_score > threshold:
                 logger.warning(f"Content flagged for category '{category}' with score {api_score} exceeding threshold {threshold}.")
-                return False
+                raise HTTPException(status_code=400, detail=f"text contains inappropriate content for your age. Category: {category}")
                     
         timer = time.time() - timer
         logger.info(f"Dev Moderation check completed in {timer:.2f} seconds with scores: {scores}.")
                 
-        return True
-    except httpx.HTTPStatusError as e:
-        logger.error(f"HTTP error during moderation check: {e.response.status_code} - {e.response.text}")
-        raise HTTPException(status_code=e.response.status_code, detail="Dev Moderation API Error")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Unexpected error during moderation check: {e}")
         raise HTTPException(status_code=500, detail="Internal Dev Moderation Error")

@@ -14,7 +14,7 @@ import httpx
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with httpx.AsyncClient(timeout=5.0) as client:
+    async with httpx.AsyncClient() as client:
         app.state.http_client = client
         yield
 

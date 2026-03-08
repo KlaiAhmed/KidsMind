@@ -1,16 +1,18 @@
 from fastapi import UploadFile, File, HTTPException
 from core.storage import minio_client
-from minio import Minio
 from minio.error import S3Error
 from utils.file_name import generate_storage_path
 import time
 from datetime import timedelta
+from utils.logger import logger
 
 
 def upload_audio(file: UploadFile = File(...), user_id: str = "", child_id: str = "", store_audio: bool = True):
     bucket_name = "media-private"
 
     try:
+        timer= time.time()
+
         file.file.seek(0, 2)
         file_size = file.file.tell()
         file.file.seek(0)
@@ -39,6 +41,9 @@ def upload_audio(file: UploadFile = File(...), user_id: str = "", child_id: str 
             filename,
             expires= timedelta(minutes=15)
         )
+
+        timer= time.time() - timer
+        logger.info(f"File uploaded to storage in {timer:.2f} seconds. Filename: {filename}, Size: {file_size} bytes")
         
         return {
             "message": "Audio file uploaded successfully!", 
@@ -47,9 +52,11 @@ def upload_audio(file: UploadFile = File(...), user_id: str = "", child_id: str 
         }
 
     except S3Error as e:
-        raise HTTPException(status_code=500, detail=f"Storage Error: {e}")
+        logger.error(f"Storage error: {e}")
+        raise HTTPException(status_code=500, detail="Internal Storage Error")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"An error occurred: {e}")
+        logger.error(f"Unexpected error: {e}")
+        raise HTTPException(status_code=500, detail="Internal Storage Error")
 
 def remove_audio(filename: str):
     bucket_name = "media-private"
@@ -57,6 +64,8 @@ def remove_audio(filename: str):
         minio_client.remove_object(bucket_name, filename)
         return {"message": "Audio file removed successfully!"}
     except S3Error as e:
-        raise HTTPException(status_code=500, detail=f"Storage Error: {e}")
+        logger.error(f"Storage error: {e}")
+        raise HTTPException(status_code=500, detail="Internal Storage Error")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"An error occurred: {e}")
+        logger.error(f"Unexpected error: {e}")
+        raise HTTPException(status_code=500, detail="Internal Storage Error")
