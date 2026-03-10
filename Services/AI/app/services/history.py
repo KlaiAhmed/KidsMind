@@ -1,6 +1,6 @@
 from langchain_community.chat_message_histories import RedisChatMessageHistory
 from langchain_core.messages import BaseMessage
-from core.config import CACHE_SERVICE_ENDPOINT, MAX_HISTORY_MESSAGES, MAX_HISTORY_TOKENS, HISTORY_TTL
+from core.config import settings
 from utils.trim_messages_by_tokens import trim_messages_by_tokens
 
 class HistoryService:
@@ -13,8 +13,8 @@ class HistoryService:
         """Returns a RedisChatMessageHistory instance for this session."""
         return RedisChatMessageHistory(
             session_id=self.get_session_key(user),
-            url=CACHE_SERVICE_ENDPOINT,
-            ttl=HISTORY_TTL,
+            url=settings.CACHE_SERVICE_ENDPOINT,
+            ttl=settings.HISTORY_TTL,
         )
 
     # Get the last MAX_HISTORY_MESSAGES messages to prevent token overflow
@@ -24,8 +24,8 @@ class HistoryService:
         Prevents token overflow on long sessions.
         """
         messages = history.messages
-        trimmed = messages[-MAX_HISTORY_MESSAGES:]
-        trimmed= trim_messages_by_tokens(trimmed, max_tokens=MAX_HISTORY_TOKENS)
+        trimmed = messages[-settings.MAX_HISTORY_MESSAGES:]
+        trimmed= trim_messages_by_tokens(trimmed, max_tokens=settings.MAX_HISTORY_TOKENS)
         return trimmed
 
     # Append a new turn to the history after a successful response

@@ -1,37 +1,57 @@
-import os
-from utils.require_env_var import _require
+from pydantic import model_validator, Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import Optional
 
-# Is the app running in production ? Default is False (development mode).
-IS_PROD = os.getenv("IS_PROD", "False").strip().lower() == "true"
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
 
-# AI API credentials and configuration
-MODEL_NAME = _require("MODEL_NAME")
-API_KEY = _require("API_KEY")
-BASE_URL = _require("BASE_URL")
+    # App State
+    IS_PROD: bool = False
 
-if IS_PROD:
-    # Guard API credentials and configuration
-    GUARD_API_KEY = _require("GUARD_API_KEY")
-    GUARD_API_URL = _require("GUARD_API_URL")
-    GUARD_MODEL_NAME = _require("GUARD_MODEL_NAME")
-    DEV_GUARD_API_KEY = None
-    DEV_GUARD_API_URL = None
-    DEV_API_USER = None
-else:
-    # Dev Guard API credentials and configuration
-    GUARD_API_KEY = None
-    GUARD_API_URL = None
-    GUARD_MODEL_NAME = None
-    DEV_GUARD_API_KEY = _require("DEV_GUARD_API_KEY")
-    DEV_GUARD_API_URL = _require("DEV_GUARD_API_URL")
-    DEV_API_USER = _require("DEV_API_USER")
+    # Main AI API (Required) 
+    MODEL_NAME: str
+    API_KEY: str
+    BASE_URL: str
 
-# Cache configuration
-CACHE_PASSWORD = os.getenv("CACHE_PASSWORD")
-CACHE_SERVICE_ENDPOINT = os.getenv("CACHE_SERVICE_ENDPOINT", f"redis://:{CACHE_PASSWORD}@cache:6379")
-MAX_HISTORY_MESSAGES = int(os.getenv("MAX_HISTORY_MESSAGES", 16))
-MAX_HISTORY_TOKENS = int(os.getenv("MAX_HISTORY_TOKENS", 4096))
-HISTORY_TTL = int(os.getenv("HISTORY_TTL_SECONDS", 3600))
+    # Guard / Production Credentials 
+    GUARD_API_KEY: Optional[str] = None
+    GUARD_API_URL: Optional[str] = None
+    GUARD_MODEL_NAME: Optional[str] = None
 
-# APP configuration
-RATE_LIMIT = os.getenv("RATE_LIMIT", "100/minute")
+    # Dev Credentials 
+    DEV_GUARD_API_KEY: Optional[str] = None
+    DEV_GUARD_API_URL: Optional[str] = None
+    DEV_API_USER: Optional[str] = None
+
+    # Cache & History 
+    CACHE_PASSWORD: Optional[str] = None
+    CACHE_SERVICE_ENDPOINT: str = "redis://cache:6379"
+    MAX_HISTORY_MESSAGES: int = 16
+    MAX_HISTORY_TOKENS: int = 4096
+    HISTORY_TTL: int = Field(default=3600, alias="HISTORY_TTL_SECONDS")
+
+    # App Config 
+    RATE_LIMIT: str = "100/minute"
+
+    @model_validator(mode="after")
+    def validate_environment_credentials(self) -> "Settings":
+        # Handle the Production vs Dev logic 
+        if self.IS_PROD:
+            if not all([self.GUARD_API_KEY, self.GUARD_API_URL, self.GUARD_MODEL_NAME]):
+                raise ValueError("In PROD, GUARD_API credentials must be provided!")
+        else:
+            if not all([self.DEV_GUARD_API_KEY, self.DEV_GUARD_API_URL, self.DEV_API_USER]):
+                raise ValueError("In DEV, DEV_GUARD credentials must be provided!")
+        
+        # Build the Redis URL dynamically if a password exists
+        if self.CACHE_PASSWORD and "@" not in self.CACHE_SERVICE_ENDPOINT:
+            self.CACHE_SERVICE_ENDPOINT = f"redis://:{self.CACHE_PASSWORD}@cache:6379"
+            
+        return self
+
+settings = Settings()

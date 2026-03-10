@@ -1,10 +1,10 @@
 from langchain_openai import ChatOpenAI
-from core.config import MODEL_NAME, API_KEY, BASE_URL
+from core.config import settings
 
 llm = ChatOpenAI(
-    model= MODEL_NAME,
-    api_key= API_KEY,
-    base_url= BASE_URL,
+    model= settings.MODEL_NAME,
+    api_key= settings.API_KEY,
+    base_url= settings.BASE_URL,
     temperature=0.5,
     max_tokens=400,
     timeout=30,

@@ -1,4 +1,4 @@
-from core.config import GUARD_API_KEY, GUARD_API_URL, GUARD_MODEL_NAME
+from core.config import settings
 from fastapi import HTTPException
 import httpx
 from utils.logger import logger
@@ -17,14 +17,14 @@ async def check_moderation(message: str, context: str, client: httpx.AsyncClient
     try:
         timer= time.time()
 
-        headers = {"Authorization": f"Bearer {GUARD_API_KEY}"}
+        headers = {"Authorization": f"Bearer {settings.GUARD_API_KEY}"}
 
         text= f"APP CONTEXT: {context}\nUSER Input: {message}"
 
-        payload = {"model": GUARD_MODEL_NAME, "input": text, "context": context}
+        payload = {"model": settings.GUARD_MODEL_NAME, "input": text, "context": context}
         
         # Call to OpenAI's API moderation endpoint
-        response = await client.post(GUARD_API_URL, json=payload, headers=headers)
+        response = await client.post(settings.  GUARD_API_URL, json=payload, headers=headers)
         response.raise_for_status() 
 
         data = response.json()

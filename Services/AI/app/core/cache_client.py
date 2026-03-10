@@ -1,5 +1,5 @@
 import redis.asyncio as aioredis
-from core.config import CACHE_SERVICE_ENDPOINT
+from core.config import settings
 
 cache_client: aioredis.Redis | None = None
 
@@ -7,7 +7,7 @@ async def get_cache_client() -> aioredis.Redis:
     global cache_client
     if cache_client is None:
         cache_client = aioredis.from_url(
-            CACHE_SERVICE_ENDPOINT,
+            settings.CACHE_SERVICE_ENDPOINT,
             encoding="utf-8",
             decode_responses=True,
             socket_connect_timeout=3,

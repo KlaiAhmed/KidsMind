@@ -1,6 +1,6 @@
 from utils.logging_setup import setup_logging, RequestTracingMiddleware
 
-setup_logging() # Initialize logging configuration at the start of the application
+setup_logging()
 
 from fastapi import FastAPI
 from prometheus_fastapi_instrumentator import Instrumentator

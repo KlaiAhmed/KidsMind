@@ -4,21 +4,23 @@ import httpx
 from utils.logger import logger
 
 # Local imports
-from core.config import STT_SERVICE_ENDPOINT, AI_SERVICE_ENDPOINT, RATE_LIMIT
+from core.config import settings
 from services.upload_file import upload_audio, remove_audio
 from middlewares.vallidate_audio_file import validate_audio_file
 from utils.get_client import get_client
 from utils.limiter import limiter
+import time
 
 router = APIRouter()
 
 
-@router.post("/voice/{user_id}/{child_id}")
-@limiter.limit(RATE_LIMIT)
+@router.post("/voice/{user_id}/{child_id}/{session_id}")
+@limiter.limit(settings.RATE_LIMIT)
 async def generate_content(
     request: Request,
     user_id: str,
     child_id: str,
+    session_id: str,
     audio_file: UploadFile = Depends(validate_audio_file),
     context: str = Form(""),
     store_audio: bool = Form(True),
@@ -26,32 +28,38 @@ async def generate_content(
 ):
     filename = None
     try:
+        duration = time.time()
         # Upload audio file to storage and get URL
         upload_result = await run_in_threadpool(
-            upload_audio, audio_file, user_id=user_id, child_id=child_id, store_audio=store_audio
+            upload_audio, audio_file, user_id=user_id, child_id=child_id, session_id=session_id, store_audio=store_audio
         )
         filename = upload_result["filename"]
         audio_url = upload_result["url"]
 
         # Send audio URL to STT Service
         stt_response = await client.post(
-            f"{STT_SERVICE_ENDPOINT}/v1/stt/transcriptions",
+            f"{settings.STT_SERVICE_ENDPOINT}/v1/stt/transcriptions",
             json={"audio_url": audio_url, "context": context},
             timeout=30.0,
         )
         stt_response.raise_for_status()
 
+        text = stt_response.json().get("text", "")
+        if not text:
+            logger.warning("STT Service did not return text")
+            raise HTTPException(status_code=500, detail="STT Service did not return text")
+
         # Send Response to AI Service
         ai_response = await client.post(
-            f"{AI_SERVICE_ENDPOINT}/v1/ai/chat",
-            json={"message": stt_response.json(), "context": context},
+            f"{settings.AI_SERVICE_ENDPOINT}/v1/ai/chat/{user_id}/{child_id}/{session_id}",
+            json={"text": text, "context": context},
             timeout=30.0,
         )
         ai_response.raise_for_status()
 
+        duration = time.time() - duration
+        logger.info(f"Content generation completed in {duration:.2f} seconds")
         return {
-            "message": "Audio processed successfully",
-            "stt_data": stt_response.json(),
             "ai_data": ai_response.json(),
         }
 

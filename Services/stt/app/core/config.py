@@ -1,21 +1,49 @@
-from os import getenv
+from pydantic import model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import Literal
 
-SERVICE_NAME = "stt-service"
 
-WHISPER_MODE= getenv("WHISPER_MODE", "gpu")  # "cpu" or "gpu"
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
 
-if WHISPER_MODE == "gpu":
-    # GPU settings
-    WHISPER_DEVICE = "cuda"
-    WHISPER_COMPUTE_TYPE = "float16"
-    WHISPER_CPU_THREADS = 0  # Not used in GPU mode
-else:
-    # CPU settings
-    WHISPER_DEVICE = "cpu"
-    WHISPER_COMPUTE_TYPE =  "int8" # "int8" is faster on CPU but slightly less accurate than "int8_float32", "float32". Adjust as needed.
-    WHISPER_CPU_THREADS = int(getenv("WHISPER_CPU_THREADS", "8"))
+    # Service
+    SERVICE_NAME: str = "stt-service"
 
-WHISPER_MODEL = getenv("WHISPER_MODEL", "large-v3-turbo")
-WHISPER_NUM_WORKERS = int(getenv("WHISPER_NUM_WORKERS", "2"))
+    # Audio file constraints
+    MAX_AUDIO_BYTES : int =  50 * 1024 * 1024  # 50 MB
+    SUPPORTED_AUDIO_EXTENSIONS: set = {".mp3", ".wav", ".ogg", ".flac", ".m4a"}
 
-print(f"Configuration : MODE={WHISPER_MODE}, MODEL={WHISPER_MODEL}, DEVICE={WHISPER_DEVICE}, COMPUTE_TYPE={WHISPER_COMPUTE_TYPE}" + (f", CPU_THREADS={WHISPER_CPU_THREADS}" if WHISPER_MODE == "cpu" else "") + f", NUM_WORKERS={WHISPER_NUM_WORKERS}")
+    # Whisper mode and model configuration
+    WHISPER_MODE: Literal["cpu", "gpu"] = "gpu"
+    WHISPER_MODEL: str = "large-v3-turbo"
+    WHISPER_NUM_WORKERS: int = 2
+
+    # These are derived from WHISPER_MODE if not explicitly set
+    WHISPER_DEVICE: str = ""
+    WHISPER_COMPUTE_TYPE: str = ""
+    WHISPER_CPU_THREADS: int = 0
+
+    @model_validator(mode="after")
+    def derive_device_settings(self) -> "Settings":
+        if self.WHISPER_MODE == "gpu":
+            if not self.WHISPER_DEVICE:
+                self.WHISPER_DEVICE = "cuda"
+            if not self.WHISPER_COMPUTE_TYPE:
+                self.WHISPER_COMPUTE_TYPE = "float16"
+            self.WHISPER_CPU_THREADS = 0  # unused in GPU mode
+        else:
+            if not self.WHISPER_DEVICE:
+                self.WHISPER_DEVICE = "cpu"
+            if not self.WHISPER_COMPUTE_TYPE:
+                self.WHISPER_COMPUTE_TYPE = "int8"
+            if self.WHISPER_CPU_THREADS == 0:
+                self.WHISPER_CPU_THREADS = 8
+        return self
+
+
+settings = Settings()

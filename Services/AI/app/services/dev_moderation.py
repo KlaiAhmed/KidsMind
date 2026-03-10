@@ -1,4 +1,4 @@
-from core.config import DEV_GUARD_API_KEY, DEV_API_USER, DEV_GUARD_API_URL
+from core.config import settings
 from fastapi import HTTPException
 import httpx
 from utils.logger import logger
@@ -27,10 +27,10 @@ async def dev_check_moderation(message: str, context: str, client: httpx.AsyncCl
         text= f"APP CONTEXT: {context}\nUSER Input: {message}"
 
         payload = { "text": text, "mode": "ml", "models": "general,self-harm", "lang": "en",
-                    "api_user": DEV_API_USER,"api_secret": DEV_GUARD_API_KEY}
+                    "api_user": settings.DEV_API_USER,"api_secret": settings.DEV_GUARD_API_KEY}
 
         # In development mode, use the dev guard API for testing
-        response = await client.post(DEV_GUARD_API_URL, data=payload)
+        response = await client.post(settings.DEV_GUARD_API_URL, data=payload)
         response.raise_for_status() 
 
         data = response.json()

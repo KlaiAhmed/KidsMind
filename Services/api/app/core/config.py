@@ -1,26 +1,47 @@
-from os import getenv
-from utils.require_env_var import _require
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import Set
 
-# Is the app running in production ? Default is False (development mode).
-IS_PROD = getenv("IS_PROD", "False").strip().lower() == "true"
 
-# Service endpoints
-STT_SERVICE_ENDPOINT = getenv("STT_SERVICE_ENDPOINT", "http://stt-service:8000")
-STORAGE_SERVICE_ENDPOINT = getenv("STORAGE_SERVICE_ENDPOINT", "http://storage-service:9000")
-AI_SERVICE_ENDPOINT = getenv("AI_SERVICE_ENDPOINT", "http://ai-service:8000")
-DB_SERVICE_ENDPOINT = getenv("DB_SERVICE_ENDPOINT", "http://db:5432")
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
 
-SERVICE_NAME = "KidsMind API Service"
+    # App State
+    IS_PROD: bool = False
+    SERVICE_NAME: str = "KidsMind API Service"
 
-# File upload configuration ²
-MAX_SIZE = int(getenv("MAX_SIZE", 10 * 1024 * 1024))
-ALLOWED_CONTENT_TYPES = {"audio/mpeg", "audio/wav", "audio/x-wav", "audio/mp3"}
+    # Service Endpoints
+    STT_SERVICE_ENDPOINT: str = "http://stt-service:8000"
+    STORAGE_SERVICE_ENDPOINT: str = "http://storage-service:9000"
+    AI_SERVICE_ENDPOINT: str = "http://ai-service:8000"
+    DB_SERVICE_ENDPOINT: str = "http://db:5432"
 
-# Storage service credentials
-STORAGE_ROOT_USER = getenv("STORAGE_ROOT_USERNAME", "admin")
-STORAGE_ROOT_PASSWORD = _require("STORAGE_ROOT_PASSWORD")
+    # File Upload Configuration
+    MAX_SIZE: int = Field(default=10 * 1024 * 1024)
+    ALLOWED_CONTENT_TYPES: Set[str] = {
+        "audio/mpeg", 
+        "audio/wav", 
+        "audio/x-wav", 
+        "audio/mp3"
+    }
 
-# Cache configuration
-CACHE_PASSWORD = _require("CACHE_PASSWORD")
+    # Credentials
+    STORAGE_ROOT_USERNAME: str = "admin"
+    STORAGE_ROOT_PASSWORD: str
+    CACHE_PASSWORD: str
+    
+    RATE_LIMIT: str = "100/minute"
 
-RATE_LIMIT = getenv("RATE_LIMIT", "100/minute")
+    @field_validator("STORAGE_ROOT_PASSWORD", "CACHE_PASSWORD")
+    @classmethod
+    def check_not_empty(cls, v: str) -> str:
+        if not v or v.strip() == "":
+            raise ValueError("Password cannot be empty")
+        return v
+
+settings = Settings()

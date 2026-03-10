@@ -7,7 +7,7 @@ from datetime import timedelta
 from utils.logger import logger
 
 
-def upload_audio(file: UploadFile = File(...), user_id: str = "", child_id: str = "", store_audio: bool = True):
+def upload_audio(file: UploadFile = File(...), user_id: str = "", child_id: str = "", session_id: str = "", store_audio: bool = True):
     bucket_name = "media-private"
 
     try:
@@ -17,11 +17,12 @@ def upload_audio(file: UploadFile = File(...), user_id: str = "", child_id: str 
         file_size = file.file.tell()
         file.file.seek(0)
 
-        filename = generate_storage_path(file.filename, user_id=user_id, child_id=child_id, store_audio=store_audio)
+        filename = generate_storage_path(file.filename, user_id=user_id, child_id=child_id, session_id=session_id, store_audio=store_audio)
 
         metadata = {
             "user_id": str(user_id),
             "child_id": str(child_id),
+            "session_id": str(session_id),
             "original_filename": file.filename,
             "content_type": file.content_type,
             "file_size": str(file_size),
