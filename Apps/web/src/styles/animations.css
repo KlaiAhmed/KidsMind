@@ -1,0 +1,102 @@
+@keyframes float {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  33% { transform: translateY(-12px) rotate(1.5deg); }
+  66% { transform: translateY(-6px) rotate(-1deg); }
+}
+
+@keyframes orbit {
+  from { transform: rotate(0deg) translateX(60px) rotate(0deg); }
+  to   { transform: rotate(360deg) translateX(60px) rotate(-360deg); }
+}
+
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(108, 99, 255, 0.4); }
+  50%       { box-shadow: 0 0 0 12px rgba(108, 99, 255, 0); }
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes gradientShift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes starTwinkle {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.8); }
+}
+
+@keyframes bounceIcon {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-4px); }
+}
+
+@keyframes carouselFadeIn {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes progressBar {
+  from { width: 0%; }
+  to   { width: var(--progress-target); }
+}
+
+/* Step transitions */
+@keyframes slideInFromRight {
+  from { opacity: 0; transform: translateX(40px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideInFromLeft {
+  from { opacity: 0; transform: translateX(-40px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* Form field error shake */
+@keyframes shakeError {
+  0%, 100% { transform: translateX(0); }
+  20%       { transform: translateX(-6px); }
+  40%       { transform: translateX(6px); }
+  60%       { transform: translateX(-4px); }
+  80%       { transform: translateX(4px); }
+}
+
+/* Error message slide down */
+@keyframes errorSlideDown {
+  from { opacity: 0; transform: translateY(-8px); max-height: 0; }
+  to   { opacity: 1; transform: translateY(0); max-height: 60px; }
+}
+
+/* Checkmark draw */
+@keyframes drawCheckmark {
+  from { stroke-dashoffset: 200; }
+  to   { stroke-dashoffset: 0; }
+}
+
+/* Confetti fall */
+@keyframes confettiFall {
+  0%   { opacity: 1; transform: translate(0, 0) rotate(0deg) scale(1); }
+  100% { opacity: 0; transform: translate(var(--tx), var(--ty)) rotate(var(--rot)) scale(0.5); }
+}
+
+/* Toggle switch thumb */
+@keyframes switchOn {
+  from { transform: translateX(0); }
+  to   { transform: translateX(24px); }
+}
+
+/* PIN box focus pulse */
+@keyframes pinFocusPulse {
+  0%, 100% { box-shadow: 0 0 0 2px var(--accent-main); }
+  50%       { box-shadow: 0 0 0 5px rgba(255, 107, 53, 0.3); }
+}
+
+/* Button spinner */
+@keyframes spinRing {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}

@@ -1,0 +1,169 @@
+.stepContainer {
+  animation: slideInFromRight 0.4s ease forwards;
+}
+
+.stepHeader {
+  margin-block-end: var(--spacing-lg);
+}
+
+.stepTitle {
+  font-family: var(--font-display);
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-block-end: var(--spacing-xs);
+}
+
+.stepSubtitle {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+}
+
+.nicknamePreview {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--bg-surface-alt);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  color: var(--accent-main);
+  font-weight: 600;
+  margin-block-start: calc(var(--spacing-xs) * -1);
+  margin-block-end: var(--spacing-md);
+  animation: slideInFromRight 0.3s ease;
+}
+
+.divider {
+  border: none;
+  border-top: 1px dashed var(--border-subtle);
+  margin-block: var(--spacing-lg);
+}
+
+.ageGroupGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--spacing-sm);
+  margin-block-end: var(--spacing-md);
+}
+
+.ageGroupLabel {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-block-end: var(--spacing-xs);
+}
+
+.ageGroupCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-md) var(--spacing-sm);
+  border: 2px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  cursor: pointer;
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  text-align: center;
+}
+
+.ageGroupCard:hover {
+  border-color: var(--text-muted);
+  transform: translateY(-2px);
+}
+
+.ageGroupCard:focus-visible {
+  outline: 3px solid var(--accent-main);
+  outline-offset: 2px;
+}
+
+.ageGroupCardSelected {
+  border-color: var(--accent-main);
+  box-shadow: 0 0 0 3px rgba(255, 107, 53, 0.15);
+}
+
+.ageGroupEmoji {
+  font-size: var(--font-size-2xl);
+}
+
+.ageGroupTitle {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ageGroupRange {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.errorText {
+  font-size: var(--font-size-xs);
+  color: #E53E3E;
+  margin-block-start: var(--spacing-xs);
+  animation: errorSlideDown 0.3s ease forwards;
+}
+
+.submitButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-lg);
+  margin-block-start: var(--spacing-md);
+  font-family: var(--font-display);
+  font-size: var(--font-size-base);
+  font-weight: 700;
+  color: var(--text-on-accent);
+  background: var(--accent-main);
+  border-radius: var(--radius-sm);
+  transition: background 0.2s ease, opacity 0.2s ease, transform 0.1s ease;
+  min-height: 48px;
+}
+
+.submitButton:hover:not(:disabled) {
+  background: var(--accent-main-hover);
+}
+
+.submitButton:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.submitButton:focus-visible {
+  outline: 3px solid var(--accent-main);
+  outline-offset: 2px;
+}
+
+.submitButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stepContainer {
+    animation: none;
+  }
+
+  .nicknamePreview {
+    animation: none;
+  }
+
+  .ageGroupCard {
+    transition: none;
+  }
+
+  .ageGroupCard:hover {
+    transform: none;
+  }
+
+  .errorText {
+    animation: none;
+  }
+}

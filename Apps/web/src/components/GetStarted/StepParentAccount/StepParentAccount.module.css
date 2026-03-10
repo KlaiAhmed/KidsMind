@@ -1,0 +1,90 @@
+.stepContainer {
+  animation: slideInFromRight 0.4s ease forwards;
+}
+
+.stepHeader {
+  margin-block-end: var(--spacing-lg);
+}
+
+.stepTitle {
+  font-family: var(--font-display);
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-block-end: var(--spacing-xs);
+}
+
+.stepSubtitle {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+}
+
+.submitButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-lg);
+  margin-block-start: var(--spacing-md);
+  font-family: var(--font-display);
+  font-size: var(--font-size-base);
+  font-weight: 700;
+  color: var(--text-on-accent);
+  background: var(--accent-main);
+  border-radius: var(--radius-sm);
+  transition: background 0.2s ease, opacity 0.2s ease, transform 0.1s ease;
+  min-height: 48px;
+}
+
+.submitButton:hover:not(:disabled) {
+  background: var(--accent-main-hover);
+}
+
+.submitButton:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.submitButton:focus-visible {
+  outline: 3px solid var(--accent-main);
+  outline-offset: 2px;
+}
+
+.submitButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #FFFFFF;
+  border-radius: 50%;
+  animation: spinRing 0.8s linear infinite;
+}
+
+.termsLink {
+  color: var(--accent-main);
+  text-decoration: underline;
+  font-weight: 600;
+}
+
+.termsLink:hover {
+  color: var(--accent-main-hover);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stepContainer {
+    animation: none;
+  }
+
+  .spinner {
+    animation: none;
+  }
+}

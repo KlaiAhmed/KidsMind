@@ -1,0 +1,491 @@
+/* ─── Step Container ────────────────────────────────────────────────────────── */
+
+.stepContainer {
+  animation: slideInFromRight 0.4s ease forwards;
+}
+
+/* ─── Step Header ──────────────────────────────────────────────────────────── */
+
+.stepHeader {
+  margin-block-end: var(--spacing-lg);
+}
+
+.stepTitle {
+  font-family: var(--font-display);
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-block-end: var(--spacing-xs);
+}
+
+.stepSubtitle {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+/* ─── Form ─────────────────────────────────────────────────────────────────── */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+/* ─── Divider ──────────────────────────────────────────────────────────────── */
+
+.divider {
+  border: none;
+  border-top: 1px dashed var(--border-subtle);
+  margin-block: var(--spacing-sm);
+}
+
+/* ─── Slider Group ─────────────────────────────────────────────────────────── */
+
+.sliderGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.sliderLabel {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.sliderWrapper {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.sliderWrapper input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(
+    to right,
+    var(--accent-main) 0%,
+    var(--accent-main) var(--slider-fill, 0%),
+    var(--border-subtle) var(--slider-fill, 0%),
+    var(--border-subtle) 100%
+  );
+  outline: none;
+  cursor: pointer;
+}
+
+.sliderWrapper input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent-main);
+  border: 3px solid #FFFFFF;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.sliderWrapper input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+}
+
+.sliderWrapper input[type="range"]::-webkit-slider-thumb:active {
+  transform: scale(1.05);
+}
+
+.sliderWrapper input[type="range"]::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent-main);
+  border: 3px solid #FFFFFF;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.sliderWrapper input[type="range"]::-moz-range-thumb:hover {
+  transform: scale(1.15);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+}
+
+.sliderWrapper input[type="range"]::-moz-range-track {
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: transparent;
+}
+
+.sliderWrapper input[type="range"]:focus-visible {
+  outline: 3px solid var(--accent-main);
+  outline-offset: 4px;
+  border-radius: var(--radius-full);
+}
+
+.sliderValue {
+  color: var(--accent-main);
+  font-weight: 700;
+  font-size: var(--font-size-lg);
+  min-width: 64px;
+  text-align: end;
+  white-space: nowrap;
+}
+
+/* ─── Preset Buttons ───────────────────────────────────────────────────────── */
+
+.presetButtons {
+  display: flex;
+  flex-direction: row;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.presetButton {
+  padding: var(--spacing-xs) var(--spacing-md);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.presetButton:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--accent-main);
+  color: var(--accent-main);
+}
+
+.presetButton:active {
+  transform: scale(0.96);
+}
+
+.presetButton:focus-visible {
+  outline: 3px solid var(--accent-main);
+  outline-offset: 2px;
+}
+
+.presetButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.presetButtonActive {
+  background: var(--accent-main);
+  color: #FFFFFF;
+  border-color: var(--accent-main);
+}
+
+.presetButtonActive:hover {
+  background: var(--accent-main-hover);
+  color: #FFFFFF;
+  border-color: var(--accent-main-hover);
+}
+
+/* ─── Subject Grid ─────────────────────────────────────────────────────────── */
+
+.subjectGrid {
+  display: flex;
+  flex-direction: row;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.subjectChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.1s ease;
+}
+
+.subjectChip:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--accent-learn);
+}
+
+.subjectChip:active {
+  transform: scale(0.95);
+}
+
+.subjectChip:focus-visible {
+  outline: 3px solid var(--accent-learn);
+  outline-offset: 2px;
+}
+
+.subjectChip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.subjectChipActive {
+  background: var(--accent-learn);
+  color: #FFFFFF;
+  border-color: var(--accent-learn);
+}
+
+.subjectChipActive:hover {
+  opacity: 0.9;
+  background: var(--accent-learn);
+  color: #FFFFFF;
+}
+
+/* ─── Toggle Wrapper ───────────────────────────────────────────────────────── */
+
+.toggleWrapper {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.toggleLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.toggleLabelText {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.toggleHint {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.toggleSwitch {
+  position: relative;
+  width: 48px;
+  height: 24px;
+  border-radius: var(--radius-full);
+  background: var(--text-muted);
+  cursor: pointer;
+  border: none;
+  padding: 0;
+  flex-shrink: 0;
+  transition: background 0.2s ease;
+}
+
+.toggleSwitchOn {
+  background: var(--accent-grow);
+}
+
+.toggleSwitch:hover {
+  opacity: 0.9;
+}
+
+.toggleSwitch:active {
+  opacity: 0.8;
+}
+
+.toggleSwitch:focus-visible {
+  outline: 3px solid var(--accent-main);
+  outline-offset: 2px;
+}
+
+.toggleSwitch:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.toggleThumb {
+  position: absolute;
+  top: 2px;
+  inset-inline-start: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #FFFFFF;
+  transition: transform 0.2s ease;
+  pointer-events: none;
+}
+
+.toggleThumbOn {
+  transform: translateX(24px);
+}
+
+[dir="rtl"] .toggleThumbOn {
+  transform: translateX(-24px);
+}
+
+/* ─── PIN Group ────────────────────────────────────────────────────────────── */
+
+.pinGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.pinLabel {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.pinHint {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.pinInputs {
+  display: flex;
+  flex-direction: row;
+  gap: var(--spacing-sm);
+  justify-content: center;
+}
+
+.pinInput {
+  width: 48px;
+  height: 48px;
+  text-align: center;
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  font-family: var(--font-body);
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border: 2px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.pinInput:focus {
+  border-color: var(--accent-main);
+  animation: pinFocusPulse 1.5s ease infinite;
+  outline: none;
+}
+
+.pinInput:focus-visible {
+  border-color: var(--accent-main);
+  animation: pinFocusPulse 1.5s ease infinite;
+  outline: none;
+}
+
+.pinInput:hover {
+  border-color: var(--accent-main);
+}
+
+.pinInput:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pinInputError {
+  border-color: #E53E3E;
+}
+
+/* ─── Error Text ───────────────────────────────────────────────────────────── */
+
+.errorText {
+  font-size: var(--font-size-xs);
+  color: #E53E3E;
+  margin-block-start: var(--spacing-xs);
+  animation: errorSlideDown 0.3s ease forwards;
+}
+
+/* ─── Submit Button ────────────────────────────────────────────────────────── */
+
+.submitButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+  padding: var(--spacing-md) var(--spacing-xl);
+  font-family: var(--font-display);
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  color: var(--text-on-accent);
+  background: var(--accent-main);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  min-height: 48px;
+  transition: background 0.2s ease, transform 0.1s ease;
+}
+
+.submitButton:hover {
+  background: var(--accent-main-hover);
+}
+
+.submitButton:active {
+  transform: scale(0.98);
+}
+
+.submitButton:focus-visible {
+  outline: 3px solid var(--accent-main);
+  outline-offset: 2px;
+}
+
+.submitButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ─── Reduced Motion ───────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .stepContainer {
+    animation: none;
+  }
+
+  .sliderWrapper input[type="range"]::-webkit-slider-thumb {
+    transition: none;
+  }
+
+  .sliderWrapper input[type="range"]::-moz-range-thumb {
+    transition: none;
+  }
+
+  .presetButton {
+    transition: none;
+  }
+
+  .subjectChip {
+    transition: none;
+  }
+
+  .toggleSwitch {
+    transition: none;
+  }
+
+  .toggleThumb {
+    transition: none;
+  }
+
+  .pinInput {
+    transition: none;
+    animation: none;
+  }
+
+  .pinInput:focus,
+  .pinInput:focus-visible {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--accent-main);
+  }
+
+  .submitButton {
+    transition: none;
+  }
+
+  .errorText {
+    animation: none;
+  }
+}

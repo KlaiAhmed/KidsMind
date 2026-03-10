@@ -1,0 +1,84 @@
+.avatarPicker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.label {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+}
+
+.avatarButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 1;
+  font-size: var(--font-size-2xl);
+  border: 2px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  cursor: pointer;
+  position: relative;
+}
+
+.avatarButton:hover {
+  transform: scale(1.05);
+  border-color: var(--text-muted);
+}
+
+.avatarButton:focus-visible {
+  outline: 3px solid var(--accent-main);
+  outline-offset: 2px;
+}
+
+.avatarButton:active {
+  transform: scale(0.98);
+}
+
+.avatarSelected {
+  box-shadow: 0 0 0 3px var(--accent-main);
+  border-color: var(--accent-main);
+  transform: scale(1.1);
+}
+
+.avatarSelected:hover {
+  transform: scale(1.1);
+}
+
+.checkOverlay {
+  position: absolute;
+  inset-block-end: -4px;
+  inset-inline-end: -4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent-main);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #FFFFFF;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .avatarButton {
+    transition: none;
+  }
+
+  .avatarButton:hover {
+    transform: none;
+  }
+
+  .avatarSelected {
+    transform: none;
+  }
+}

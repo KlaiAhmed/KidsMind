@@ -1,0 +1,69 @@
+.stepContainerForward {
+  animation: slideInFromRight 0.4s ease forwards;
+}
+
+.stepContainerBackward {
+  animation: slideInFromLeft 0.4s ease forwards;
+}
+
+.stepNavigation {
+  display: flex;
+  align-items: center;
+  margin-block: var(--spacing-md);
+}
+
+.backButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.backButton:hover {
+  color: var(--text-primary);
+  background: var(--bg-surface-hover);
+}
+
+.backButton:focus-visible {
+  outline: 3px solid var(--accent-main);
+  outline-offset: 2px;
+}
+
+.backButton:active {
+  transform: scale(0.98);
+}
+
+.bottomLink {
+  text-align: center;
+  margin-block-start: var(--spacing-xl);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.bottomLinkAnchor {
+  color: var(--accent-main);
+  font-weight: 600;
+  margin-inline-start: var(--spacing-xs);
+  transition: color 0.2s ease;
+}
+
+.bottomLinkAnchor:hover {
+  color: var(--accent-main-hover);
+}
+
+.bottomLinkAnchor:focus-visible {
+  outline: 3px solid var(--accent-main);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stepContainerForward,
+  .stepContainerBackward {
+    animation: none;
+  }
+}

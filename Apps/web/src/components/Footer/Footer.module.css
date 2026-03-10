@@ -1,0 +1,133 @@
+.footer {
+  padding-block-start: var(--spacing-3xl);
+  padding-inline: var(--spacing-lg);
+  background: var(--bg-surface);
+}
+
+.footerInner {
+  max-width: var(--max-width);
+  margin-inline: auto;
+}
+
+.footerGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--spacing-2xl);
+  padding-block-end: var(--spacing-2xl);
+}
+
+@media (min-width: 768px) {
+  .footerGrid {
+    grid-template-columns: 2fr 1fr 1fr 1fr;
+  }
+}
+
+.brandCol {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.logoIcon {
+  width: 32px;
+  height: 32px;
+}
+
+.logoText {
+  font-family: var(--font-display);
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.tagline {
+  font-size: var(--font-size-base);
+  color: var(--text-secondary);
+  line-height: 1.6;
+  max-width: 300px;
+}
+
+.linkCol {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.colTitle {
+  font-family: var(--font-display);
+  font-size: var(--font-size-base);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-block-end: var(--spacing-sm);
+}
+
+.footerLink {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  transition: color 0.25s ease;
+  padding-block: var(--spacing-xs);
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.footerLink:hover {
+  color: var(--accent-main);
+}
+
+.langButton {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  transition: color 0.25s ease;
+  padding-block: var(--spacing-xs);
+  text-align: start;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.langButton:hover {
+  color: var(--accent-main);
+}
+
+.langButtonActive {
+  color: var(--accent-main);
+  font-weight: 600;
+}
+
+.bottomBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--spacing-md);
+  padding-block: var(--spacing-lg);
+  border-block-start: 1px solid var(--border-subtle);
+}
+
+.copyright {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.bottomLinks {
+  display: flex;
+  gap: var(--spacing-lg);
+}
+
+.bottomLink {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  transition: color 0.25s ease;
+}
+
+.bottomLink:hover {
+  color: var(--accent-main);
+}

@@ -1,0 +1,116 @@
+.stepIndicator {
+  display: none;
+  align-items: flex-start;
+  gap: 0;
+  margin-block-end: var(--spacing-lg);
+}
+
+@media (min-width: 768px) {
+  .stepIndicator {
+    display: flex;
+  }
+}
+
+.stepGroup {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-xs);
+  min-width: 60px;
+}
+
+.stepCircle {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  transition: all 0.3s ease;
+  border: 2px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-muted);
+}
+
+.stepCircleCurrent {
+  border-color: var(--accent-main);
+  color: var(--accent-main);
+  box-shadow: 0 0 0 4px rgba(255, 107, 53, 0.15);
+}
+
+.stepCircleCompleted {
+  border-color: var(--accent-main);
+  background: var(--accent-main);
+  color: #FFFFFF;
+}
+
+.stepLabel {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  text-align: center;
+  max-width: 80px;
+  transition: color 0.3s ease;
+}
+
+.stepLabelCurrent {
+  color: var(--accent-main);
+  font-weight: 600;
+}
+
+.stepLabelCompleted {
+  color: var(--text-secondary);
+}
+
+.connector {
+  flex: 1;
+  height: 2px;
+  background: var(--border-subtle);
+  align-self: center;
+  margin-block-end: var(--spacing-lg);
+  min-width: 20px;
+  position: relative;
+  overflow: hidden;
+  transition: background 0.3s ease;
+}
+
+.connectorCompleted {
+  background: var(--accent-main);
+}
+
+/* ─── Mobile Step Display ────────────────────────────────────────────────── */
+
+.mobileIndicator {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-block-end: var(--spacing-md);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+@media (min-width: 768px) {
+  .mobileIndicator {
+    display: none;
+  }
+}
+
+.mobileStep {
+  font-weight: 600;
+  color: var(--accent-main);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stepCircle {
+    transition: none;
+  }
+
+  .stepLabel {
+    transition: none;
+  }
+
+  .connector {
+    transition: none;
+  }
+}

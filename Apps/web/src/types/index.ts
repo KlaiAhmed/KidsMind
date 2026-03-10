@@ -1,0 +1,366 @@
+export type ThemeMode = 'light' | 'dark';
+
+export type LanguageCode = 'en' | 'fr' | 'es' | 'it' | 'ar' | 'zh';
+
+export interface Language {
+  code: LanguageCode;
+  label: string;
+  flag: string;
+  dir: 'ltr' | 'rtl';
+}
+
+export interface TranslationMap {
+  dir: 'ltr' | 'rtl';
+  nav_login: string;
+  nav_start: string;
+  hero_badge: string;
+  hero_title: string;
+  hero_subtitle: string;
+  hero_cta_primary: string;
+  hero_cta_secondary: string;
+  trust_safe: string;
+  trust_languages: string;
+  trust_levels: string;
+  age_section_title: string;
+  age_group_1_title: string;
+  age_group_1_range: string;
+  age_group_1_desc: string;
+  age_group_2_title: string;
+  age_group_2_range: string;
+  age_group_2_desc: string;
+  age_group_3_title: string;
+  age_group_3_range: string;
+  age_group_3_desc: string;
+  features_title: string;
+  feature_chat_title: string;
+  feature_chat_desc: string;
+  feature_voice_title: string;
+  feature_voice_desc: string;
+  feature_badges_title: string;
+  feature_badges_desc: string;
+  feature_dashboard_title: string;
+  feature_dashboard_desc: string;
+  feature_safety_title: string;
+  feature_safety_desc: string;
+  feature_language_title: string;
+  feature_language_desc: string;
+  how_title: string;
+  step_1_title: string;
+  step_1_desc: string;
+  step_2_title: string;
+  step_2_desc: string;
+  step_3_title: string;
+  step_3_desc: string;
+  safety_title: string;
+  safety_point_1: string;
+  safety_point_2: string;
+  safety_point_3: string;
+  safety_point_4: string;
+  cta_title: string;
+  cta_subtitle: string;
+  cta_button: string;
+  cta_footnote: string;
+  footer_tagline: string;
+
+  // ─── Login Page ───────────────────────────────────────────────────────────────
+  login_page_title: string;
+  login_page_subtitle: string;
+  login_email_label: string;
+  login_email_placeholder: string;
+  login_password_label: string;
+  login_password_placeholder: string;
+  login_forgot_password: string;
+  login_submit_button: string;
+  login_no_account: string;
+  login_start_link: string;
+  login_error_invalid: string;
+  login_loading: string;
+
+  // ─── Get Started — General ────────────────────────────────────────────────────
+  gs_page_title: string;
+  gs_already_have_account: string;
+  gs_login_link: string;
+  gs_back_button: string;
+  gs_next_button: string;
+  gs_finish_button: string;
+
+  // ─── Step 1: Parent Account ───────────────────────────────────────────────────
+  gs_step1_title: string;
+  gs_step1_subtitle: string;
+  gs_email_label: string;
+  gs_email_placeholder: string;
+  gs_password_label: string;
+  gs_password_placeholder: string;
+  gs_confirm_password_label: string;
+  gs_confirm_password_placeholder: string;
+  gs_country_label: string;
+  gs_country_placeholder: string;
+  gs_terms_checkbox: string;
+  gs_terms_required_error: string;
+  gs_password_strength_weak: string;
+  gs_password_strength_fair: string;
+  gs_password_strength_strong: string;
+
+  // ─── Step 2: Child Profile ────────────────────────────────────────────────────
+  gs_step2_title: string;
+  gs_step2_subtitle: string;
+  gs_nickname_label: string;
+  gs_nickname_placeholder: string;
+  gs_nickname_hint: string;
+  gs_age_group_label: string;
+  gs_grade_level_label: string;
+  gs_avatar_label: string;
+  gs_child_language_label: string;
+
+  // ─── Step 3: Preferences & Safety ────────────────────────────────────────────
+  gs_step3_title: string;
+  gs_step3_subtitle: string;
+  gs_daily_limit_label: string;
+  gs_daily_limit_unit: string;
+  gs_subjects_label: string;
+  gs_voice_label: string;
+  gs_voice_hint: string;
+  gs_pin_label: string;
+  gs_pin_hint: string;
+  gs_confirm_pin_label: string;
+
+  // ─── Step 4: Welcome / Confirmation ──────────────────────────────────────────
+  gs_step4_title: string;
+  gs_step4_subtitle: string;
+  gs_welcome_summary_account: string;
+  gs_welcome_summary_profile: string;
+  gs_welcome_summary_safety: string;
+  gs_welcome_cta: string;
+
+  // ─── Validation errors ────────────────────────────────────────────────────────
+  error_email_required: string;
+  error_email_invalid: string;
+  error_password_required: string;
+  error_password_too_short: string;
+  error_password_no_uppercase: string;
+  error_password_no_number: string;
+  error_passwords_dont_match: string;
+  error_nickname_required: string;
+  error_nickname_too_short: string;
+  error_nickname_too_long: string;
+  error_age_group_required: string;
+  error_grade_required: string;
+  error_pin_required: string;
+  error_pin_must_be_4_digits: string;
+  error_pins_dont_match: string;
+}
+
+export type Translations = Record<LanguageCode, TranslationMap>;
+
+export interface AgeGroup {
+  id: string;
+  emoji: string;
+  titleKey: keyof TranslationMap;
+  rangeKey: keyof TranslationMap;
+  descKey: keyof TranslationMap;
+  accentColor: string;
+  bgColor: string;
+}
+
+export interface Feature {
+  id: string;
+  iconName: string;
+  titleKey: keyof TranslationMap;
+  descKey: keyof TranslationMap;
+  accentColor: string;
+}
+
+export interface Step {
+  number: number;
+  emoji: string;
+  titleKey: keyof TranslationMap;
+  descKey: keyof TranslationMap;
+}
+
+export interface Testimonial {
+  id: string;
+  initials: string;
+  name: string;
+  role: string;
+  quote: string;
+  avatarColor: string;
+  stars: number;
+}
+
+export interface ScrollRevealOptions {
+  threshold?: number;
+  rootMargin?: string;
+  once?: boolean;
+}
+
+// ─── Auth & Forms ────────────────────────────────────────────────────────────
+
+/** All possible validation error messages keyed by field name */
+export type FormErrors = Record<string, string>;
+
+/** Generic form field state */
+export interface FormFieldState {
+  value: string;
+  error: string;
+  touched: boolean;
+  isDirty: boolean;
+}
+
+/** Parent account creation form data */
+export interface ParentAccountFormData {
+  email: string;
+  password: string;
+  confirmPassword: string;
+  country: string;
+  language: LanguageCode;
+  agreedToTerms: boolean;
+}
+
+/** Child profile creation form data */
+export interface ChildProfileFormData {
+  nickname: string;
+  ageGroup: AgeGroupId;
+  gradeLevel: GradeLevel;
+  avatarEmoji: string;
+  preferredLanguage: LanguageCode;
+}
+
+/** Preferences step data */
+export interface PreferencesFormData {
+  dailyLimitMinutes: number;
+  allowedSubjects: SubjectId[];
+  enableVoice: boolean;
+  parentPinCode: string;
+  confirmPinCode: string;
+}
+
+// ─── Domain Enums ─────────────────────────────────────────────────────────────
+
+export type AgeGroupId = '3-6' | '7-11' | '12-15';
+
+export type GradeLevel =
+  | 'preschool'
+  | 'kindergarten'
+  | 'grade1' | 'grade2' | 'grade3' | 'grade4' | 'grade5' | 'grade6'
+  | 'grade7' | 'grade8' | 'grade9' | 'grade10';
+
+export type SubjectId = 'math' | 'french' | 'english' | 'science' | 'history' | 'art';
+
+// ─── Multi-Step Flow ──────────────────────────────────────────────────────────
+
+/** Each step in the GetStarted flow */
+export interface OnboardingStep {
+  /** Step index (0-based) */
+  index: number;
+  /** Translation key for the step title */
+  titleKey: keyof TranslationMap;
+  /** Translation key for the step subtitle */
+  subtitleKey: keyof TranslationMap;
+  /** Lucide icon name for the step indicator */
+  iconName: string;
+  /** Whether the step is complete */
+  isComplete: boolean;
+}
+
+/** Full onboarding state passed down through GetStartedPage */
+export interface OnboardingState {
+  currentStepIndex: number;
+  totalSteps: number;
+  parentData: Partial<ParentAccountFormData>;
+  childData: Partial<ChildProfileFormData>;
+  preferencesData: Partial<PreferencesFormData>;
+}
+
+// ─── useForm hook ─────────────────────────────────────────────────────────────
+
+/** Return type of the useForm hook */
+export interface UseFormReturn<T extends object = Record<string, unknown>> {
+  /** Current form values */
+  values: T;
+  /** Validation errors per field */
+  errors: FormErrors;
+  /** Whether any field has been touched */
+  isDirty: boolean;
+  /** Whether all required fields are valid */
+  isValid: boolean;
+  /** Whether form submission is in progress */
+  isSubmitting: boolean;
+  /** Update a single field value and trigger validation */
+  handleChange: (field: keyof T, value: unknown) => void;
+  /** Mark a field as touched (for blur validation) */
+  handleBlur: (field: keyof T) => void;
+  /** Trigger full form validation and call onSubmit if valid */
+  handleSubmit: (onSubmit: (values: T) => Promise<void>) => Promise<void>;
+  /** Reset form to initial values */
+  reset: () => void;
+}
+
+// ─── useMultiStep hook ────────────────────────────────────────────────────────
+
+/** Return type of the useMultiStep hook */
+export interface UseMultiStepReturn {
+  currentStepIndex: number;
+  totalSteps: number;
+  progressPercent: number;
+  isFirstStep: boolean;
+  isFinalStep: boolean;
+  goToNextStep: () => void;
+  goToPreviousStep: () => void;
+  goToStep: (index: number) => void;
+}
+
+// ─── Shared component props ───────────────────────────────────────────────────
+
+export interface FormFieldProps {
+  id: string;
+  label: string;
+  type?: 'text' | 'email' | 'number' | 'select' | 'checkbox';
+  value: string;
+  error?: string;
+  placeholder?: string;
+  hint?: string;
+  required?: boolean;
+  autoComplete?: string;
+  onChange: (value: string) => void;
+  onBlur?: () => void;
+  children?: React.ReactNode;
+}
+
+export interface PasswordFieldProps {
+  id: string;
+  label: string;
+  value: string;
+  error?: string;
+  placeholder?: string;
+  showStrengthMeter?: boolean;
+  autoComplete?: 'current-password' | 'new-password';
+  onChange: (value: string) => void;
+  onBlur?: () => void;
+}
+
+export interface AvatarPickerProps {
+  selectedEmoji: string;
+  onSelect: (emoji: string) => void;
+  label: string;
+}
+
+export interface ProgressBarProps {
+  percent: number;
+  label?: string;
+  animated?: boolean;
+}
+
+export interface StepIndicatorProps {
+  steps: OnboardingStep[];
+  currentIndex: number;
+}
+
+export interface AuthLayoutProps {
+  illustrationVariant: 'login' | 'register';
+  children: React.ReactNode;
+  t: TranslationMap;
+  lang: LanguageCode;
+  onSetLang: (code: LanguageCode) => void;
+  theme: ThemeMode;
+  onToggleTheme: () => void;
+}

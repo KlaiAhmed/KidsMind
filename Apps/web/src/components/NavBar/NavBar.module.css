@@ -1,0 +1,251 @@
+.nav {
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline: 0;
+  z-index: 50;
+  height: var(--nav-height);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-inline: var(--spacing-lg);
+  background: transparent;
+  transition: background 0.3s ease, box-shadow 0.3s ease;
+  animation: slideDown 0.6s ease forwards;
+}
+
+.navScrolled {
+  background: color-mix(in srgb, var(--bg-surface) 85%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: var(--shadow-nav);
+}
+
+.navInner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: var(--max-width);
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  text-decoration: none;
+}
+
+.logoIcon {
+  width: 36px;
+  height: 36px;
+}
+
+.logoText {
+  font-family: var(--font-display);
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.desktopNav {
+  display: none;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+@media (min-width: 768px) {
+  .desktopNav {
+    display: flex;
+  }
+}
+
+.langSelector {
+  position: relative;
+}
+
+.langButton {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  transition: background 0.25s ease, color 0.25s ease;
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.langButton:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+
+.langDropdown {
+  position: absolute;
+  inset-block-start: calc(100% + var(--spacing-xs));
+  inset-inline-end: 0;
+  background: var(--bg-surface);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  padding: var(--spacing-xs);
+  min-width: 160px;
+  z-index: 60;
+  border: 1px solid var(--border-subtle);
+}
+
+.langOption {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  transition: background 0.2s ease, color 0.2s ease;
+  min-height: 44px;
+}
+
+.langOption:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+
+.langOptionActive {
+  color: var(--accent-main);
+  font-weight: 600;
+}
+
+.themeToggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  transition: background 0.25s ease, color 0.25s ease, transform 0.4s ease;
+}
+
+.themeToggle:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+
+.themeToggle:active {
+  transform: rotate(180deg);
+}
+
+.loginButton {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+  transition: color 0.25s ease;
+  min-height: 44px;
+}
+
+.loginButton:hover {
+  color: var(--accent-main);
+}
+
+.startButton {
+  padding: var(--spacing-sm) var(--spacing-lg);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  color: var(--text-on-accent);
+  background: var(--accent-main);
+  transition: background 0.25s ease, transform 0.25s ease;
+  min-height: 44px;
+}
+
+.startButton:hover {
+  background: var(--accent-main-hover);
+  transform: translateY(-1px);
+}
+
+.startButton:active {
+  transform: translateY(0);
+}
+
+.mobileMenuButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  width: auto;
+  height: 44px;
+  padding-inline: var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  transition: background 0.25s ease;
+}
+
+.mobileMenuButton:hover {
+  background: var(--bg-surface-hover);
+}
+
+@media (min-width: 768px) {
+  .mobileMenuButton {
+    display: none;
+  }
+}
+
+.mobileMenuLabel {
+  font-family: var(--font-body);
+}
+
+.mobileDrawer {
+  position: fixed;
+  inset-block-start: var(--nav-height);
+  inset-inline: 0;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-card);
+  padding: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  z-index: 49;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: max-height 0.35s ease, opacity 0.3s ease, padding 0.35s ease;
+}
+
+.mobileDrawerOpen {
+  max-height: 500px;
+  opacity: 1;
+  padding: var(--spacing-lg);
+}
+
+.mobileDrawerClosed {
+  padding-block: 0;
+}
+
+.mobileLangList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+}
+
+.skipNav {
+  position: absolute;
+  inset-block-start: -100%;
+  inset-inline-start: var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--accent-main);
+  color: var(--text-on-accent);
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  z-index: 100;
+  transition: inset-block-start 0.2s ease;
+}
+
+.skipNav:focus {
+  inset-block-start: var(--spacing-md);
+}

@@ -1,0 +1,31 @@
+.progressBar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.label {
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.track {
+  height: 8px;
+  border-radius: 100px;
+  background: var(--border-subtle);
+  overflow: hidden;
+}
+
+.fill {
+  height: 100%;
+  border-radius: 100px;
+  background: var(--gradient-cta);
+  transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fill {
+    transition: none;
+  }
+}

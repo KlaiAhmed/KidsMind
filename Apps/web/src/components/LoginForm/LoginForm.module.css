@@ -1,0 +1,152 @@
+.loginForm {
+  display: flex;
+  flex-direction: column;
+}
+
+.heading {
+  font-family: var(--font-display);
+  font-size: var(--font-size-3xl);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-block-end: var(--spacing-xs);
+}
+
+.subheading {
+  font-size: var(--font-size-base);
+  color: var(--text-secondary);
+  margin-block-end: var(--spacing-xl);
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  margin-block-end: var(--spacing-xl);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.dividerLine {
+  flex: 1;
+  height: 1px;
+  background: var(--border-subtle);
+}
+
+.forgotLink {
+  display: block;
+  text-align: end;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  margin-block-start: calc(var(--spacing-xs) * -1);
+  margin-block-end: var(--spacing-md);
+  transition: color 0.2s ease;
+}
+
+.forgotLink:hover {
+  color: var(--accent-main);
+}
+
+.forgotLink:focus-visible {
+  outline: 3px solid var(--accent-main);
+  outline-offset: 2px;
+}
+
+.submitButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-lg);
+  margin-block-start: var(--spacing-sm);
+  font-family: var(--font-display);
+  font-size: var(--font-size-base);
+  font-weight: 700;
+  color: var(--text-on-accent);
+  background: var(--accent-main);
+  border-radius: var(--radius-sm);
+  transition: background 0.2s ease, opacity 0.2s ease, transform 0.1s ease;
+  min-height: 48px;
+}
+
+.submitButton:hover:not(:disabled) {
+  background: var(--accent-main-hover);
+}
+
+.submitButton:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.submitButton:focus-visible {
+  outline: 3px solid var(--accent-main);
+  outline-offset: 2px;
+}
+
+.submitButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #FFFFFF;
+  border-radius: 50%;
+  animation: spinRing 0.8s linear infinite;
+}
+
+.errorBanner {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: rgba(229, 62, 62, 0.1);
+  border: 1px solid rgba(229, 62, 62, 0.2);
+  border-radius: var(--radius-sm);
+  margin-block-end: var(--spacing-md);
+  animation: errorSlideDown 0.3s ease forwards;
+}
+
+.errorBannerIcon {
+  color: #E53E3E;
+  flex-shrink: 0;
+}
+
+.errorBannerText {
+  font-size: var(--font-size-sm);
+  color: #E53E3E;
+}
+
+.bottomLink {
+  text-align: center;
+  margin-block-start: var(--spacing-xl);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.bottomLinkAnchor {
+  color: var(--accent-main);
+  font-weight: 600;
+  margin-inline-start: var(--spacing-xs);
+  transition: color 0.2s ease;
+}
+
+.bottomLinkAnchor:hover {
+  color: var(--accent-main-hover);
+}
+
+.bottomLinkAnchor:focus-visible {
+  outline: 3px solid var(--accent-main);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+
+  .errorBanner {
+    animation: none;
+  }
+}
