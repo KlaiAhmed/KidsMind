@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from prometheus_fastapi_instrumentator import Instrumentator
 import httpx
+import asyncio
 
 # Local imports
 from routers.stt_router import router as stt_router
@@ -12,12 +13,25 @@ from utils.logger import logger
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print(f"Starting up service {settings.SERVICE_NAME}: mode: {settings.WHISPER_MODE}, model: {settings.WHISPER_MODEL}, device: {settings.WHISPER_DEVICE}, compute_type: {settings.WHISPER_COMPUTE_TYPE}")
+    logger.info("Starting Up. Service Configurations:", extra={
+        "service": settings.SERVICE_NAME,
+        "whisper_mode": settings.WHISPER_MODE,
+        "whisper_model": settings.WHISPER_MODEL,
+        "whisper_device": settings.WHISPER_DEVICE,
+        "whisper_compute_type": settings.WHISPER_COMPUTE_TYPE,
+        "whisper_num_workers": settings.WHISPER_NUM_WORKERS,
+        "stt_timeout_seconds": settings.STT_TIMEOUT_SECONDS}
+    )
 
+    # Pre-Load models at startup
     load_all_models()
 
+    # Store the loaded models in app.state for access in routes
     app.state.main_model = get_model("main")
     app.state.tiny_model = get_model("tiny")
+
+    # Initialize the worker semaphore based on the number of workers/threads configured for the mode
+    app.state.worker_semaphore = asyncio.Semaphore(settings.WHISPER_NUM_WORKERS if settings.WHISPER_MODE == "gpu" else settings.WHISPER_CPU_THREADS)
     
     async with httpx.AsyncClient(timeout=60.0) as client:
         app.state.http_client = client

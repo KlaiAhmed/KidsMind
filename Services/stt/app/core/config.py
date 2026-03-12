@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     WHISPER_COMPUTE_TYPE: str = ""
     WHISPER_CPU_THREADS: int = 0
 
+    # Timeout for waiting for available worker (longer for CPU since it's slower)   
+    STT_TIMEOUT_SECONDS: int = 5 if WHISPER_MODE == "gpu" else 30
+
     # Logging
     LOG_LEVEL: str = "INFO"
 
