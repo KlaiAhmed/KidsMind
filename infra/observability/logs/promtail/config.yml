@@ -1,0 +1,61 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: docker-containers
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+        filters:
+          - name: label
+            values: ["logging=promtail"]
+
+    relabel_configs:
+      - source_labels: [__meta_docker_container_name]
+        regex: "/(.*)"
+        target_label: service
+
+      - source_labels: [__meta_docker_container_label_com_docker_compose_service]
+        target_label: compose_service
+
+      - source_labels: [__meta_docker_container_id]
+        target_label: container_id
+
+    pipeline_stages:
+      - json:
+          expressions:
+            level:       level
+            module:      module
+            request_id:  request_id
+            message:     message
+            status_code: status_code
+            http_method: http_method
+            http_path:   http_path
+            duration_s:  duration_s
+
+      # Low cardinality only — these become indexed Loki labels
+      - labels:
+          level:
+          module:
+          http_method:
+
+      # High cardinality — queryable but not indexed as labels
+      - structured_metadata:
+          request_id:
+          http_path:
+          status_code:
+          duration_s:
+
+      - timestamp:
+          source: timestamp
+          format: RFC3339Nano
+
+      - output:
+          source: message

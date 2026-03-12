@@ -158,13 +158,14 @@ services:
       - "${PROMETHEUS_PORT}:9090"
     volumes:
       - prometheus_data:/prometheus
-      - ./infra/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./infra/observability/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
     
   # Grafana Service for Visualization
   grafana:
     image: grafana/grafana:12.3
     profiles:
       - monitoring
+      - logs
     ports:
       - "${GRAFANA_PORT}:3000"
     environment:
@@ -172,6 +173,46 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
     volumes:
       - grafana_data:/var/lib/grafana
+      - ./infra/observability/logs/grafana/provisioning:/etc/grafana/provisioning:ro
+
+  # Loki Service for Log Aggregation
+  loki:
+    image: grafana/loki:3.6.7
+    user: "0"
+    profiles:
+      - logs
+    ports:
+      - "${LOKI_PORT}:3100"
+    environment:
+      - STORAGE_ROOT_USER=${STORAGE_ROOT_USER}
+      - STORAGE_ROOT_PASSWORD=${STORAGE_ROOT_PASSWORD}
+    volumes:
+      - ./infra/observability/logs/loki/config.yml:/etc/loki/local-config.yaml:ro
+      - loki_index:/loki/index  # only local index — chunks go to MinIO
+    command: -config.file=/etc/loki/local-config.yaml -config.expand-env=true
+    depends_on:
+      file-storage:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3100/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Promtail Service for Log Shipping
+  promtail:
+    image: grafana/promtail:3.6.7
+    profiles:
+      - logs
+    volumes:
+      - ./infra/observability/logs/promtail/config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      loki:
+        condition: service_healthy
+
 
   # Postgres Exporter for Prometheus
   postgres-exporter:
@@ -205,6 +246,7 @@ volumes:
   db_data:
   stt_cache:
   storage_data:
+  cache_data:
   grafana_data:
   prometheus_data:
-  cache_data:
+  loki_index:

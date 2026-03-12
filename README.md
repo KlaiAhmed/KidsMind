@@ -70,18 +70,25 @@ To ensure transcription accuracy is never compromised, a confidence threshold is
 ```bash
 kidsmind/
 ├── apps/
-│   ├── web-client/       # Web Interface (React)
-│   └── mobile-client/    # Mobile Application (React Native)
-├── services/
-│   ├── api-core/         # Business Logic API (FastAPI)
-│   ├── ai-service/       # LLM & Logic Handling (FastAPI)
-│   └── stt-service/      # Audio Processing STT/TTS (FastAPI)
-├── infrastructure/
-│   ├── DB/               # DB config (Postgre SQL)
-│   ├── monitoring/       # Monitoring services config (Prometheus/Grafana)
-│   └── storage/          # Media storage (MinIO/S3)
-├── docker-compose.yml    # Main Orchestration file
-├── .env.example          # Template for Environment Variables
+│   ├── web-client/                   # Web Interface (React)
+│   └── mobile-client/                # Mobile Application (React Native)
+├── services/   
+│   ├── api-core/                     # Business Logic API (FastAPI)
+│   ├── ai-service/                   # LLM & Logic Handling (FastAPI)
+│   └── stt-service/                  # Audio Processing STT/TTS (FastAPI)
+├── infrastructure/           
+│   ├── DB/                           # DB config (Postgre SQL)
+│   ├── observability/
+│   │  ├── monitoring/                # Monitoring services config (Prometheus/Grafana)
+│   │  └── logs/                      # Log aggregation services config (Loki/Promtail)
+│   │     ├── grafana/                 
+│   │     │      └── provisioning/ 
+│   │     │         └── datasources/  # Grafana datasource provisioning
+│   │     ├── loki/                   # Loki config
+│   │     └── promtail/               # Promtail config
+│   └── storage/                      # file storage (MinIO/S3)
+├── docker-compose.yml                # Main Orchestration file
+├── .env.example                      # Template for Environment Variables
 ├── .gitignore
 └── README.md
 ```
