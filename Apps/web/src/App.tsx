@@ -1,17 +1,10 @@
 import React, { Suspense } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import HomePage from './pages/HomePage';
+import HomePage from './pages/HomePage/HomePage';
 
-const LoginPage = React.lazy(() => import('./pages/LoginPage'));
-const GetStartedPage = React.lazy(() => import('./pages/GetStartedPage'));
-
-/**
- * App — Root component with client-side routing.
- *
- * Lazy-loads LoginPage and GetStartedPage for code splitting.
- * HomePage is loaded eagerly as the primary landing page.
- */
-function App() {
+const LoginPage = React.lazy(() => import('./pages/LoginPage/LoginPage'));
+const GetStartedPage = React.lazy(() => import('./pages/GetStartedPage/GetStartedPage'));
+const App = () => {
   return (
     <BrowserRouter>
       <Suspense
@@ -49,6 +42,6 @@ function App() {
       </Suspense>
     </BrowserRouter>
   );
-}
+};
 
 export default App;

@@ -1,3 +1,4 @@
+/** Form validation functions for login, parent account, child profile, and preferences forms. */
 import type {
   FormErrors,
   ParentAccountFormData,
@@ -16,7 +17,7 @@ import type {
  * @param email - The email string to validate
  * @returns Error message string, or empty string if valid
  */
-export function validateEmail(email: string): string {
+const validateEmail = (email: string): string => {
   if (!email.trim()) {
     return 'error_email_required';
   }
@@ -25,7 +26,7 @@ export function validateEmail(email: string): string {
     return 'error_email_invalid';
   }
   return '';
-}
+};
 
 /**
  * validatePassword — enforces minimum security requirements.
@@ -35,7 +36,7 @@ export function validateEmail(email: string): string {
  * @param password - The password string to validate
  * @returns Error message string, or empty string if valid
  */
-export function validatePassword(password: string): string {
+const validatePassword = (password: string): string => {
   if (!password) {
     return 'error_password_required';
   }
@@ -49,7 +50,7 @@ export function validatePassword(password: string): string {
     return 'error_password_no_number';
   }
   return '';
-}
+};
 
 /**
  * getPasswordStrength — returns a 0–3 score for the password strength meter.
@@ -63,7 +64,7 @@ export function validatePassword(password: string): string {
  * @param password - The password string to evaluate
  * @returns A score from 0 to 3
  */
-export function getPasswordStrength(password: string): 0 | 1 | 2 | 3 {
+const getPasswordStrength = (password: string): 0 | 1 | 2 | 3 => {
   if (!password || password.length < 4) return 0;
 
   let score = 0;
@@ -76,7 +77,7 @@ export function getPasswordStrength(password: string): 0 | 1 | 2 | 3 {
   if (score <= 1) return 1;
   if (score <= 2) return 2;
   return 3;
-}
+};
 
 /**
  * validateNickname — enforces 2–20 character limit with no special characters.
@@ -86,7 +87,7 @@ export function getPasswordStrength(password: string): 0 | 1 | 2 | 3 {
  * @param nickname - The nickname string to validate
  * @returns Error message string, or empty string if valid
  */
-export function validateNickname(nickname: string): string {
+const validateNickname = (nickname: string): string => {
   if (!nickname.trim()) {
     return 'error_nickname_required';
   }
@@ -97,7 +98,7 @@ export function validateNickname(nickname: string): string {
     return 'error_nickname_too_long';
   }
   return '';
-}
+};
 
 /**
  * validatePinCode — must be exactly 4 numeric digits.
@@ -105,7 +106,7 @@ export function validateNickname(nickname: string): string {
  * @param pin - The PIN code string to validate
  * @returns Error message string, or empty string if valid
  */
-export function validatePinCode(pin: string): string {
+const validatePinCode = (pin: string): string => {
   if (!pin) {
     return 'error_pin_required';
   }
@@ -113,7 +114,7 @@ export function validatePinCode(pin: string): string {
     return 'error_pin_must_be_4_digits';
   }
   return '';
-}
+};
 
 // ─── Composite Form Validators ────────────────────────────────────────────────
 
@@ -123,7 +124,7 @@ export function validatePinCode(pin: string): string {
  * @param values - Object with email and password fields
  * @returns FormErrors object — empty means no errors
  */
-export function validateLoginForm(values: { email: string; password: string }): FormErrors {
+const validateLoginForm = (values: { email: string; password: string }): FormErrors => {
   const errors: FormErrors = {};
 
   const emailError = validateEmail(values.email);
@@ -133,7 +134,7 @@ export function validateLoginForm(values: { email: string; password: string }): 
   if (passwordError) errors.password = passwordError;
 
   return errors;
-}
+};
 
 /**
  * validateParentAccountStep — validates step 1 of onboarding.
@@ -144,7 +145,7 @@ export function validateLoginForm(values: { email: string; password: string }): 
  * @param values - The parent account form data
  * @returns FormErrors object
  */
-export function validateParentAccountStep(values: ParentAccountFormData): FormErrors {
+const validateParentAccountStep = (values: ParentAccountFormData): FormErrors => {
   const errors: FormErrors = {};
 
   const emailError = validateEmail(values.email);
@@ -168,7 +169,7 @@ export function validateParentAccountStep(values: ParentAccountFormData): FormEr
   }
 
   return errors;
-}
+};
 
 /**
  * validateChildProfileStep — validates step 2 of onboarding.
@@ -178,7 +179,7 @@ export function validateParentAccountStep(values: ParentAccountFormData): FormEr
  * @param values - The child profile form data
  * @returns FormErrors object
  */
-export function validateChildProfileStep(values: ChildProfileFormData): FormErrors {
+const validateChildProfileStep = (values: ChildProfileFormData): FormErrors => {
   const errors: FormErrors = {};
 
   const nicknameError = validateNickname(values.nickname);
@@ -193,7 +194,7 @@ export function validateChildProfileStep(values: ChildProfileFormData): FormErro
   }
 
   return errors;
-}
+};
 
 /**
  * validatePreferencesStep — validates step 3 of onboarding.
@@ -203,7 +204,7 @@ export function validateChildProfileStep(values: ChildProfileFormData): FormErro
  * @param values - The preferences form data
  * @returns FormErrors object
  */
-export function validatePreferencesStep(values: PreferencesFormData): FormErrors {
+const validatePreferencesStep = (values: PreferencesFormData): FormErrors => {
   const errors: FormErrors = {};
 
   const pinError = validatePinCode(values.parentPinCode);
@@ -220,4 +221,16 @@ export function validatePreferencesStep(values: PreferencesFormData): FormErrors
   }
 
   return errors;
-}
+};
+
+export {
+  validateEmail,
+  validatePassword,
+  getPasswordStrength,
+  validateNickname,
+  validatePinCode,
+  validateLoginForm,
+  validateParentAccountStep,
+  validateChildProfileStep,
+  validatePreferencesStep,
+};

@@ -1,10 +1,20 @@
+/** Hook that uses IntersectionObserver to reveal elements when they scroll into view. */
+
 import { useRef, useState, useEffect } from 'react';
 import type { ScrollRevealOptions } from '../types';
 
-export function useScrollReveal(options?: ScrollRevealOptions): {
+/**
+ * useScrollReveal — Attaches an IntersectionObserver to a ref and exposes
+ * an `isVisible` flag that flips to `true` once the element enters the viewport.
+ *
+ * @param options - Optional thresholds, root margin, and one-shot behaviour
+ * @returns ref       - Attach this to the element you want to observe
+ * @returns isVisible - Whether the element is currently (or has been) visible
+ */
+const useScrollReveal = (options?: ScrollRevealOptions): {
   ref: React.RefObject<HTMLElement | null>;
   isVisible: boolean;
-} {
+} => {
   const ref = useRef<HTMLElement | null>(null);
   const [isVisible, setIsVisible] = useState(false);
 
@@ -38,4 +48,6 @@ export function useScrollReveal(options?: ScrollRevealOptions): {
   }, [threshold, rootMargin, once]);
 
   return { ref, isVisible };
-}
+};
+
+export { useScrollReveal };

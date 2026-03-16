@@ -1,17 +1,11 @@
+/** PasswordField — Password input with show/hide toggle and optional four-segment strength meter. */
 import { useState } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import type { PasswordFieldProps, TranslationMap } from '../../../types';
 import { getPasswordStrength } from '../../../utils/validators';
 import styles from './PasswordField.module.css';
 
-/**
- * PasswordField — Password input with show/hide toggle and optional strength meter.
- *
- * Extends the basic input pattern with an eye icon button to toggle
- * password visibility, and an optional 4-segment strength meter
- * powered by the getPasswordStrength utility.
- */
-export default function PasswordField({
+const PasswordField = ({
   id,
   label,
   value,
@@ -21,38 +15,38 @@ export default function PasswordField({
   autoComplete,
   onChange,
   onBlur,
-  t,
-}: PasswordFieldProps & { t?: TranslationMap }) {
+  translations,
+}: PasswordFieldProps & { translations?: TranslationMap }) => {
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
-  const errorId = `${id}-error`;
-  const hasError = !!error;
+  const errorMessageId = `${id}-error`;
+  const hasValidationError = !!error;
 
-  const passwordStrength = getPasswordStrength(value);
+  const strengthScore = getPasswordStrength(value);
 
-  function getStrengthLabel(): string {
-    if (!t) {
+  const getStrengthLabelText = (): string => {
+    if (!translations) {
       const labels = ['', 'Weak', 'Fair', 'Strong'];
-      return labels[passwordStrength];
+      return labels[strengthScore];
     }
-    if (passwordStrength === 1) return t.gs_password_strength_weak;
-    if (passwordStrength === 2) return t.gs_password_strength_fair;
-    if (passwordStrength === 3) return t.gs_password_strength_strong;
+    if (strengthScore === 1) return translations.gs_password_strength_weak;
+    if (strengthScore === 2) return translations.gs_password_strength_fair;
+    if (strengthScore === 3) return translations.gs_password_strength_strong;
     return '';
-  }
+  };
 
-  function getStrengthColorClass(): string {
-    if (passwordStrength === 1) return styles.strengthWeak;
-    if (passwordStrength === 2) return styles.strengthFair;
-    if (passwordStrength === 3) return styles.strengthStrong;
+  const getStrengthColorClassName = (): string => {
+    if (strengthScore === 1) return styles.strengthWeak;
+    if (strengthScore === 2) return styles.strengthFair;
+    if (strengthScore === 3) return styles.strengthStrong;
     return '';
-  }
+  };
 
-  function getStrengthLabelClass(): string {
-    if (passwordStrength === 1) return styles.strengthLabelWeak;
-    if (passwordStrength === 2) return styles.strengthLabelFair;
-    if (passwordStrength === 3) return styles.strengthLabelStrong;
+  const getStrengthLabelClassName = (): string => {
+    if (strengthScore === 1) return styles.strengthLabelWeak;
+    if (strengthScore === 2) return styles.strengthLabelFair;
+    if (strengthScore === 3) return styles.strengthLabelStrong;
     return '';
-  }
+  };
 
   return (
     <div className={styles.formGroup}>
@@ -63,14 +57,14 @@ export default function PasswordField({
         <input
           id={id}
           type={isPasswordVisible ? 'text' : 'password'}
-          className={`${styles.input} ${hasError ? styles.inputError : ''}`}
+          className={`${styles.input} ${hasValidationError ? styles.inputError : ''}`}
           value={value}
           placeholder={placeholder}
           onChange={(event) => onChange(event.target.value)}
           onBlur={onBlur}
           autoComplete={autoComplete}
-          aria-invalid={hasError}
-          aria-describedby={hasError ? errorId : undefined}
+          aria-invalid={hasValidationError}
+          aria-describedby={hasValidationError ? errorMessageId : undefined}
         />
         <button
           type="button"
@@ -90,24 +84,26 @@ export default function PasswordField({
               <div
                 key={segment}
                 className={`${styles.strengthSegment} ${
-                  segment <= passwordStrength ? getStrengthColorClass() : ''
+                  segment <= strengthScore ? getStrengthColorClassName() : ''
                 }`}
               />
             ))}
           </div>
-          {passwordStrength > 0 && (
-            <span className={`${styles.strengthLabel} ${getStrengthLabelClass()}`}>
-              {getStrengthLabel()}
+          {strengthScore > 0 && (
+            <span className={`${styles.strengthLabel} ${getStrengthLabelClassName()}`}>
+              {getStrengthLabelText()}
             </span>
           )}
         </div>
       )}
 
-      {hasError && (
-        <span id={errorId} className={styles.errorMessage} role="alert">
+      {hasValidationError && (
+        <span id={errorMessageId} className={styles.errorMessage} role="alert">
           {error}
         </span>
       )}
     </div>
   );
-}
+};
+
+export default PasswordField;

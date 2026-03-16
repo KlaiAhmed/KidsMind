@@ -1,6 +1,7 @@
+/** Theme color token definitions and theme application utility for light/dark modes. */
 import type { ThemeMode } from '../types';
 
-export const themeTokens: Record<ThemeMode, Record<string, string>> = {
+export const themeColorTokens: Record<ThemeMode, Record<string, string>> = {
   light: {
     '--bg-primary': '#FFF8F0',
     '--bg-surface': '#FFFFFF',
@@ -35,6 +36,9 @@ export const themeTokens: Record<ThemeMode, Record<string, string>> = {
   },
 };
 
-export function applyTheme(theme: ThemeMode): void {
+/** Sets the data-theme attribute on the document root to activate the given theme's CSS variables. */
+const applyTheme = (theme: ThemeMode): void => {
   document.documentElement.setAttribute('data-theme', theme);
-}
+};
+
+export { applyTheme };

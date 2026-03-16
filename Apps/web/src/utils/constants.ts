@@ -1,3 +1,4 @@
+/** Application-wide constants: breakpoints, timing, languages, age groups, features, how-it-works steps, and testimonials. */
 import type { AgeGroup, Feature, Step, Testimonial, Language } from '../types';
 
 export const BREAKPOINTS = {
@@ -20,7 +21,7 @@ export const LANGUAGES: Language[] = [
   { code: 'es', label: 'Español', flag: '🇪🇸', dir: 'ltr' },
   { code: 'it', label: 'Italiano', flag: '🇮🇹', dir: 'ltr' },
   { code: 'ar', label: 'العربية', flag: '🇸🇦', dir: 'rtl' },
-  { code: 'zh', label: '中文', flag: '🇨🇳', dir: 'ltr' },
+  { code: 'ch', label: '中文', flag: '🇨🇳', dir: 'ltr' },
 ];
 
 export const AGE_GROUPS: AgeGroup[] = [

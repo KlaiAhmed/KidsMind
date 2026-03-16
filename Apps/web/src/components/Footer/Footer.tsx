@@ -1,14 +1,15 @@
+/** Footer — Site footer with brand column, product/company links, language switcher, and legal links. */
 import type { TranslationMap, LanguageCode } from '../../types';
 import { LANGUAGES } from '../../utils/constants';
 import styles from './Footer.module.css';
 
 interface FooterProps {
-  t: TranslationMap;
-  lang: LanguageCode;
-  onSetLang: (code: LanguageCode) => void;
+  translations: TranslationMap;
+  language: LanguageCode;
+  onLanguageChange: (code: LanguageCode) => void;
 }
 
-function FooterRocket() {
+const FooterRocket = () => {
   return (
     <svg
       className={styles.logoIcon}
@@ -25,9 +26,9 @@ function FooterRocket() {
       <path d="M15 28L14 34L18 31L22 34L21 28" fill="var(--accent-fun)" />
     </svg>
   );
-}
+};
 
-export default function Footer({ t, lang, onSetLang }: FooterProps) {
+const Footer = ({ translations, language, onLanguageChange }: FooterProps) => {
   return (
     <footer className={styles.footer}>
       <div className={styles.footerInner}>
@@ -37,7 +38,7 @@ export default function Footer({ t, lang, onSetLang }: FooterProps) {
               <FooterRocket />
               <span className={styles.logoText}>KidsMind</span>
             </div>
-            <p className={styles.tagline}>{t.footer_tagline}</p>
+            <p className={styles.tagline}>{translations.footer_tagline}</p>
           </div>
 
           <div className={styles.linkCol}>
@@ -56,14 +57,13 @@ export default function Footer({ t, lang, onSetLang }: FooterProps) {
 
           <div className={styles.linkCol}>
             <h3 className={styles.colTitle}>Language</h3>
-            {LANGUAGES.map((l) => (
+            {LANGUAGES.map((languageOption) => (
               <button
-                key={l.code}
-                className={`${styles.langButton} ${l.code === lang ? styles.langButtonActive : ''}`}
-                onClick={() => onSetLang(l.code)}
+                key={languageOption.code}
+                className={`${styles.langButton} ${languageOption.code === language ? styles.langButtonActive : ''}`}
+                onClick={() => onLanguageChange(languageOption.code)}
               >
-                <span aria-hidden="true">{l.flag}</span>
-                <span>{l.label}</span>
+                <span>{languageOption.label}</span>
               </button>
             ))}
           </div>
@@ -82,4 +82,6 @@ export default function Footer({ t, lang, onSetLang }: FooterProps) {
       </div>
     </footer>
   );
-}
+};
+
+export default Footer;

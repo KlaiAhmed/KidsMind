@@ -1,3 +1,4 @@
+/** StepChildProfile — Onboarding step 2: collects child nickname, age group, grade level, avatar, and language. */
 import { ArrowRight } from 'lucide-react';
 import type {
   TranslationMap,
@@ -13,8 +14,8 @@ import AvatarPicker from '../../shared/AvatarPicker/AvatarPicker';
 import styles from './StepChildProfile.module.css';
 
 interface StepChildProfileProps {
-  t: TranslationMap;
-  lang: LanguageCode;
+  translations: TranslationMap;
+  language: LanguageCode;
   onComplete: (data: ChildProfileFormData) => void;
 }
 
@@ -58,7 +59,7 @@ const LANGUAGE_OPTIONS: { value: LanguageCode; label: string }[] = [
   { value: 'es', label: 'Espa\u00F1ol' },
   { value: 'it', label: 'Italiano' },
   { value: 'ar', label: '\u0627\u0644\u0639\u0631\u0628\u064A\u0629' },
-  { value: 'zh', label: '\u4E2D\u6587' },
+  { value: 'ch', label: '\u4E2D\u6587' },
 ];
 
 /**
@@ -67,11 +68,11 @@ const LANGUAGE_OPTIONS: { value: LanguageCode; label: string }[] = [
  * Collects the child's nickname, age group (via selection cards),
  * grade level (filtered by age group), avatar emoji, and preferred language.
  */
-export default function StepChildProfile({
-  t,
-  lang,
+const StepChildProfile = ({
+  translations,
+  language,
   onComplete,
-}: StepChildProfileProps) {
+}: StepChildProfileProps) => {
   const {
     values,
     errors,
@@ -85,60 +86,60 @@ export default function StepChildProfile({
       ageGroup: '' as AgeGroupId,
       gradeLevel: '' as GradeLevel,
       avatarEmoji: '\u{1F981}',
-      preferredLanguage: lang,
+      preferredLanguage: language,
     },
     validateChildProfileStep
   );
 
-  function resolveError(field: string): string | undefined {
+  const resolveError = (field: string): string | undefined => {
     const errorKey = errors[field];
     if (!errorKey) return undefined;
-    return t[errorKey as keyof TranslationMap] ?? errorKey;
-  }
+    return translations[errorKey as keyof TranslationMap] ?? errorKey;
+  };
 
-  function handleAgeGroupSelect(id: AgeGroupId): void {
+  const handleAgeGroupSelect = (id: AgeGroupId): void => {
     handleChange('ageGroup', id);
     // Reset grade level when age group changes since options differ
     handleChange('gradeLevel', '');
-  }
+  };
 
-  async function onSubmit(data: ChildProfileFormData): Promise<void> {
+  const onSubmit = async (data: ChildProfileFormData): Promise<void> => {
     onComplete(data);
-  }
+  };
 
   const availableGrades = values.ageGroup ? GRADE_OPTIONS[values.ageGroup] : [];
-  const showNicknamePreview = values.nickname.trim().length >= 2;
+  const shouldShowNicknamePreview = values.nickname.trim().length >= 2;
 
   return (
     <div className={styles.stepContainer}>
       <div className={styles.stepHeader}>
-        <h2 className={styles.stepTitle}>{t.gs_step2_title}</h2>
-        <p className={styles.stepSubtitle}>{t.gs_step2_subtitle}</p>
+        <h2 className={styles.stepTitle}>{translations.gs_step2_title}</h2>
+        <p className={styles.stepSubtitle}>{translations.gs_step2_subtitle}</p>
       </div>
 
       <form
         className={styles.form}
-        onSubmit={(e) => {
-          e.preventDefault();
+        onSubmit={(event) => {
+          event.preventDefault();
           void handleSubmit(onSubmit);
         }}
         noValidate
       >
         <FormField
           id="child-nickname"
-          label={t.gs_nickname_label}
+          label={translations.gs_nickname_label}
           type="text"
           value={values.nickname}
           error={resolveError('nickname')}
-          placeholder={t.gs_nickname_placeholder}
-          hint={t.gs_nickname_hint}
+          placeholder={translations.gs_nickname_placeholder}
+          hint={translations.gs_nickname_hint}
           required
           autoComplete="off"
-          onChange={(val) => handleChange('nickname', val)}
+          onChange={(value) => handleChange('nickname', value)}
           onBlur={() => handleBlur('nickname')}
         />
 
-        {showNicknamePreview && (
+        {shouldShowNicknamePreview && (
           <div className={styles.nicknamePreview} aria-live="polite">
             <span aria-hidden="true">{values.avatarEmoji}</span>
             <span>Hi {values.nickname.trim()}!</span>
@@ -150,7 +151,7 @@ export default function StepChildProfile({
         {/* Age Group Selection Cards */}
         <div>
           <span className={styles.ageGroupLabel} id="age-group-label">
-            {t.gs_age_group_label}
+            {translations.gs_age_group_label}
           </span>
           <div
             className={styles.ageGroupGrid}
@@ -189,13 +190,13 @@ export default function StepChildProfile({
         {values.ageGroup && (
           <FormField
             id="child-grade-level"
-            label={t.gs_grade_level_label}
+            label={translations.gs_grade_level_label}
             type="select"
             value={values.gradeLevel}
             error={resolveError('gradeLevel')}
             placeholder="Select grade level"
             required
-            onChange={(val) => handleChange('gradeLevel', val)}
+            onChange={(value) => handleChange('gradeLevel', value)}
             onBlur={() => handleBlur('gradeLevel')}
           >
             {availableGrades.map((grade) => (
@@ -212,7 +213,7 @@ export default function StepChildProfile({
         <AvatarPicker
           selectedEmoji={values.avatarEmoji}
           onSelect={(emoji) => handleChange('avatarEmoji', emoji)}
-          label={t.gs_avatar_label}
+          label={translations.gs_avatar_label}
         />
 
         <hr className={styles.divider} />
@@ -220,11 +221,11 @@ export default function StepChildProfile({
         {/* Preferred Language */}
         <FormField
           id="child-language"
-          label={t.gs_child_language_label}
+          label={translations.gs_child_language_label}
           type="select"
           value={values.preferredLanguage}
           required
-          onChange={(val) => handleChange('preferredLanguage', val)}
+          onChange={(value) => handleChange('preferredLanguage', value)}
           onBlur={() => handleBlur('preferredLanguage')}
         >
           {LANGUAGE_OPTIONS.map((option) => (
@@ -239,10 +240,12 @@ export default function StepChildProfile({
           className={styles.submitButton}
           disabled={isSubmitting}
         >
-          {t.gs_next_button}
+          {translations.gs_next_button}
           <ArrowRight size={18} aria-hidden="true" />
         </button>
       </form>
     </div>
   );
-}
+};
+
+export default StepChildProfile;

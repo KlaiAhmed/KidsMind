@@ -1,6 +1,8 @@
+/** Central TypeScript type definitions for the KidsMind web app. */
+
 export type ThemeMode = 'light' | 'dark';
 
-export type LanguageCode = 'en' | 'fr' | 'es' | 'it' | 'ar' | 'zh';
+export type LanguageCode = 'en' | 'fr' | 'es' | 'it' | 'ar' | 'ch';
 
 export interface Language {
   code: LanguageCode;
@@ -358,9 +360,9 @@ export interface StepIndicatorProps {
 export interface AuthLayoutProps {
   illustrationVariant: 'login' | 'register';
   children: React.ReactNode;
-  t: TranslationMap;
-  lang: LanguageCode;
-  onSetLang: (code: LanguageCode) => void;
+  translations: TranslationMap;
+  language: LanguageCode;
+  onLanguageChange: (code: LanguageCode) => void;
   theme: ThemeMode;
   onToggleTheme: () => void;
 }

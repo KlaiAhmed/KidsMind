@@ -8,11 +8,11 @@ import styles from './ProgressBar.module.css';
  * Uses CSS transition for smooth width changes.
  * Includes ARIA attributes for accessibility.
  */
-export default function ProgressBar({
+const ProgressBar = ({
   percent,
   label,
-}: ProgressBarProps) {
-  const clampedPercent = Math.max(0, Math.min(100, percent));
+}: ProgressBarProps) => {
+  const clampedPercentage = Math.max(0, Math.min(100, percent));
 
   return (
     <div className={styles.progressBar}>
@@ -20,16 +20,18 @@ export default function ProgressBar({
       <div
         className={styles.track}
         role="progressbar"
-        aria-valuenow={clampedPercent}
+        aria-valuenow={clampedPercentage}
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-label={label || `Progress: ${clampedPercent}%`}
+        aria-label={label || `Progress: ${clampedPercentage}%`}
       >
         <div
           className={styles.fill}
-          style={{ width: `${clampedPercent}%` }}
+          style={{ width: `${clampedPercentage}%` }}
         />
       </div>
     </div>
   );
-}
+};
+
+export default ProgressBar;

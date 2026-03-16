@@ -1,3 +1,4 @@
+/** AgeGroupSelector — Displays three age-group cards (Explorers, Adventurers, Innovators) with scroll-reveal animation. */
 import React from 'react';
 import type { TranslationMap } from '../../types';
 import { AGE_GROUPS } from '../../utils/constants';
@@ -5,10 +6,10 @@ import { useScrollReveal } from '../../hooks/useScrollReveal';
 import styles from './AgeGroupSelector.module.css';
 
 interface AgeGroupSelectorProps {
-  t: TranslationMap;
+  translations: TranslationMap;
 }
 
-export default function AgeGroupSelector({ t }: AgeGroupSelectorProps) {
+const AgeGroupSelector = ({ translations }: AgeGroupSelectorProps) => {
   const { ref, isVisible } = useScrollReveal();
 
   return (
@@ -18,7 +19,7 @@ export default function AgeGroupSelector({ t }: AgeGroupSelectorProps) {
     >
       <div className={styles.sectionInner}>
         <h2 id="age-section-title" className={styles.sectionTitle}>
-          {t.age_section_title}
+          {translations.age_section_title}
         </h2>
         <div
           ref={ref as React.RefObject<HTMLDivElement>}
@@ -33,7 +34,7 @@ export default function AgeGroupSelector({ t }: AgeGroupSelectorProps) {
               <div className={styles.cardEmoji}>
                 <span aria-hidden="true">{group.emoji}</span>
               </div>
-              <h3 className={styles.cardTitle}>{t[group.titleKey]}</h3>
+              <h3 className={styles.cardTitle}>{translations[group.titleKey]}</h3>
               <span
                 className={styles.cardBadge}
                 style={{
@@ -41,11 +42,11 @@ export default function AgeGroupSelector({ t }: AgeGroupSelectorProps) {
                   color: 'var(--text-primary)',
                 }}
               >
-                {t[group.rangeKey]}
+                {translations[group.rangeKey]}
               </span>
-              <p className={styles.cardDesc}>{t[group.descKey]}</p>
+              <p className={styles.cardDesc}>{translations[group.descKey]}</p>
               <button className={styles.cardButton}>
-                {t.hero_cta_primary} →
+                {translations.hero_cta_primary} →
               </button>
             </div>
           ))}
@@ -53,4 +54,6 @@ export default function AgeGroupSelector({ t }: AgeGroupSelectorProps) {
       </div>
     </section>
   );
-}
+};
+
+export default AgeGroupSelector;

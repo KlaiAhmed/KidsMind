@@ -1,48 +1,73 @@
+/** Hook for managing the app's active language, translations, and text direction. */
+
 import { useState, useEffect, useCallback } from 'react';
 import type { LanguageCode, TranslationMap } from '../types';
-import translations from '../utils/translations';
+import allTranslations from '../utils/translations';
 import { LANGUAGES } from '../utils/constants';
 
-const STORAGE_KEY = 'km_lang';
+const LANGUAGE_STORAGE_KEY = 'km_lang';
+const SUPPORTED_LANGUAGE_CODES: LanguageCode[] = ['en', 'fr', 'es', 'it', 'ar', 'ch'];
 
-function getInitialLang(): LanguageCode {
+const normalizeLanguageCode = (rawLanguageCode: string | null): LanguageCode | null => {
+  if (!rawLanguageCode) return null;
+
+  const normalizedCode = rawLanguageCode.trim().toLowerCase();
+
+  if (normalizedCode.startsWith('ar')) return 'ar';
+  if (normalizedCode.startsWith('zh') || normalizedCode.startsWith('ch')) return 'ch';
+  if (normalizedCode.startsWith('fr')) return 'fr';
+  if (normalizedCode.startsWith('es')) return 'es';
+  if (normalizedCode.startsWith('it')) return 'it';
+  if (normalizedCode.startsWith('en')) return 'en';
+
+  return null;
+};
+
+const getInitialLanguage = (): LanguageCode => {
   if (typeof window === 'undefined') return 'en';
 
-  const stored = localStorage.getItem(STORAGE_KEY);
-  const validCodes: LanguageCode[] = ['en', 'fr', 'es', 'it', 'ar', 'zh'];
-  if (stored && validCodes.includes(stored as LanguageCode)) {
-    return stored as LanguageCode;
+  const storedLanguageCode = normalizeLanguageCode(localStorage.getItem(LANGUAGE_STORAGE_KEY));
+  if (storedLanguageCode && SUPPORTED_LANGUAGE_CODES.includes(storedLanguageCode)) {
+    return storedLanguageCode;
   }
 
-  const browserLang = navigator.language.slice(0, 2).toLowerCase();
-  if (validCodes.includes(browserLang as LanguageCode)) {
-    return browserLang as LanguageCode;
+  const browserLanguageCandidates = navigator.languages.length > 0
+    ? navigator.languages
+    : [navigator.language];
+
+  for (const candidate of browserLanguageCandidates) {
+    const normalizedCandidate = normalizeLanguageCode(candidate);
+    if (normalizedCandidate && SUPPORTED_LANGUAGE_CODES.includes(normalizedCandidate)) {
+      return normalizedCandidate;
+    }
   }
 
   return 'en';
-}
+};
 
-export function useLanguage(): {
-  lang: LanguageCode;
-  setLang: (code: LanguageCode) => void;
-  t: TranslationMap;
+const useLanguage = (): {
+  language: LanguageCode;
+  setLanguage: (code: LanguageCode) => void;
+  translations: TranslationMap;
   isRTL: boolean;
-} {
-  const [lang, setLangState] = useState<LanguageCode>(getInitialLang);
+} => {
+  const [language, setLanguageCode] = useState<LanguageCode>(getInitialLanguage);
 
-  const t = translations[lang];
-  const languageConfig = LANGUAGES.find((l) => l.code === lang);
+  const translations = allTranslations[language];
+  const languageConfig = LANGUAGES.find((languageOption) => languageOption.code === language);
   const isRTL = languageConfig?.dir === 'rtl';
 
   useEffect(() => {
     document.documentElement.setAttribute('dir', isRTL ? 'rtl' : 'ltr');
-    document.documentElement.setAttribute('lang', lang);
-    localStorage.setItem(STORAGE_KEY, lang);
-  }, [lang, isRTL]);
+    document.documentElement.setAttribute('lang', language === 'ch' ? 'zh' : language);
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
+  }, [language, isRTL]);
 
-  const setLang = useCallback((code: LanguageCode) => {
-    setLangState(code);
+  const setLanguage = useCallback((code: LanguageCode) => {
+    setLanguageCode(code);
   }, []);
 
-  return { lang, setLang, t, isRTL };
-}
+  return { language, setLanguage, translations, isRTL };
+};
+
+export { useLanguage };

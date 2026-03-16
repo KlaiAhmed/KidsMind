@@ -1,15 +1,9 @@
+/** FormField — Reusable labeled form input supporting text, email, number, select, and checkbox types with validation display. */
 import { CheckCircle2 } from 'lucide-react';
 import type { FormFieldProps } from '../../../types';
 import styles from './FormField.module.css';
 
-/**
- * FormField — Labeled form input with error display and hint text.
- *
- * Renders an accessible <label> + <input> or <select> pair.
- * Shows error message with shake animation when error prop is provided.
- * Shows hint text below input when hint prop is provided.
- */
-export default function FormField({
+const FormField = ({
   id,
   label,
   type = 'text',
@@ -22,15 +16,15 @@ export default function FormField({
   onChange,
   onBlur,
   children,
-}: FormFieldProps) {
-  const errorId = `${id}-error`;
-  const hintId = `${id}-hint`;
-  const hasError = !!error;
-  const isSuccess = !hasError && !!value && value.length > 0;
+}: FormFieldProps) => {
+  const errorMessageId = `${id}-error`;
+  const hintMessageId = `${id}-hint`;
+  const hasValidationError = !!error;
+  const isFieldValid = !hasValidationError && !!value && value.length > 0;
 
-  const describedBy = [
-    hasError ? errorId : null,
-    hint ? hintId : null,
+  const ariaDescribedBy = [
+    hasValidationError ? errorMessageId : null,
+    hint ? hintMessageId : null,
   ].filter(Boolean).join(' ') || undefined;
 
   if (type === 'checkbox') {
@@ -42,8 +36,8 @@ export default function FormField({
           className={styles.checkboxInput}
           checked={value === 'true'}
           onChange={(event) => onChange(event.target.checked ? 'true' : 'false')}
-          aria-invalid={hasError}
-          aria-describedby={hasError ? errorId : undefined}
+          aria-invalid={hasValidationError}
+          aria-describedby={hasValidationError ? errorMessageId : undefined}
         />
         <span className={styles.checkboxVisual} onClick={() => onChange(value === 'true' ? 'false' : 'true')}>
           <svg className={styles.checkmark} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
@@ -54,8 +48,8 @@ export default function FormField({
           {label}
           {required && <span className={styles.required}>*</span>}
         </label>
-        {hasError && (
-          <span id={errorId} className={styles.errorMessage} role="alert">
+        {hasValidationError && (
+          <span id={errorMessageId} className={styles.errorMessage} role="alert">
             {error}
           </span>
         )}
@@ -72,12 +66,12 @@ export default function FormField({
         </label>
         <select
           id={id}
-          className={`${styles.select} ${hasError ? styles.selectError : ''}`}
+          className={`${styles.select} ${hasValidationError ? styles.selectError : ''}`}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           onBlur={onBlur}
-          aria-invalid={hasError}
-          aria-describedby={describedBy}
+          aria-invalid={hasValidationError}
+          aria-describedby={ariaDescribedBy}
         >
           {placeholder && (
             <option value="" disabled>
@@ -87,12 +81,12 @@ export default function FormField({
           {children}
         </select>
         {hint && (
-          <span id={hintId} className={styles.hint}>
+          <span id={hintMessageId} className={styles.hint}>
             {hint}
           </span>
         )}
-        {hasError && (
-          <span id={errorId} className={styles.errorMessage} role="alert">
+        {hasValidationError && (
+          <span id={errorMessageId} className={styles.errorMessage} role="alert">
             {error}
           </span>
         )}
@@ -110,32 +104,34 @@ export default function FormField({
         <input
           id={id}
           type={type}
-          className={`${styles.input} ${hasError ? styles.inputError : ''} ${isSuccess ? styles.inputSuccess : ''}`}
+          className={`${styles.input} ${hasValidationError ? styles.inputError : ''} ${isFieldValid ? styles.inputSuccess : ''}`}
           value={value}
           placeholder={placeholder}
           onChange={(event) => onChange(event.target.value)}
           onBlur={onBlur}
           autoComplete={autoComplete}
-          aria-invalid={hasError}
-          aria-describedby={describedBy}
+          aria-invalid={hasValidationError}
+          aria-describedby={ariaDescribedBy}
           required={required}
         />
-        {isSuccess && (
+        {isFieldValid && (
           <span className={styles.successIcon} aria-hidden="true">
             <CheckCircle2 size={18} />
           </span>
         )}
       </div>
       {hint && (
-        <span id={hintId} className={styles.hint}>
+        <span id={hintMessageId} className={styles.hint}>
           {hint}
         </span>
       )}
-      {hasError && (
-        <span id={errorId} className={styles.errorMessage} role="alert">
+      {hasValidationError && (
+        <span id={errorMessageId} className={styles.errorMessage} role="alert">
           {error}
         </span>
       )}
     </div>
   );
-}
+};
+
+export default FormField;

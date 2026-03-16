@@ -1,3 +1,4 @@
+/** LoginForm — Email/password login form with validation, error banner, and loading state. */
 import { useState } from 'react';
 import { AlertCircle } from 'lucide-react';
 import type { TranslationMap } from '../../types';
@@ -13,18 +14,11 @@ interface LoginFormValues {
 }
 
 interface LoginFormProps {
-  t: TranslationMap;
+  translations: TranslationMap;
   onSuccess: () => void;
 }
 
-/**
- * LoginForm -- Full login form with email, password, error banner,
- * forgot-password link, and a bottom sign-up link.
- *
- * Uses `useForm` for state management and `validateLoginForm` for validation.
- * On submit it simulates an API call (always fails for demo purposes).
- */
-export default function LoginForm({ t, onSuccess }: LoginFormProps) {
+const LoginForm = ({ translations, onSuccess }: LoginFormProps) => {
   const [serverError, setServerError] = useState<string>('');
 
   const {
@@ -39,12 +33,12 @@ export default function LoginForm({ t, onSuccess }: LoginFormProps) {
     validateLoginForm,
   );
 
-  function resolveError(errorKey: string | undefined): string | undefined {
+  const resolveError = (errorKey: string | undefined): string | undefined => {
     if (!errorKey) return undefined;
-    return t[errorKey as keyof TranslationMap] || errorKey;
-  }
+    return translations[errorKey as keyof TranslationMap] || errorKey;
+  };
 
-  async function onSubmit(): Promise<void> {
+  const onSubmit = async (): Promise<void> => {
     setServerError('');
 
     await new Promise<void>((resolve) => {
@@ -52,22 +46,22 @@ export default function LoginForm({ t, onSuccess }: LoginFormProps) {
     });
 
     // Demo: always fail with invalid credentials
-    setServerError(t.login_error_invalid);
+    setServerError(translations.login_error_invalid);
 
     // In a real implementation, onSuccess() would be called after a
     // successful API response. Keeping the reference so the prop is used.
     void onSuccess;
-  }
+  };
 
-  function handleFormSubmit(e: React.FormEvent<HTMLFormElement>): void {
-    e.preventDefault();
+  const handleFormSubmit = (event: React.FormEvent<HTMLFormElement>): void => {
+    event.preventDefault();
     void handleSubmit(onSubmit);
-  }
+  };
 
   return (
     <form className={styles.loginForm} onSubmit={handleFormSubmit} noValidate>
-      <h1 className={styles.heading}>{t.login_page_title}</h1>
-      <p className={styles.subheading}>{t.login_page_subtitle}</p>
+      <h1 className={styles.heading}>{translations.login_page_title}</h1>
+      <p className={styles.subheading}>{translations.login_page_subtitle}</p>
 
       <div className={styles.divider}>
         <span className={styles.dividerLine} />
@@ -84,11 +78,11 @@ export default function LoginForm({ t, onSuccess }: LoginFormProps) {
 
       <FormField
         id="login-email"
-        label={t.login_email_label}
+        label={translations.login_email_label}
         type="email"
         value={values.email}
         error={resolveError(errors.email)}
-        placeholder={t.login_email_placeholder}
+        placeholder={translations.login_email_placeholder}
         required
         autoComplete="email"
         onChange={(value) => handleChange('email', value)}
@@ -97,10 +91,10 @@ export default function LoginForm({ t, onSuccess }: LoginFormProps) {
 
       <PasswordField
         id="login-password"
-        label={t.login_password_label}
+        label={translations.login_password_label}
         value={values.password}
         error={resolveError(errors.password)}
-        placeholder={t.login_password_placeholder}
+        placeholder={translations.login_password_placeholder}
         showStrengthMeter={false}
         autoComplete="current-password"
         onChange={(value) => handleChange('password', value)}
@@ -108,7 +102,7 @@ export default function LoginForm({ t, onSuccess }: LoginFormProps) {
       />
 
       <a href="#" className={styles.forgotLink}>
-        {t.login_forgot_password}
+        {translations.login_forgot_password}
       </a>
 
       <button
@@ -117,15 +111,17 @@ export default function LoginForm({ t, onSuccess }: LoginFormProps) {
         disabled={isSubmitting}
       >
         {isSubmitting && <span className={styles.spinner} aria-hidden="true" />}
-        {isSubmitting ? t.login_loading : t.login_submit_button}
+        {isSubmitting ? translations.login_loading : translations.login_submit_button}
       </button>
 
       <p className={styles.bottomLink}>
-        {t.login_no_account}
+        {translations.login_no_account}
         <a href="/get-started" className={styles.bottomLinkAnchor}>
-          {t.login_start_link}
+          {translations.login_start_link}
         </a>
       </p>
     </form>
   );
-}
+};
+
+export default LoginForm;

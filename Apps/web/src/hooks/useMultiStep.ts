@@ -1,3 +1,5 @@
+/** Hook for navigating multi-step flows with progress tracking. */
+
 import { useState, useCallback, useMemo } from 'react';
 import type { UseMultiStepReturn } from '../types';
 
@@ -14,10 +16,10 @@ import type { UseMultiStepReturn } from '../types';
  * @example
  * const { currentStepIndex, goToNextStep, progressPercent } = useMultiStep(4);
  */
-export function useMultiStep(
+const useMultiStep = (
   totalSteps: number,
   initialStep: number = 0
-): UseMultiStepReturn {
+): UseMultiStepReturn => {
   const [currentStepIndex, setCurrentStepIndex] = useState(initialStep);
 
   /** Progress as a percentage based on the current step position */
@@ -57,4 +59,6 @@ export function useMultiStep(
     goToPreviousStep,
     goToStep,
   };
-}
+};
+
+export { useMultiStep };

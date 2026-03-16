@@ -8,16 +8,20 @@
   align-items: center;
   justify-content: center;
   padding-inline: var(--spacing-lg);
-  background: transparent;
-  transition: background 0.3s ease, box-shadow 0.3s ease;
-  animation: slideDown 0.6s ease forwards;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-nav);
+  transition: background 0.3s ease, box-shadow 0.3s ease, transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: slideDown 0.6s ease backwards;
 }
 
-.navScrolled {
-  background: color-mix(in srgb, var(--bg-surface) 85%, transparent);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  box-shadow: var(--shadow-nav);
+.navAtTop {
+  background: transparent;
+  box-shadow: none;
+}
+
+.navHidden {
+  transform: translateY(-100%);
+  pointer-events: none;
 }
 
 .navInner {
@@ -66,8 +70,11 @@
 .langButton {
   display: flex;
   align-items: center;
-  gap: var(--spacing-xs);
-  padding: var(--spacing-xs) var(--spacing-sm);
+  justify-content: center;
+  gap: 0;
+  padding: 0;
+  width: 44px;
+  height: 44px;
   border-radius: var(--radius-sm);
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
@@ -143,8 +150,11 @@
   font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--text-secondary);
+  text-decoration: none;
   transition: color 0.25s ease;
   min-height: 44px;
+  display: flex;
+  align-items: center;
 }
 
 .loginButton:hover {
@@ -158,8 +168,11 @@
   font-weight: 700;
   color: var(--text-on-accent);
   background: var(--accent-main);
+  text-decoration: none;
   transition: background 0.25s ease, transform 0.25s ease;
   min-height: 44px;
+  display: flex;
+  align-items: center;
 }
 
 .startButton:hover {
