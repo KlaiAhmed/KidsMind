@@ -25,18 +25,6 @@ cd Apps/web
 npm install
 npm run dev
 ```
-
-### Scripts
-
-| Command | What it does |
-| --- | --- |
-| `npm run dev` | Starts Vite dev server |
-| `npm run build` | Type-checks (`tsc -b`) + production build |
-| `npm run preview` | Serves production build locally |
-| `npm run lint` | Runs ESLint |
-
----
-
 ## Routes
 
 | Path | Page | Loading |
@@ -44,32 +32,6 @@ npm run dev
 | `/` | HomePage | Eager |
 | `/login` | LoginPage | Lazy |
 | `/get-started` | GetStartedPage | Lazy |
-
----
-
-## Architecture (Visual)
-
-```mermaid
-flowchart TD
-    A[main.tsx] --> B[App.tsx Router + Suspense]
-    B --> C[/ HomePage]
-    B --> D[/login LoginPage]
-    B --> E[/get-started GetStartedPage]
-
-    C --> F[NavBar]
-    C --> G[HeroSection]
-    C --> H[Lazy Marketing Sections]
-
-    D --> I[AuthLayout]
-    D --> J[LoginForm]
-
-    E --> I
-    E --> K[StepIndicator + ProgressBar]
-    E --> L[Step 1 Parent]
-    E --> M[Step 2 Child]
-    E --> N[Step 3 Preferences]
-    E --> O[Step 4 Welcome]
-```
 
 ---
 
