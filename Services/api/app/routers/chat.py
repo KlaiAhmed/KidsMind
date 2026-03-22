@@ -1,14 +1,11 @@
-from pydoc import text
-
 from fastapi import APIRouter, HTTPException, Request, UploadFile, Form, Depends
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel
-from typing import Optional
 import httpx
 import time
 
 # Local imports
 from core.config import settings
+from schemas.chat_schema import TextChatRequest
 from services.upload_file import upload_audio, remove_audio
 from services.generate_content import generate_content
 from middlewares.vallidate_audio_file import validate_audio_file
@@ -79,10 +76,6 @@ async def voice_chat(
             await run_in_threadpool(remove_audio, filename)
 
 
-
-class TextChatRequest(BaseModel):
-    text: str
-    context: Optional[str] = ""
 
 # Text chat endpoint
 @router.post("/text/{user_id}/{child_id}/{session_id}")

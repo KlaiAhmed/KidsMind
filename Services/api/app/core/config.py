@@ -35,9 +35,17 @@ class Settings(BaseSettings):
         "audio/mp3"
     }
 
-    # Credentials
+    # Credentials :
+    # Database credentials
+    DB_USERNAME: str = "admin"
+    DB_PASSWORD: str
+    DB_NAME: str = "kidsmind_db"
+    
+    # Storage credentials
     STORAGE_ROOT_USERNAME: str = "admin"
     STORAGE_ROOT_PASSWORD: str
+
+    # Cache credentials
     CACHE_PASSWORD: str
 
     # LOGGING
