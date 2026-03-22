@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Body, Request, Depends
+from fastapi import APIRouter, Body, Depends, Request, Response 
 from sqlalchemy.orm import Session
 import time
 
-from controllers.auth import login
+from controllers.auth import login_controller
 from core.config import settings
 from schemas.auth_schema import UserLogin
 from services.auth_service import AuthService
@@ -14,17 +14,23 @@ from utils.logger import logger
 router = APIRouter()
 
 
-@router.get("/login")
+@router.post("/login")
 @limiter.limit(settings.RATE_LIMIT)
 async def login(
-    request: Request, 
+    request: Request,
+    response: Response,
     payload: UserLogin = Body(...),
-    db: Session= Depends(get_db)):
-
+    client_type: str = Body(default="web", embed=True),
+    db: Session= Depends(get_db)
+    ):
     timer = time.perf_counter()
 
-    res = await login(payload, db)
+    logger.info(f"Login request received from {request.client.host} for email: {payload.email} from {client_type} client")
+
+    res = await login_controller(payload, client_type, response, db)
 
     timer= time.perf_counter() - timer
+
     logger.info(f"Login request processed in {timer:.3f} seconds")
+
     return res

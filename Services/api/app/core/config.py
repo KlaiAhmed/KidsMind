@@ -2,6 +2,8 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Set
 
+from utils.logger import logger
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -16,6 +18,7 @@ class Settings(BaseSettings):
 
     # App State
     IS_PROD: bool = False
+    logger.info(f"Running in {'production' if IS_PROD else 'development'} mode")
 
     # CORS configuration
     CORS_ORIGINS: list[str] = ["*"]
@@ -53,12 +56,15 @@ class Settings(BaseSettings):
     
     # App Config
     RATE_LIMIT: str = "100/minute"
+    DUMMY_HASH: str = "OwUlzdWgNRnK9JW7mVzTqL3Ia6kVdLiH9u7sQh8j324dghgzyzx"
+    SECRET_ACCESS_KEY: str
+    SECRET_REFRESH_KEY: str
 
-    @field_validator("STORAGE_ROOT_PASSWORD", "CACHE_PASSWORD")
+    @field_validator("STORAGE_ROOT_PASSWORD", "CACHE_PASSWORD", "DB_PASSWORD", "SECRET_ACCESS_KEY", "SECRET_REFRESH_KEY")
     @classmethod
     def check_not_empty(cls, v: str) -> str:
         if not v or v.strip() == "":
-            raise ValueError("Password cannot be empty")
+            raise ValueError("Missing required environment variable")
         return v
 
 settings = Settings()
