@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     # Service
     SERVICE_NAME: str = "stt-service"
 
+    IS_PROD: bool = False
+
+    # CORS 
+    CORS_ORIGINS: list[str] = ["*"]
+
     # Audio file constraints
     MAX_AUDIO_BYTES : int =  50 * 1024 * 1024  # 50 MB
     SUPPORTED_AUDIO_EXTENSIONS: set = {".mp3", ".wav", ".ogg", ".flac", ".m4a"}
@@ -27,6 +32,12 @@ class Settings(BaseSettings):
     WHISPER_DEVICE: str = ""
     WHISPER_COMPUTE_TYPE: str = ""
     WHISPER_CPU_THREADS: int = 0
+
+    # Timeout for waiting for available worker (longer for CPU since it's slower)   
+    STT_TIMEOUT_SECONDS: int = 5 if WHISPER_MODE == "gpu" else 30
+
+    # Logging
+    LOG_LEVEL: str = "INFO"
 
     @model_validator(mode="after")
     def derive_device_settings(self) -> "Settings":

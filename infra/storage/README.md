@@ -9,10 +9,10 @@ Manages the full lifecycle of media assets and sensitive voice data across the K
 - [Storage \& Bucket Management Service](#storage--bucket-management-service)
   - [Table of Contents](#table-of-contents)
   - [Architecture Overview](#architecture-overview)
-  - [Hybrid Infrastructure](#hybrid-infrastructure)
   - [Auto-Initialization \& Bucket Provisioning](#auto-initialization--bucket-provisioning)
     - [Provisioner Behavior (`provision.sh`)](#provisioner-behavior-provisionsh)
     - [Bucket Reference](#bucket-reference)
+  - [| `loki-chunks`   | Authenticated only         | Dedicated bucket for Loki log chunks (separate from app media) |](#-loki-chunks----authenticated-only----------dedicated-bucket-for-loki-log-chunks-separate-from-app-media-)
   - [Privacy-First Voice Storage Logic](#privacy-first-voice-storage-logic)
     - [Decision Flow](#decision-flow)
     - [Storage Path Behavior](#storage-path-behavior)
@@ -54,24 +54,6 @@ The storage layer is split into two logical tiers, each with distinct access pol
 └─────────────────────────────────────────────────────────────┘
 ```
 
----
-
-## Hybrid Infrastructure
-
-The service abstracts over two storage backends, selected by environment. Application services always communicate via the same S3 API contract.
-
-| Dimension         | Development                                  | Production             |
-|-------------------|----------------------------------------------|------------------------|
-| **Backend**       | MinIO `RELEASE.2025-09-07T16-13-09Z-cpuv1`  | AWS S3                 |
-| **API Port**      | `${STORAGE_API_PORT}` → `9000`               | AWS-managed endpoint   |
-| **Console Port**  | `${STORAGE_CONSOLE_PORT}` → `9001`           | AWS Console            |
-| **Auth**          | `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD`    | IAM Role / Access Keys |
-| **Persistence**   | Docker named volume `storage_data`           | Native S3 durability   |
-| **Healthcheck**   | `GET /minio/health/ready` (5s interval)      | AWS-managed            |
-| **Metrics**       | Prometheus scrape      | CloudWatch / Prometheus|
-
----
-
 ## Auto-Initialization & Bucket Provisioning
 
 On every startup, the `bucket-service` sidecar (powered by `minio/mc`) runs `provision.sh` against the live storage endpoint. It creates the two essential buckets if they do not already exist, then applies access policies.
@@ -85,6 +67,7 @@ mc alias set myminio $STORAGE_SERVICE_ENDPOINT $MINIO_ROOT_USER $MINIO_ROOT_PASS
 # Creates buckets idempotently (safe to re-run)
 mc mb myminio/media-public  --ignore-existing
 mc mb myminio/media-private --ignore-existing
+mc mb myminio/loki-chunks --ignore-existing
 
 # Opens media-public for anonymous download (CDN/public assets)
 mc anonymous set download myminio/media-public
@@ -96,9 +79,9 @@ mc anonymous set download myminio/media-public
 
 | Bucket          | Access Policy              | Purpose                                                        |
 |-----------------|----------------------------|----------------------------------------------------------------|
-| `media-public`  | Anonymous read / Auth write| General application assets (avatars, UI media, content files) |
+| `media-public`  | Anonymous read / Auth write| General application assets (avatars, UI media, content files)  |
 | `media-private` | Authenticated only         | Sensitive user data, child voice recordings, AI interactions   |
-
+| `loki-chunks`   | Authenticated only         | Dedicated bucket for Loki log chunks (separate from app media) |
 ---
 
 ## Privacy-First Voice Storage Logic
@@ -208,11 +191,11 @@ media-private/voice-messages/temp/**
 ```
 infra/
 └── storage/
-    ├── provision.sh      # Bucket provisioner script (runs inside bucket-service container)
+    ├── provision.sh      # Bucket provisioner script (runs inside bucket-provisioner container)
     └── README.md         # This document
 ```
 
-The `provision.sh` script is bind-mounted into the `bucket-service` container at runtime:
+The `provision.sh` script is bind-mounted into the `bucket-provisioner` container at runtime:
 
 ```yaml
 # docker-compose.yml
@@ -243,6 +226,7 @@ The storage service was architected around GDPR and COPPA principles from the gr
 |-----------------|:--------------:|:------------------:|:-------------------:|
 | `media-public`  | Yes            | Yes                | Yes                 |
 | `media-private` | No             | Yes                | Yes                 |
+| `loki-chunks`   | No             | Yes                | Yes                 |
 
 ### Credential Management
 
