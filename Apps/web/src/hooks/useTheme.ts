@@ -1,25 +1,31 @@
+/** Hook for managing the app's light/dark theme with localStorage persistence. */
+
 import { useState, useEffect, useCallback } from 'react';
 import type { ThemeMode } from '../types';
 import { applyTheme } from '../utils/cssVariables';
 
-const STORAGE_KEY = 'km_theme';
+const THEME_STORAGE_KEY = 'km_theme';
 
-function getInitialTheme(): ThemeMode {
+const getInitialTheme = (): ThemeMode => {
   if (typeof window === 'undefined') return 'light';
 
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (stored === 'light' || stored === 'dark') return stored;
+  const storedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+  if (storedTheme === 'light' || storedTheme === 'dark') return storedTheme;
 
-  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  return prefersDark ? 'dark' : 'light';
-}
+  const prefersDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  return prefersDarkMode ? 'dark' : 'light';
+};
 
-export function useTheme(): { theme: ThemeMode; toggleTheme: () => void } {
+/**
+ * useTheme — Reads the saved theme from localStorage (or the OS preference),
+ * applies it via CSS variables, and provides a toggle function.
+ */
+const useTheme = (): { theme: ThemeMode; toggleTheme: () => void } => {
   const [theme, setTheme] = useState<ThemeMode>(getInitialTheme);
 
   useEffect(() => {
     applyTheme(theme);
-    localStorage.setItem(STORAGE_KEY, theme);
+    localStorage.setItem(THEME_STORAGE_KEY, theme);
   }, [theme]);
 
   const toggleTheme = useCallback(() => {
@@ -27,4 +33,6 @@ export function useTheme(): { theme: ThemeMode; toggleTheme: () => void } {
   }, []);
 
   return { theme, toggleTheme };
-}
+};
+
+export { useTheme };

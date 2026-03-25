@@ -1,3 +1,4 @@
+/** StepPreferences — Onboarding step 3: daily time limit, subject selection, voice mode, and parent PIN setup. */
 import { useRef, useCallback, useMemo } from 'react';
 import type {
   TranslationMap,
@@ -12,7 +13,7 @@ import styles from './StepPreferences.module.css';
 /* ─── Props ────────────────────────────────────────────────────────────────── */
 
 interface StepPreferencesProps {
-  t: TranslationMap;
+  translations: TranslationMap;
   onComplete: (data: PreferencesFormData) => void;
 }
 
@@ -48,10 +49,10 @@ interface PreferencesInternalForm extends Record<string, unknown> {
 
 /* ─── Component ────────────────────────────────────────────────────────────── */
 
-export default function StepPreferences({
-  t,
+const StepPreferences = ({
+  translations,
   onComplete,
-}: StepPreferencesProps) {
+}: StepPreferencesProps) => {
   const pinRefs = useRef<(HTMLInputElement | null)[]>([]);
   const confirmPinRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -82,12 +83,12 @@ export default function StepPreferences({
 
   /* ─── Slider helpers ─────────────────────────────────────────────────────── */
 
-  const sliderFillPercent =
+  const sliderFillPercentage =
     ((values.dailyLimitMinutes - SLIDER_MIN) / (SLIDER_MAX - SLIDER_MIN)) * 100;
 
   const handleSliderChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      handleChange('dailyLimitMinutes', Number(e.target.value));
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      handleChange('dailyLimitMinutes', Number(event.target.value));
     },
     [handleChange]
   );
@@ -104,11 +105,11 @@ export default function StepPreferences({
   const handleSubjectToggle = useCallback(
     (subjectId: SubjectId) => {
       const current = values.allowedSubjects as SubjectId[];
-      const isActive = current.includes(subjectId);
-      if (isActive) {
+      const isSubjectActive = current.includes(subjectId);
+      if (isSubjectActive) {
         handleChange(
           'allowedSubjects',
-          current.filter((s) => s !== subjectId)
+          current.filter((subject) => subject !== subjectId)
         );
       } else {
         handleChange('allowedSubjects', [...current, subjectId]);
@@ -157,15 +158,15 @@ export default function StepPreferences({
 
   const handlePinKeyDown = useCallback(
     (
-      e: React.KeyboardEvent<HTMLInputElement>,
+      event: React.KeyboardEvent<HTMLInputElement>,
       index: number,
       refs: React.MutableRefObject<(HTMLInputElement | null)[]>,
       field: 'parentPinCode' | 'confirmPinCode'
     ) => {
-      if (e.key === 'Backspace') {
+      if (event.key === 'Backspace') {
         const input = refs.current[index];
         if (input && input.value === '' && index > 0) {
-          e.preventDefault();
+          event.preventDefault();
           const prevInput = refs.current[index - 1];
           if (prevInput) {
             prevInput.value = '';
@@ -181,12 +182,12 @@ export default function StepPreferences({
 
   const handlePinPaste = useCallback(
     (
-      e: React.ClipboardEvent<HTMLInputElement>,
+      event: React.ClipboardEvent<HTMLInputElement>,
       refs: React.MutableRefObject<(HTMLInputElement | null)[]>,
       field: 'parentPinCode' | 'confirmPinCode'
     ) => {
-      e.preventDefault();
-      const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, PIN_LENGTH);
+      event.preventDefault();
+      const pasted = event.clipboardData.getData('text').replace(/\D/g, '').slice(0, PIN_LENGTH);
       const digits = pasted.split('');
 
       digits.forEach((digit, i) => {
@@ -209,8 +210,8 @@ export default function StepPreferences({
   /* ─── Submit ─────────────────────────────────────────────────────────────── */
 
   const onSubmit = useCallback(async () => {
-    await handleSubmit(async (vals) => {
-      onComplete(vals as PreferencesFormData);
+    await handleSubmit(async (formValues) => {
+      onComplete(formValues as PreferencesFormData);
     });
   }, [handleSubmit, onComplete]);
 
@@ -220,9 +221,9 @@ export default function StepPreferences({
     (fieldKey: string): string | undefined => {
       const errorKey = errors[fieldKey];
       if (!errorKey) return undefined;
-      return t[errorKey as keyof TranslationMap] ?? errorKey;
+      return translations[errorKey as keyof TranslationMap] ?? errorKey;
     },
-    [errors, t]
+    [errors, translations]
   );
 
   /* ─── Render helpers ─────────────────────────────────────────────────────── */
@@ -239,8 +240,8 @@ export default function StepPreferences({
           {Array.from({ length: PIN_LENGTH }, (_, i) => (
             <input
               key={`${field}-${i}`}
-              ref={(el) => {
-                refs.current[i] = el;
+              ref={(element) => {
+                refs.current[i] = element;
               }}
               className={`${styles.pinInput}${hasError ? ` ${styles.pinInputError}` : ''}`}
               type="password"
@@ -250,8 +251,8 @@ export default function StepPreferences({
               autoComplete="off"
               aria-label={`${labelPrefix} ${i + 1} of ${PIN_LENGTH}`}
               onInput={() => handlePinInput(i, refs, field)}
-              onKeyDown={(e) => handlePinKeyDown(e, i, refs, field)}
-              onPaste={(e) => handlePinPaste(e, refs, field)}
+              onKeyDown={(event) => handlePinKeyDown(event, i, refs, field)}
+              onPaste={(event) => handlePinPaste(event, refs, field)}
             />
           ))}
         </div>
@@ -266,19 +267,19 @@ export default function StepPreferences({
     <div className={styles.stepContainer}>
       {/* Header */}
       <div className={styles.stepHeader}>
-        <h2 className={styles.stepTitle}>{t.gs_step3_title}</h2>
-        <p className={styles.stepSubtitle}>{t.gs_step3_subtitle}</p>
+        <h2 className={styles.stepTitle}>{translations.gs_step3_title}</h2>
+        <p className={styles.stepSubtitle}>{translations.gs_step3_subtitle}</p>
       </div>
 
       <div className={styles.form}>
         {/* ── Daily Limit Slider ──────────────────────────────────────────── */}
         <div className={styles.sliderGroup}>
           <label className={styles.sliderLabel} htmlFor="daily-limit-slider">
-            {t.gs_daily_limit_label}
+            {translations.gs_daily_limit_label}
           </label>
           <div
             className={styles.sliderWrapper}
-            style={{ '--slider-fill': `${sliderFillPercent}%` } as React.CSSProperties}
+            style={{ '--slider-fill': `${sliderFillPercentage}%` } as React.CSSProperties}
           >
             <input
               id="daily-limit-slider"
@@ -291,26 +292,26 @@ export default function StepPreferences({
               aria-valuemin={SLIDER_MIN}
               aria-valuemax={SLIDER_MAX}
               aria-valuenow={values.dailyLimitMinutes}
-              aria-valuetext={`${values.dailyLimitMinutes} ${t.gs_daily_limit_unit}`}
+              aria-valuetext={`${values.dailyLimitMinutes} ${translations.gs_daily_limit_unit}`}
             />
             <span className={styles.sliderValue}>
-              {values.dailyLimitMinutes} {t.gs_daily_limit_unit}
+              {values.dailyLimitMinutes} {translations.gs_daily_limit_unit}
             </span>
           </div>
 
           {/* Preset quick-pick buttons */}
           <div className={styles.presetButtons}>
-            {PRESET_MINUTES.map((mins) => (
+            {PRESET_MINUTES.map((minutes) => (
               <button
-                key={mins}
+                key={minutes}
                 type="button"
                 className={`${styles.presetButton}${
-                  values.dailyLimitMinutes === mins ? ` ${styles.presetButtonActive}` : ''
+                  values.dailyLimitMinutes === minutes ? ` ${styles.presetButtonActive}` : ''
                 }`}
-                onClick={() => handlePresetClick(mins)}
-                aria-pressed={values.dailyLimitMinutes === mins}
+                onClick={() => handlePresetClick(minutes)}
+                aria-pressed={values.dailyLimitMinutes === minutes}
               >
-                {mins} {t.gs_daily_limit_unit}
+                {minutes} {translations.gs_daily_limit_unit}
               </button>
             ))}
           </div>
@@ -320,23 +321,23 @@ export default function StepPreferences({
 
         {/* ── Subject Toggles ────────────────────────────────────────────── */}
         <div className={styles.sliderGroup}>
-          <span className={styles.sliderLabel}>{t.gs_subjects_label}</span>
-          <div className={styles.subjectGrid} role="group" aria-label={t.gs_subjects_label}>
+          <span className={styles.sliderLabel}>{translations.gs_subjects_label}</span>
+          <div className={styles.subjectGrid} role="group" aria-label={translations.gs_subjects_label}>
             {ALL_SUBJECTS.map((subjectId) => {
-              const meta = SUBJECT_META[subjectId];
-              const isActive = (values.allowedSubjects as SubjectId[]).includes(subjectId);
+              const subjectInfo = SUBJECT_META[subjectId];
+              const isSubjectActive = (values.allowedSubjects as SubjectId[]).includes(subjectId);
               return (
                 <button
                   key={subjectId}
                   type="button"
                   className={`${styles.subjectChip}${
-                    isActive ? ` ${styles.subjectChipActive}` : ''
+                    isSubjectActive ? ` ${styles.subjectChipActive}` : ''
                   }`}
                   onClick={() => handleSubjectToggle(subjectId)}
-                  aria-pressed={isActive}
+                  aria-pressed={isSubjectActive}
                 >
-                  <span aria-hidden="true">{meta.emoji}</span>
-                  {meta.label}
+                  <span aria-hidden="true">{subjectInfo.emoji}</span>
+                  {subjectInfo.label}
                 </button>
               );
             })}
@@ -353,8 +354,8 @@ export default function StepPreferences({
         {/* ── Voice Toggle ───────────────────────────────────────────────── */}
         <div className={styles.toggleWrapper}>
           <div className={styles.toggleLabel}>
-            <span className={styles.toggleLabelText}>{t.gs_voice_label}</span>
-            <span className={styles.toggleHint}>{t.gs_voice_hint}</span>
+            <span className={styles.toggleLabelText}>{translations.gs_voice_label}</span>
+            <span className={styles.toggleHint}>{translations.gs_voice_hint}</span>
           </div>
           <button
             type="button"
@@ -377,8 +378,8 @@ export default function StepPreferences({
 
         {/* ── Parent PIN ─────────────────────────────────────────────────── */}
         <div className={styles.pinGroup}>
-          <label className={styles.pinLabel}>{t.gs_pin_label}</label>
-          <p className={styles.pinHint}>{t.gs_pin_hint}</p>
+          <label className={styles.pinLabel}>{translations.gs_pin_label}</label>
+          <p className={styles.pinHint}>{translations.gs_pin_hint}</p>
           {renderPinInputs(pinRefs, 'parentPinCode', 'PIN digit')}
           {resolveError('parentPinCode') && (
             <p className={styles.errorText} role="alert">
@@ -389,7 +390,7 @@ export default function StepPreferences({
 
         {/* ── Confirm PIN ────────────────────────────────────────────────── */}
         <div className={styles.pinGroup}>
-          <label className={styles.pinLabel}>{t.gs_confirm_pin_label}</label>
+          <label className={styles.pinLabel}>{translations.gs_confirm_pin_label}</label>
           {renderPinInputs(confirmPinRefs, 'confirmPinCode', 'Confirm PIN digit')}
           {resolveError('confirmPinCode') && (
             <p className={styles.errorText} role="alert">
@@ -407,9 +408,11 @@ export default function StepPreferences({
           onClick={onSubmit}
           disabled={isSubmitting}
         >
-          {isSubmitting ? '...' : t.gs_next_button}
+          {isSubmitting ? '...' : translations.gs_next_button}
         </button>
       </div>
     </div>
   );
-}
+};
+
+export default StepPreferences;

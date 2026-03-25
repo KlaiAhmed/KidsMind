@@ -1,3 +1,4 @@
+/** TestimonialCarousel — Auto-advancing carousel of parent testimonials with dot navigation and pause-on-hover. */
 import React, { useState, useCallback } from 'react';
 import type { TranslationMap } from '../../types';
 import { TESTIMONIALS } from '../../utils/constants';
@@ -7,10 +8,10 @@ import { useInterval } from '../../hooks/useInterval';
 import styles from './TestimonialCarousel.module.css';
 
 interface TestimonialCarouselProps {
-  t: TranslationMap;
+  translations: TranslationMap;
 }
 
-function StarIcon() {
+const StarIcon = () => {
   return (
     <svg
       width="20"
@@ -23,18 +24,18 @@ function StarIcon() {
       <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
     </svg>
   );
-}
+};
 
-export default function TestimonialCarousel({ t }: TestimonialCarouselProps) {
+const TestimonialCarousel = ({ translations }: TestimonialCarouselProps) => {
   const { ref, isVisible } = useScrollReveal();
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [isHovered, setIsHovered] = useState(false);
+  const [activeTestimonialIndex, setActiveTestimonialIndex] = useState(0);
+  const [isCarouselHovered, setIsCarouselHovered] = useState(false);
 
-  const advance = useCallback(() => {
-    setActiveIndex((prev) => (prev + 1) % TESTIMONIALS.length);
+  const advanceToNextTestimonial = useCallback(() => {
+    setActiveTestimonialIndex((prev) => (prev + 1) % TESTIMONIALS.length);
   }, []);
 
-  useInterval(advance, isHovered ? null : TIMING.carouselInterval);
+  useInterval(advanceToNextTestimonial, isCarouselHovered ? null : TIMING.carouselInterval);
 
   return (
     <section
@@ -46,21 +47,21 @@ export default function TestimonialCarousel({ t }: TestimonialCarouselProps) {
         ref={ref as React.RefObject<HTMLDivElement>}
       >
         <h2 id="testimonials-title" className={styles.sectionTitle}>
-          {t.trust_safe}
+          {translations.trust_safe}
         </h2>
         <div
           className={`${styles.reveal} ${isVisible ? styles.visible : ''}`}
           role="region"
           aria-label="Testimonials"
-          onMouseEnter={() => setIsHovered(true)}
-          onMouseLeave={() => setIsHovered(false)}
+          onMouseEnter={() => setIsCarouselHovered(true)}
+          onMouseLeave={() => setIsCarouselHovered(false)}
         >
           <div className={styles.carouselWrapper}>
             {TESTIMONIALS.map((testimonial, index) => (
               <div
                 key={testimonial.id}
-                className={`${styles.card} ${index === activeIndex ? styles.cardActive : ''}`}
-                aria-hidden={index !== activeIndex}
+                className={`${styles.card} ${index === activeTestimonialIndex ? styles.cardActive : ''}`}
+                aria-hidden={index !== activeTestimonialIndex}
               >
                 <div
                   className={styles.avatar}
@@ -85,10 +86,10 @@ export default function TestimonialCarousel({ t }: TestimonialCarouselProps) {
             {TESTIMONIALS.map((testimonial, index) => (
               <button
                 key={testimonial.id}
-                className={`${styles.dot} ${index === activeIndex ? styles.dotActive : ''}`}
-                onClick={() => setActiveIndex(index)}
+                className={`${styles.dot} ${index === activeTestimonialIndex ? styles.dotActive : ''}`}
+                onClick={() => setActiveTestimonialIndex(index)}
                 aria-label={`Go to testimonial ${index + 1}`}
-                aria-current={index === activeIndex ? true : undefined}
+                aria-current={index === activeTestimonialIndex ? true : undefined}
               />
             ))}
           </div>
@@ -96,4 +97,6 @@ export default function TestimonialCarousel({ t }: TestimonialCarouselProps) {
       </div>
     </section>
   );
-}
+};
+
+export default TestimonialCarousel;

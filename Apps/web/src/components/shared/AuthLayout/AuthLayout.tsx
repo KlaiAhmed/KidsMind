@@ -1,45 +1,37 @@
+/** AuthLayout — Split-screen layout wrapper for login and registration pages with brand illustration panel. */
 import { useState, useRef, useEffect } from 'react';
-import { Sun, Moon, ChevronDown, ArrowLeft } from 'lucide-react';
+import { Sun, Moon, ArrowLeft, Languages } from 'lucide-react';
 import type { AuthLayoutProps, LanguageCode } from '../../../types';
 import { LANGUAGES } from '../../../utils/constants';
 import styles from './AuthLayout.module.css';
 
-/**
- * AuthLayout — Shared split-screen wrapper for login and registration pages.
- *
- * Left panel: brand illustration with gradient background and feature pills.
- * Right panel: scrollable form area with language selector and theme toggle.
- * On mobile, the left panel collapses to a small top banner.
- */
-export default function AuthLayout({
+const AuthLayout = ({
   illustrationVariant,
   children,
-  t,
-  lang,
-  onSetLang,
+  translations,
+  language,
+  onLanguageChange,
   theme,
   onToggleTheme,
-}: AuthLayoutProps) {
+}: AuthLayoutProps) => {
   const [isLanguageDropdownOpen, setIsLanguageDropdownOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const languageDropdownRef = useRef<HTMLDivElement>(null);
 
   // Close language dropdown when clicking outside
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (languageDropdownRef.current && !languageDropdownRef.current.contains(event.target as Node)) {
         setIsLanguageDropdownOpen(false);
       }
-    }
+    };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const currentLanguage = LANGUAGES.find((l) => l.code === lang);
-
-  function handleLanguageSelect(code: LanguageCode) {
-    onSetLang(code);
+  const handleLanguageSelect = (code: LanguageCode) => {
+    onLanguageChange(code);
     setIsLanguageDropdownOpen(false);
-  }
+  };
 
   return (
     <div className={styles.authLayout}>
@@ -67,39 +59,36 @@ export default function AuthLayout({
         </div>
 
         <div className={styles.featurePills}>
-          <span className={styles.featurePill}>{t.trust_safe}</span>
-          <span className={styles.featurePill}>{t.trust_languages}</span>
-          <span className={styles.featurePill}>{t.trust_levels}</span>
+          <span className={styles.featurePill}>{translations.trust_safe}</span>
+          <span className={styles.featurePill}>{translations.trust_languages}</span>
+          <span className={styles.featurePill}>{translations.trust_levels}</span>
         </div>
       </div>
 
       {/* ─── Right Panel (Form) ───────────────────────────────────────── */}
       <div className={styles.formPanel}>
         <div className={styles.formTopBar}>
-          <div className={styles.languageSelector} ref={dropdownRef}>
+          <div className={styles.languageSelector} ref={languageDropdownRef}>
             <button
               className={styles.languageButton}
               onClick={() => setIsLanguageDropdownOpen((prev) => !prev)}
               aria-expanded={isLanguageDropdownOpen}
               aria-haspopup="listbox"
-              aria-label="Select language"
+              aria-label="Open language menu"
             >
-              <span>{currentLanguage?.flag}</span>
-              <span>{currentLanguage?.code.toUpperCase()}</span>
-              <ChevronDown size={14} />
+              <Languages size={18} aria-hidden="true" />
             </button>
             {isLanguageDropdownOpen && (
               <div className={styles.languageDropdown} role="listbox" aria-label="Languages">
-                {LANGUAGES.map((language) => (
+                {LANGUAGES.map((languageOption) => (
                   <button
-                    key={language.code}
-                    className={`${styles.languageOption} ${language.code === lang ? styles.languageOptionActive : ''}`}
-                    onClick={() => handleLanguageSelect(language.code)}
+                    key={languageOption.code}
+                    className={`${styles.languageOption} ${languageOption.code === language ? styles.languageOptionActive : ''}`}
+                    onClick={() => handleLanguageSelect(languageOption.code)}
                     role="option"
-                    aria-selected={language.code === lang}
+                    aria-selected={languageOption.code === language}
                   >
-                    <span>{language.flag}</span>
-                    <span>{language.label}</span>
+                    <span>{languageOption.label}</span>
                   </button>
                 ))}
               </div>
@@ -126,12 +115,12 @@ export default function AuthLayout({
       </div>
     </div>
   );
-}
+};
 
 // ─── Inline SVG Components ────────────────────────────────────────────────────
 
 /** Rocket icon used in the brand logo */
-function RocketIcon({ size = 24 }: { size?: number }) {
+const RocketIcon = ({ size = 24 }: { size?: number }) => {
   return (
     <svg
       width={size}
@@ -149,10 +138,10 @@ function RocketIcon({ size = 24 }: { size?: number }) {
       <path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" />
     </svg>
   );
-}
+};
 
 /** Login illustration — parent and child looking at a glowing screen */
-function LoginIllustration() {
+const LoginIllustration = () => {
   return (
     <svg viewBox="0 0 300 280" fill="none" xmlns="http://www.w3.org/2000/svg">
       {/* Glowing screen */}
@@ -187,10 +176,10 @@ function LoginIllustration() {
       </circle>
     </svg>
   );
-}
+};
 
 /** Register illustration — rocket launching through stars */
-function RegisterIllustration() {
+const RegisterIllustration = () => {
   return (
     <svg viewBox="0 0 300 280" fill="none" xmlns="http://www.w3.org/2000/svg">
       {/* Rocket body */}
@@ -242,4 +231,6 @@ function RegisterIllustration() {
       <ellipse cx="250" cy="230" rx="26" ry="6" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="1" transform="rotate(-20 250 230)" />
     </svg>
   );
-}
+};
+
+export default AuthLayout;

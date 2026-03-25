@@ -3,13 +3,13 @@ from sqlalchemy import (
     Column, Integer, String, Boolean, DateTime,
     Enum as SAEnum, func
 )
-from sqlalchemy.orm import relationship
 from core.database import Base
 
 
 class UserRole(str, enum.Enum):
     PARENT = "parent"
     ADMIN = "admin"
+    SUPER_ADMIN = "super_admin"
 
 
 class User(Base):
@@ -55,19 +55,6 @@ class User(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
     deleted_at = Column(DateTime, nullable=True)
 
-    # RELATIONS 
-    child_profiles = relationship(
-        "ChildProfile",
-        back_populates="parent",
-        cascade="all, delete-orphan",
-        lazy="selectin"
-    )
-    audit_logs = relationship(
-        "AuditLog",
-        back_populates="parent",
-        lazy="dynamic"
-    )
-
     # Helpers :
 
     # IS_LOCKED : CHECK IF ACCOUNT IS CURRENTLY LOCKED DUE TO FAILED LOGIN ATTEMPTS
@@ -86,7 +73,11 @@ class User(Base):
     # IS_ADMIN : CHECK IF USER HAS ADMIN ROLE
     @property
     def is_admin(self) -> bool:
-        return self.role == UserRole.ADMIN
+        return self.role in (UserRole.ADMIN, UserRole.SUPER_ADMIN)
+
+    @property
+    def is_super_admin(self) -> bool:
+        return self.role == UserRole.SUPER_ADMIN
 
     # REPRESENTATION
     def __repr__(self) -> str:

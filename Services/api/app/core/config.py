@@ -21,7 +21,15 @@ class Settings(BaseSettings):
     logger.info(f"Running in {'production' if IS_PROD else 'development'} mode")
 
     # CORS configuration
-    CORS_ORIGINS: list[str] = ["*"]
+    CORS_ORIGINS: list[str] = ["http://localhost:5173"]
+
+    # Auth tokens and cookies
+    ACCESS_TOKEN_EXPIRE_SECONDS: int = 900
+    REFRESH_TOKEN_EXPIRE_SECONDS: int = 604800
+    COOKIE_DOMAIN: str | None = None
+    COOKIE_SAMESITE: str = "strict"
+    COOKIE_SECURE: bool = False
+    CSRF_TOKEN_EXPIRE_SECONDS: int = 3600
 
     # Service Endpoints
     STT_SERVICE_ENDPOINT: str = "http://stt-service:8000"
@@ -59,14 +67,29 @@ class Settings(BaseSettings):
     RATE_LIMIT: str = "100/minute"
     SERVICE_TOKEN: str = ""
     DUMMY_HASH: str = "OwUlzdWgNRnK9JW7mVzTqL3Ia6kVdLiH9u7sQh8j324dghgzyzx"
+    SECRET_KEY: str | None = None
     SECRET_ACCESS_KEY: str
     SECRET_REFRESH_KEY: str
+
+    # Initial super admin bootstrap
+    SUPER_ADMIN_EMAIL: str | None = None
+    SUPER_ADMIN_USERNAME: str | None = None
+    SUPER_ADMIN_PASSWORD: str | None = None
 
     @field_validator("STORAGE_ROOT_PASSWORD", "CACHE_PASSWORD", "DB_PASSWORD", "SECRET_ACCESS_KEY", "SECRET_REFRESH_KEY")
     @classmethod
     def check_not_empty(cls, v: str) -> str:
         if not v or v.strip() == "":
             raise ValueError("Missing required environment variable")
+        return v
+
+    @field_validator("SECRET_KEY")
+    @classmethod
+    def check_optional_secret_key(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if not v.strip():
+            raise ValueError("SECRET_KEY cannot be empty")
         return v
 
 settings = Settings()

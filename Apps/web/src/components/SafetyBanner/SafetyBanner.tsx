@@ -1,3 +1,4 @@
+/** SafetyBanner — Shield-themed banner highlighting four key safety features with checkmark icons. */
 import React from 'react';
 import { Shield, CheckCircle2 } from 'lucide-react';
 import type { TranslationMap } from '../../types';
@@ -5,17 +6,17 @@ import { useScrollReveal } from '../../hooks/useScrollReveal';
 import styles from './SafetyBanner.module.css';
 
 interface SafetyBannerProps {
-  t: TranslationMap;
+  translations: TranslationMap;
 }
 
-export default function SafetyBanner({ t }: SafetyBannerProps) {
+const SafetyBanner = ({ translations }: SafetyBannerProps) => {
   const { ref, isVisible } = useScrollReveal();
 
-  const points = [
-    t.safety_point_1,
-    t.safety_point_2,
-    t.safety_point_3,
-    t.safety_point_4,
+  const safetyPoints = [
+    translations.safety_point_1,
+    translations.safety_point_2,
+    translations.safety_point_3,
+    translations.safety_point_4,
   ];
 
   return (
@@ -31,10 +32,10 @@ export default function SafetyBanner({ t }: SafetyBannerProps) {
           </div>
           <div className={styles.content}>
             <h2 id="safety-title" className={styles.title}>
-              {t.safety_title}
+              {translations.safety_title}
             </h2>
             <ul className={styles.pointsList}>
-              {points.map((point, i) => (
+              {safetyPoints.map((point, i) => (
                 <li key={i} className={styles.point}>
                   <CheckCircle2 size={20} strokeWidth={2} className={styles.pointIcon} aria-hidden="true" />
                   <span>{point}</span>
@@ -46,4 +47,6 @@ export default function SafetyBanner({ t }: SafetyBannerProps) {
       </div>
     </section>
   );
-}
+};
+
+export default SafetyBanner;

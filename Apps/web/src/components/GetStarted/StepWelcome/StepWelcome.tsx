@@ -1,3 +1,4 @@
+/** StepWelcome — Onboarding step 4 (final): confirmation screen with confetti, summary cards, and dashboard CTA. */
 import { useMemo } from 'react';
 import type {
   TranslationMap,
@@ -10,7 +11,7 @@ import styles from './StepWelcome.module.css';
 /* ─── Props ────────────────────────────────────────────────────────────────── */
 
 interface StepWelcomeProps {
-  t: TranslationMap;
+  translations: TranslationMap;
   parentData: Partial<ParentAccountFormData>;
   childData: Partial<ChildProfileFormData>;
   preferencesData: Partial<PreferencesFormData>;
@@ -35,7 +36,7 @@ interface ConfettiPiece {
   delay: string;
 }
 
-function generateConfettiPieces(): ConfettiPiece[] {
+const generateConfettiPieces = (): ConfettiPiece[] => {
   return Array.from({ length: 20 }, (_, i) => ({
     tx: `${(Math.random() - 0.5) * 200}px`,
     ty: `${Math.random() * 150 + 50}px`,
@@ -43,7 +44,7 @@ function generateConfettiPieces(): ConfettiPiece[] {
     color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
     delay: `${Math.random() * 0.5}s`,
   }));
-}
+};
 
 /* ─── Helpers ──────────────────────────────────────────────────────────────── */
 
@@ -52,7 +53,7 @@ function generateConfettiPieces(): ConfettiPiece[] {
  * Shows first 2 characters + "***" + "@" + domain.
  * e.g., "john.doe@example.com" -> "jo***@example.com"
  */
-function maskEmail(email: string): string {
+const maskEmail = (email: string): string => {
   if (!email) return '';
   const atIndex = email.indexOf('@');
   if (atIndex < 0) return email;
@@ -60,17 +61,17 @@ function maskEmail(email: string): string {
   const domain = email.slice(atIndex);
   const visibleChars = localPart.slice(0, 2);
   return `${visibleChars}***${domain}`;
-}
+};
 
 /* ─── Component ────────────────────────────────────────────────────────────── */
 
-export default function StepWelcome({
-  t,
+const StepWelcome = ({
+  translations,
   parentData,
   childData,
   preferencesData,
   onFinish,
-}: StepWelcomeProps) {
+}: StepWelcomeProps) => {
   const confettiPieces = useMemo(() => generateConfettiPieces(), []);
 
   const maskedEmail = useMemo(
@@ -78,12 +79,12 @@ export default function StepWelcome({
     [parentData.email]
   );
 
-  const dailyLimit = preferencesData.dailyLimitMinutes ?? 30;
-  const voiceEnabled = preferencesData.enableVoice ?? false;
+  const dailyTimeLimitMinutes = preferencesData.dailyLimitMinutes ?? 30;
+  const isVoiceEnabled = preferencesData.enableVoice ?? false;
 
   /* ─── Determine age group display ────────────────────────────────────────── */
 
-  const ageGroupDisplay = useMemo(() => {
+  const ageGroupLabel = useMemo(() => {
     const ageGroup = childData.ageGroup;
     if (!ageGroup) return '';
     const ageGroupLabels: Record<string, string> = {
@@ -136,8 +137,8 @@ export default function StepWelcome({
       </div>
 
       {/* ── Title ─────────────────────────────────────────────────────────── */}
-      <h2 className={styles.title}>{t.gs_step4_title}</h2>
-      <p className={styles.subtitle}>{t.gs_step4_subtitle}</p>
+      <h2 className={styles.title}>{translations.gs_step4_title}</h2>
+      <p className={styles.subtitle}>{translations.gs_step4_subtitle}</p>
 
       {/* ── Summary Cards ─────────────────────────────────────────────────── */}
       <div className={styles.summaryCards}>
@@ -148,7 +149,7 @@ export default function StepWelcome({
           </span>
           <div className={styles.summaryText}>
             <span className={styles.summaryLabel}>
-              {t.gs_welcome_summary_account}
+              {translations.gs_welcome_summary_account}
             </span>
             <span className={styles.summaryValue}>
               {maskedEmail}
@@ -163,10 +164,10 @@ export default function StepWelcome({
           </span>
           <div className={styles.summaryText}>
             <span className={styles.summaryLabel}>
-              {t.gs_welcome_summary_profile}
+              {translations.gs_welcome_summary_profile}
             </span>
             <span className={styles.summaryValue}>
-              {childData.nickname ?? ''}{ageGroupDisplay ? ` (${ageGroupDisplay})` : ''}
+              {childData.nickname ?? ''}{ageGroupLabel ? ` (${ageGroupLabel})` : ''}
             </span>
           </div>
         </div>
@@ -178,10 +179,10 @@ export default function StepWelcome({
           </span>
           <div className={styles.summaryText}>
             <span className={styles.summaryLabel}>
-              {t.gs_welcome_summary_safety}
+              {translations.gs_welcome_summary_safety}
             </span>
             <span className={styles.summaryValue}>
-              {dailyLimit} min/day &middot; {voiceEnabled ? 'Voice ON' : 'Voice OFF'}
+              {dailyTimeLimitMinutes} min/day &middot; {isVoiceEnabled ? 'Voice ON' : 'Voice OFF'}
             </span>
           </div>
         </div>
@@ -193,7 +194,7 @@ export default function StepWelcome({
         className={styles.ctaButton}
         onClick={onFinish}
       >
-        {t.gs_welcome_cta}
+        {translations.gs_welcome_cta}
       </button>
 
       {/* ── Footnote ──────────────────────────────────────────────────────── */}
@@ -202,4 +203,6 @@ export default function StepWelcome({
       </p>
     </div>
   );
-}
+};
+
+export default StepWelcome;

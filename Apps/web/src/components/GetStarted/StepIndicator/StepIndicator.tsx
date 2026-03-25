@@ -1,20 +1,14 @@
+/** StepIndicator — Visual step tracker showing numbered circles with connecting lines and mobile compact view. */
 import React from 'react';
 import { CheckCircle2 } from 'lucide-react';
 import type { StepIndicatorProps, TranslationMap } from '../../../types';
 import styles from './StepIndicator.module.css';
 
-/**
- * StepIndicator — Visual step tracker for multi-step onboarding flow.
- *
- * Shows numbered steps connected by a progress line.
- * Completed steps show a checkmark. Current step is highlighted.
- * Future steps are muted. On mobile, shows compact "Step X of Y" text.
- */
-export default function StepIndicator({
+const StepIndicator = ({
   steps,
   currentIndex,
-  t,
-}: StepIndicatorProps & { t: TranslationMap }) {
+  translations,
+}: StepIndicatorProps & { translations: TranslationMap }) => {
   return (
     <>
       {/* ─── Mobile: Compact step text ───────────────────────────────── */}
@@ -22,7 +16,7 @@ export default function StepIndicator({
         <span className={styles.mobileStep}>
           {currentIndex + 1} / {steps.length}
         </span>
-        <span>{t[steps[currentIndex].titleKey]}</span>
+        <span>{translations[steps[currentIndex].titleKey]}</span>
       </div>
 
       {/* ─── Desktop: Full step indicator ────────────────────────────── */}
@@ -53,7 +47,7 @@ export default function StepIndicator({
                     isCompleted ? styles.stepLabelCompleted : ''
                   } ${isCurrent ? styles.stepLabelCurrent : ''}`}
                 >
-                  {t[step.titleKey]}
+                  {translations[step.titleKey]}
                 </span>
               </div>
 
@@ -70,4 +64,6 @@ export default function StepIndicator({
       </div>
     </>
   );
-}
+};
+
+export default StepIndicator;

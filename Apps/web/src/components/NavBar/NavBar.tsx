@@ -1,5 +1,7 @@
+/** NavBar — Fixed navigation bar with language selector, theme toggle, and mobile drawer menu. */
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Sun, Moon, Menu, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Sun, Moon, Menu, X, Languages, User } from 'lucide-react';
 import type { ThemeMode, LanguageCode, TranslationMap } from '../../types';
 import { LANGUAGES } from '../../utils/constants';
 import { useScrollPosition } from '../../hooks/useScrollPosition';
@@ -8,12 +10,13 @@ import styles from './NavBar.module.css';
 interface NavBarProps {
   theme: ThemeMode;
   onToggleTheme: () => void;
-  lang: LanguageCode;
-  onSetLang: (code: LanguageCode) => void;
-  t: TranslationMap;
+  language: LanguageCode;
+  onLanguageChange: (code: LanguageCode) => void;
+  translations: TranslationMap;
+  isAuthenticated: boolean;
 }
 
-function RocketLogo() {
+const RocketLogo = () => {
   return (
     <svg
       className={styles.logoIcon}
@@ -30,48 +33,48 @@ function RocketLogo() {
       <path d="M15 28L14 34L18 31L22 34L21 28" fill="var(--accent-fun)" />
     </svg>
   );
-}
+};
 
-export default function NavBar({
+const NavBar = ({
   theme,
   onToggleTheme,
-  lang,
-  onSetLang,
-  t,
-}: NavBarProps) {
-  const { isScrolled } = useScrollPosition();
-  const [langOpen, setLangOpen] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const langRef = useRef<HTMLDivElement>(null);
+  language,
+  onLanguageChange,
+  translations,
+  isAuthenticated,
+}: NavBarProps) => {
+  const { isAtPageTop, isHiddenByScroll } = useScrollPosition();
+  const [isLanguageDropdownOpen, setIsLanguageDropdownOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const languageDropdownRef = useRef<HTMLDivElement>(null);
+  const shouldHideNav = isHiddenByScroll && !isMobileMenuOpen;
 
-  const currentLang = LANGUAGES.find((l) => l.code === lang);
-
-  const handleLangSelect = useCallback(
+  const handleLanguageSelect = useCallback(
     (code: LanguageCode) => {
-      onSetLang(code);
-      setLangOpen(false);
-      setMobileOpen(false);
+      onLanguageChange(code);
+      setIsLanguageDropdownOpen(false);
+      setIsMobileMenuOpen(false);
     },
-    [onSetLang]
+    [onLanguageChange]
   );
 
   useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (langRef.current && !langRef.current.contains(e.target as Node)) {
-        setLangOpen(false);
+    const handleClickOutside = (e: MouseEvent) => {
+      if (languageDropdownRef.current && !languageDropdownRef.current.contains(e.target as Node)) {
+        setIsLanguageDropdownOpen(false);
       }
-    }
+    };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   useEffect(() => {
-    function handleEscape(e: KeyboardEvent) {
+    const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setLangOpen(false);
-        setMobileOpen(false);
+        setIsLanguageDropdownOpen(false);
+        setIsMobileMenuOpen(false);
       }
-    }
+    };
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
   }, []);
@@ -82,7 +85,7 @@ export default function NavBar({
         Skip to content
       </a>
       <nav
-        className={`${styles.nav} ${isScrolled ? styles.navScrolled : ''}`}
+        className={`${styles.nav} ${isAtPageTop ? styles.navAtTop : ''} ${shouldHideNav ? styles.navHidden : ''}`}
         aria-label="Main navigation"
       >
         <div className={styles.navInner}>
@@ -92,28 +95,27 @@ export default function NavBar({
           </a>
 
           <div className={styles.desktopNav}>
-            <div className={styles.langSelector} ref={langRef}>
+            <div className={styles.langSelector} ref={languageDropdownRef}>
               <button
                 className={styles.langButton}
-                onClick={() => setLangOpen(!langOpen)}
-                aria-expanded={langOpen}
+                onClick={() => setIsLanguageDropdownOpen(!isLanguageDropdownOpen)}
+                aria-expanded={isLanguageDropdownOpen}
                 aria-haspopup="listbox"
+                aria-label="Open language menu"
               >
-                <span aria-hidden="true">{currentLang?.flag}</span>
-                <span>{currentLang?.code.toUpperCase()}</span>
+                <Languages size={18} strokeWidth={2} aria-hidden="true" />
               </button>
-              {langOpen && (
+              {isLanguageDropdownOpen && (
                 <div className={styles.langDropdown} role="listbox" aria-label="Select language">
-                  {LANGUAGES.map((l) => (
+                  {LANGUAGES.map((languageOption) => (
                     <button
-                      key={l.code}
-                      className={`${styles.langOption} ${l.code === lang ? styles.langOptionActive : ''}`}
-                      onClick={() => handleLangSelect(l.code)}
+                      key={languageOption.code}
+                      className={`${styles.langOption} ${languageOption.code === language ? styles.langOptionActive : ''}`}
+                      onClick={() => handleLanguageSelect(languageOption.code)}
                       role="option"
-                      aria-selected={l.code === lang}
+                      aria-selected={languageOption.code === language}
                     >
-                      <span aria-hidden="true">{l.flag}</span>
-                      <span>{l.label}</span>
+                      <span>{languageOption.label}</span>
                     </button>
                   ))}
                 </div>
@@ -128,35 +130,46 @@ export default function NavBar({
               {theme === 'light' ? <Moon size={20} strokeWidth={2} /> : <Sun size={20} strokeWidth={2} />}
             </button>
 
-            <button className={styles.loginButton}>{t.nav_login}</button>
-            <button className={styles.startButton}>{t.nav_start}</button>
+            {isAuthenticated ? (
+              <button
+                type="button"
+                className={styles.userButton}
+                aria-label="User account"
+              >
+                <User size={20} strokeWidth={2} aria-hidden="true" />
+              </button>
+            ) : (
+              <>
+                <Link to="/login" className={styles.loginButton}>{translations.nav_login}</Link>
+                <Link to="/get-started" className={styles.startButton}>{translations.nav_start}</Link>
+              </>
+            )}
           </div>
 
           <button
             className={styles.mobileMenuButton}
-            onClick={() => setMobileOpen(!mobileOpen)}
-            aria-expanded={mobileOpen}
-            aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            aria-expanded={isMobileMenuOpen}
+            aria-label={isMobileMenuOpen ? 'Close menu' : 'Open menu'}
           >
-            {mobileOpen ? <X size={20} strokeWidth={2} /> : <Menu size={20} strokeWidth={2} />}
+            {isMobileMenuOpen ? <X size={20} strokeWidth={2} /> : <Menu size={20} strokeWidth={2} />}
             <span className={styles.mobileMenuLabel}>Menu</span>
           </button>
         </div>
       </nav>
 
       <div
-        className={`${styles.mobileDrawer} ${mobileOpen ? styles.mobileDrawerOpen : styles.mobileDrawerClosed}`}
-        aria-hidden={!mobileOpen}
+        className={`${styles.mobileDrawer} ${isMobileMenuOpen ? styles.mobileDrawerOpen : styles.mobileDrawerClosed}`}
+        aria-hidden={!isMobileMenuOpen}
       >
         <div className={styles.mobileLangList}>
-          {LANGUAGES.map((l) => (
+          {LANGUAGES.map((languageOption) => (
             <button
-              key={l.code}
-              className={`${styles.langOption} ${l.code === lang ? styles.langOptionActive : ''}`}
-              onClick={() => handleLangSelect(l.code)}
+              key={languageOption.code}
+              className={`${styles.langOption} ${languageOption.code === language ? styles.langOptionActive : ''}`}
+              onClick={() => handleLanguageSelect(languageOption.code)}
             >
-              <span aria-hidden="true">{l.flag}</span>
-              <span>{l.label}</span>
+              <span>{languageOption.label}</span>
             </button>
           ))}
         </div>
@@ -167,9 +180,23 @@ export default function NavBar({
         >
           {theme === 'light' ? <Moon size={20} strokeWidth={2} /> : <Sun size={20} strokeWidth={2} />}
         </button>
-        <button className={styles.loginButton}>{t.nav_login}</button>
-        <button className={styles.startButton}>{t.nav_start}</button>
+        {isAuthenticated ? (
+          <button
+            type="button"
+            className={styles.userButton}
+            aria-label="User account"
+          >
+            <User size={20} strokeWidth={2} aria-hidden="true" />
+          </button>
+        ) : (
+          <>
+            <Link to="/login" className={styles.loginButton} onClick={() => setIsMobileMenuOpen(false)}>{translations.nav_login}</Link>
+            <Link to="/get-started" className={styles.startButton} onClick={() => setIsMobileMenuOpen(false)}>{translations.nav_start}</Link>
+          </>
+        )}
       </div>
     </>
   );
-}
+};
+
+export default NavBar;

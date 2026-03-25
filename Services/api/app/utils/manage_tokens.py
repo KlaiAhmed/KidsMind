@@ -1,11 +1,12 @@
 from fastapi import HTTPException, status
 from datetime import datetime, timedelta, timezone
 import jwt
+from uuid import uuid4
 
 from core.config import settings
 
 
-def generate_tokens(user_id: int, role: str):
+def generate_tokens(user_id: int, role: str, token_family: str | None = None):
     """Create signed access and refresh JWTs for a user.
 
     Args:
@@ -17,17 +18,20 @@ def generate_tokens(user_id: int, role: str):
     """
     access_token = _create_token(
         payload={"sub": str(user_id), "role": role},
-        expires_delta=timedelta(minutes=15),
+        expires_delta=timedelta(seconds=settings.ACCESS_TOKEN_EXPIRE_SECONDS),
         secret=settings.SECRET_ACCESS_KEY
     )
+
+    refresh_family = token_family or uuid4().hex
+    refresh_jti = uuid4().hex
     
     refresh_token = _create_token(
-        payload={"sub": str(user_id)},
-        expires_delta=timedelta(days=7),
+        payload={"sub": str(user_id), "jti": refresh_jti, "family": refresh_family, "type": "refresh"},
+        expires_delta=timedelta(seconds=settings.REFRESH_TOKEN_EXPIRE_SECONDS),
         secret=settings.SECRET_REFRESH_KEY
     )
 
-    return access_token, refresh_token
+    return access_token, refresh_token, refresh_jti, refresh_family
 
 
 def _create_token(payload: dict, expires_delta: timedelta, secret: str):
