@@ -13,6 +13,8 @@ flowchart TD
     subgraph Core API
         Router --> VoiceHandler[voice_chat]
         Router --> TextHandler[text_chat]
+        Router --> HistoryHandler[get_history]
+        Router --> ClearHistoryHandler[clear_history]
         Router --> HealthCheck[health_check]
 
         VoiceHandler --> ValidateAudio[validate_audio_file]
@@ -26,7 +28,7 @@ flowchart TD
     subgraph External Services
         MinIOClient -->|S3 API| MinIO[(MinIO Storage)]
         VoiceHandler -->|POST /v1/stt/transcriptions| STT[STT Service]
-        GenContent -->|POST /v1/ai/chat/stream/…| AI[AI Service]
+        GenContent -->|POST /v1/ai/chat/… or /v1/ai/chat/stream/…| AI[AI Service]
     end
 
     subgraph Infrastructure
@@ -61,10 +63,50 @@ flowchart LR
 
 | Method | Endpoint | Request Body | Response | Description |
 |--------|----------|-------------|----------|-------------|
-| POST | `/voice/{user_id}/{child_id}/{session_id}` | `multipart/form-data`: `audio_file` (required), `context` (str, optional), `store_audio` (bool, default `true`) | `{"ai_data": { ... }}` | Upload audio → STT transcription → AI response |
-| POST | `/text/{user_id}/{child_id}/{session_id}` | `{"text": "...", "context": "..."}` | AI response object | Send text directly → AI response |
+| POST | `/voice/{user_id}/{child_id}/{session_id}` | `multipart/form-data`: `audio_file` (required), `context` (str, optional), `age_group` (`3-6` \| `7-11` \| `12-15` \| `3-15`, default `3-15`), `stream` (bool, default `false`), `store_audio` (bool, default `true`) | JSON when `stream=false`, SSE when `stream=true` | Upload audio → STT transcription → AI response |
+| POST | `/text/{user_id}/{child_id}/{session_id}` | `{"text": "...", "context": "...", "age_group": "3-15", "stream": false}` | JSON when `stream=false`, SSE when `stream=true` | Send text directly → AI response |
+| GET | `/history/{user_id}/{child_id}/{session_id}` | — | `{"messages": [{"role": "...", "content": "..."}]}` | Fetch conversation history from AI service |
+| DELETE | `/history/{user_id}/{child_id}/{session_id}` | — | `{"status": "cleared"}` | Clear conversation history in AI service |
 
 **Path parameters** (all strings): `user_id`, `child_id`, `session_id` — identify the user, child profile, and conversation session.
+
+### Streaming Selection Examples
+
+**Text (full response / default):**
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/chat/text/u1/c1/s1" \
+    -H "Content-Type: application/json" \
+    -d '{"text":"Explain gravity for kids","context":"science","age_group":"7-11","stream":false}'
+```
+
+**Text (streaming SSE):**
+
+```bash
+curl -N -X POST "http://localhost:8000/api/v1/chat/text/u1/c1/s1" \
+    -H "Content-Type: application/json" \
+    -d '{"text":"Explain gravity for kids","context":"science","age_group":"7-11","stream":true}'
+```
+
+**Voice (full response / default):**
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/chat/voice/u1/c1/s1" \
+    -F "audio_file=@sample.wav" \
+    -F "context=science" \
+    -F "age_group=7-11" \
+    -F "stream=false"
+```
+
+**Voice (streaming SSE):**
+
+```bash
+curl -N -X POST "http://localhost:8000/api/v1/chat/voice/u1/c1/s1" \
+    -F "audio_file=@sample.wav" \
+    -F "context=science" \
+    -F "age_group=7-11" \
+    -F "stream=true"
+```
 
 ## Data Flow
 
@@ -78,7 +120,7 @@ sequenceDiagram
     participant STT as STT Service
     participant AI as AI Service
 
-    C->>API: POST /api/v1/chat/voice/{ids}<br/>multipart audio + context
+    C->>API: POST /api/v1/chat/voice/{ids}<br/>multipart audio + context + age_group
     API->>API: validate_audio_file<br/>(type ∈ allowed set, size ≤ MAX_SIZE)
     API->>S3: put_object(media-private, …)<br/>with user metadata
     S3-->>API: OK
@@ -86,9 +128,15 @@ sequenceDiagram
     S3-->>API: presigned URL
     API->>STT: POST /v1/stt/transcriptions<br/>{"audio_url", "context"}
     STT-->>API: {"text": "transcribed…"}
-    API->>AI: POST /v1/ai/chat/stream/{ids}<br/>{"text", "context"}
-    AI-->>API: {"response": { … }}
-    API-->>C: {"ai_data": { … }}
+    alt stream = false
+        API->>AI: POST /v1/ai/chat/{ids}<br/>{"text", "context", "age_group"}
+        AI-->>API: {"response": { … }}
+        API-->>C: {"ai_data": { … }}
+    else stream = true
+        API->>AI: POST /v1/ai/chat/stream/{ids}<br/>{"text", "context", "age_group"}
+        AI-->>API: SSE stream
+        API-->>C: SSE stream
+    end
 
     opt store_audio = false
         API->>S3: remove_object(filename)
@@ -103,10 +151,16 @@ sequenceDiagram
     participant API as Core API
     participant AI as AI Service
 
-    C->>API: POST /api/v1/chat/text/{ids}<br/>{"text", "context"}
-    API->>AI: POST /v1/ai/chat/stream/{ids}<br/>{"text", "context"}
-    AI-->>API: {"response": { … }}
-    API-->>C: AI response
+    C->>API: POST /api/v1/chat/text/{ids}<br/>{"text", "context", "age_group", "stream"}
+    alt stream = false
+        API->>AI: POST /v1/ai/chat/{ids}<br/>{"text", "context", "age_group"}
+        AI-->>API: {"response": { … }}
+        API-->>C: AI response JSON
+    else stream = true
+        API->>AI: POST /v1/ai/chat/stream/{ids}<br/>{"text", "context", "age_group"}
+        AI-->>API: SSE stream
+        API-->>C: SSE stream
+    end
 ```
 
 ## Configuration
@@ -118,6 +172,7 @@ sequenceDiagram
 | `STT_SERVICE_ENDPOINT` | No | `http://stt-service:8000` | STT microservice base URL |
 | `STORAGE_SERVICE_ENDPOINT` | No | `http://storage-service:9000` | MinIO/S3 storage endpoint |
 | `AI_SERVICE_ENDPOINT` | No | `http://ai-service:8000` | AI microservice base URL |
+| `SERVICE_TOKEN` | No | empty | Token sent as `X-Service-Token` to upstream services |
 | `DB_SERVICE_ENDPOINT` | No | `http://db:5432` | Database endpoint (configured, not yet used) |
 | `MAX_SIZE` | No | `10485760` (10 MB) | Maximum upload file size in bytes |
 | `ALLOWED_CONTENT_TYPES` | No | `audio/mpeg, audio/wav, audio/x-wav, audio/mp3` | Accepted audio MIME types |

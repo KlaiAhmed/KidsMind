@@ -14,6 +14,7 @@ from routers.chat import router as chat_router
 from routers.auth import router as auth_router
 from utils.limiter import limiter
 from utils.logger import logger
+from utils.upstream_headers import build_service_headers
 
 
 
@@ -26,7 +27,7 @@ HTTPX_TIMEOUT = httpx.Timeout(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with httpx.AsyncClient(timeout=HTTPX_TIMEOUT) as client:
+    async with httpx.AsyncClient(timeout=HTTPX_TIMEOUT, headers=build_service_headers()) as client:
         app.state.http_client = client
 
         await get_cache_client()

@@ -6,7 +6,15 @@ from core.config import settings
 
 
 def generate_tokens(user_id: int, role: str):
-    """Generate access and refresh tokens for a given user ID and role."""
+    """Create signed access and refresh JWTs for a user.
+
+    Args:
+        user_id: Numeric user identifier.
+        role: User role claim for the access token.
+
+    Returns:
+        A tuple of `(access_token, refresh_token)`.
+    """
     access_token = _create_token(
         payload={"sub": str(user_id), "role": role},
         expires_delta=timedelta(minutes=15),
@@ -23,6 +31,16 @@ def generate_tokens(user_id: int, role: str):
 
 
 def _create_token(payload: dict, expires_delta: timedelta, secret: str):
+    """Build and sign a JWT with issued-at and expiration claims.
+
+    Args:
+        payload: Base claims to include in the token.
+        expires_delta: Token lifetime duration.
+        secret: Signing secret for HS256.
+
+    Returns:
+        Encoded JWT string.
+    """
     to_encode = payload.copy()
     now = datetime.now(timezone.utc)
     to_encode.update({
@@ -33,13 +51,14 @@ def _create_token(payload: dict, expires_delta: timedelta, secret: str):
 
 
 def verify_token(token: str, token_type: str):
-    """
-    Verify the given JWT token and return the decoded payload if valid, otherwise return an error message.
-    Args:        
-        token (str): The JWT token to verify.
-        token_type (str): The type of token to verify. Expected values are "access" or "refresh".
+    """Decode and validate a JWT, raising HTTP 401 on failure.
+
+    Args:
+        token: JWT string to validate.
+        token_type: Token kind (`"access"` or `"refresh"`) used to choose the secret.
+
     Returns:
-        payload if valid, otherwise raises an HTTPException.
+        Decoded token payload as a dictionary.
     """
     secret = settings.SECRET_REFRESH_KEY if token_type == "refresh" else settings.SECRET_ACCESS_KEY
     try:

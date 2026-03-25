@@ -4,16 +4,25 @@ from argon2.exceptions import VerifyMismatchError, VerificationError, InvalidHas
 ph = PasswordHasher()
 
 def hash_password(plain: str) -> str:
+    """Hash a plain-text password using Argon2.
+
+    Args:
+        plain: Raw password string.
+
+    Returns:
+        Argon2 hashed password string.
+    """
     return ph.hash(plain)
 
 def verify_password(plain: str, hashed: str) -> bool:
-    """
-    Verify a plain password against a hashed password.
+    """Verify a plain password against an Argon2 hash.
+
     Args:
-        plain (str): The plain password to verify.
-        hashed (str): The hashed password to verify against.
+        plain: Raw password string to check.
+        hashed: Stored Argon2 hash.
+
     Returns:
-        bool: True if the password is correct, False otherwise.
+        True when the password matches; otherwise False.
     """
     try:
         return ph.verify(hashed, plain)
