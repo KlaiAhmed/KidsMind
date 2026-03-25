@@ -70,6 +70,25 @@ flowchart LR
 
 **Path parameters** (all strings): `user_id`, `child_id`, `session_id` — identify the user, child profile, and conversation session.
 
+### Auth (`/api/v1/auth`)
+
+Client type is resolved from `X-Client-Type: web|mobile` (fallback: `device_type` in body).
+
+| Method | Endpoint | Request | Web Behavior | Mobile Behavior |
+|--------|----------|---------|--------------|-----------------|
+| POST | `/login` | `{"email":"...","password":"..."}` | Sets HttpOnly cookies: `access_token` (path `/`), `refresh_token` (path `/api/v1/auth/refresh`) | Returns JSON tokens (`access_token`, `refresh_token`, `token_type`, `expires_in`) |
+| POST | `/refresh` | Optional body `{"refresh_token":"..."}` | Reads refresh token from cookie and rotates tokens; returns updated cookies | Reads refresh token from `Authorization: Bearer <refresh_token>` or body; returns rotated JSON tokens |
+| POST | `/logout` | Optional body `{"refresh_token":"..."}` | Revokes session if token present and clears auth cookies | Revokes refresh token session; client discards local tokens |
+
+#### Auth security notes
+
+- Access token lifetime defaults to `900` seconds.
+- Refresh token lifetime defaults to `604800` seconds.
+- Refresh tokens are stored server-side with rotation metadata (token family, revoke status, replacement chain).
+- Refresh token reuse detection revokes active tokens in the same family.
+- Cookies are `HttpOnly` and scoped (`refresh_token` limited to `/api/v1/auth/refresh`).
+- For browser cookies, frontend requests must include credentials (`fetch(..., { credentials: "include" })` or `axios` `withCredentials: true`).
+
 ### Streaming Selection Examples
 
 **Text (full response / default):**

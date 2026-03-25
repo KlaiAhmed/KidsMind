@@ -21,7 +21,14 @@ class Settings(BaseSettings):
     logger.info(f"Running in {'production' if IS_PROD else 'development'} mode")
 
     # CORS configuration
-    CORS_ORIGINS: list[str] = ["*"]
+    CORS_ORIGINS: list[str] = ["http://localhost:5173"]
+
+    # Auth tokens and cookies
+    ACCESS_TOKEN_EXPIRE_SECONDS: int = 900
+    REFRESH_TOKEN_EXPIRE_SECONDS: int = 604800
+    COOKIE_DOMAIN: str | None = None
+    COOKIE_SAMESITE: str = "strict"
+    COOKIE_SECURE: bool = False
 
     # Service Endpoints
     STT_SERVICE_ENDPOINT: str = "http://stt-service:8000"

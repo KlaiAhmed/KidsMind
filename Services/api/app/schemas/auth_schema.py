@@ -25,3 +25,26 @@ class UserLogin(BaseModel):
             raise ValueError(f"Password must contain: {', '.join(errors)}")
 
         return value
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str | None = None
+    device_type: str | None = None
+
+
+class LogoutRequest(BaseModel):
+    refresh_token: str | None = None
+    device_type: str | None = None
+
+
+class AuthUser(BaseModel):
+    id: int
+    email: EmailStr
+
+
+class MobileTokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    user: AuthUser
