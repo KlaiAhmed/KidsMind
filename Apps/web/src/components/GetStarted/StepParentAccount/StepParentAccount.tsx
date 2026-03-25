@@ -1,3 +1,4 @@
+/** StepParentAccount — Onboarding step 1: collects parent email, password, country, and terms agreement. */
 import { ArrowRight } from 'lucide-react';
 import type { TranslationMap, LanguageCode, ParentAccountFormData } from '../../../types';
 import { useForm } from '../../../hooks/useForm';
@@ -7,8 +8,8 @@ import PasswordField from '../../shared/PasswordField/PasswordField';
 import styles from './StepParentAccount.module.css';
 
 interface StepParentAccountProps {
-  t: TranslationMap;
-  lang: LanguageCode;
+  translations: TranslationMap;
+  language: LanguageCode;
   onComplete: (data: ParentAccountFormData) => void;
 }
 
@@ -36,11 +37,11 @@ const COUNTRIES = [
  * Collects the parent's email, password (with strength meter),
  * password confirmation, country, language, and terms agreement.
  */
-export default function StepParentAccount({
-  t,
-  lang,
+const StepParentAccount = ({
+  translations,
+  language,
   onComplete,
-}: StepParentAccountProps) {
+}: StepParentAccountProps) => {
   const {
     values,
     errors,
@@ -54,101 +55,101 @@ export default function StepParentAccount({
       password: '',
       confirmPassword: '',
       country: '',
-      language: lang,
+      language,
       agreedToTerms: false,
     },
     validateParentAccountStep
   );
 
-  function resolveError(field: string): string | undefined {
+  const resolveError = (field: string): string | undefined => {
     const errorKey = errors[field];
     if (!errorKey) return undefined;
-    return t[errorKey as keyof TranslationMap] ?? errorKey;
-  }
+    return translations[errorKey as keyof TranslationMap] ?? errorKey;
+  };
 
-  async function onSubmit(data: ParentAccountFormData): Promise<void> {
+  const onSubmit = async (data: ParentAccountFormData): Promise<void> => {
     onComplete(data);
-  }
+  };
 
   return (
     <div className={styles.stepContainer}>
       <div className={styles.stepHeader}>
-        <h2 className={styles.stepTitle}>{t.gs_step1_title}</h2>
-        <p className={styles.stepSubtitle}>{t.gs_step1_subtitle}</p>
+        <h2 className={styles.stepTitle}>{translations.gs_step1_title}</h2>
+        <p className={styles.stepSubtitle}>{translations.gs_step1_subtitle}</p>
       </div>
 
       <form
         className={styles.form}
-        onSubmit={(e) => {
-          e.preventDefault();
+        onSubmit={(event) => {
+          event.preventDefault();
           void handleSubmit(onSubmit);
         }}
         noValidate
       >
         <FormField
           id="parent-email"
-          label={t.gs_email_label}
+          label={translations.gs_email_label}
           type="email"
           value={values.email}
           error={resolveError('email')}
-          placeholder={t.gs_email_placeholder}
+          placeholder={translations.gs_email_placeholder}
           required
           autoComplete="email"
-          onChange={(val) => handleChange('email', val)}
+          onChange={(value) => handleChange('email', value)}
           onBlur={() => handleBlur('email')}
         />
 
         <PasswordField
           id="parent-password"
-          label={t.gs_password_label}
+          label={translations.gs_password_label}
           value={values.password}
           error={resolveError('password')}
-          placeholder={t.gs_password_placeholder}
+          placeholder={translations.gs_password_placeholder}
           showStrengthMeter
           autoComplete="new-password"
-          onChange={(val) => handleChange('password', val)}
+          onChange={(value) => handleChange('password', value)}
           onBlur={() => handleBlur('password')}
-          t={t}
+          translations={translations}
         />
 
         <PasswordField
           id="parent-confirm-password"
-          label={t.gs_confirm_password_label}
+          label={translations.gs_confirm_password_label}
           value={values.confirmPassword}
           error={resolveError('confirmPassword')}
-          placeholder={t.gs_confirm_password_placeholder}
+          placeholder={translations.gs_confirm_password_placeholder}
           autoComplete="new-password"
-          onChange={(val) => handleChange('confirmPassword', val)}
+          onChange={(value) => handleChange('confirmPassword', value)}
           onBlur={() => handleBlur('confirmPassword')}
-          t={t}
+          translations={translations}
         />
 
         <FormField
           id="parent-country"
-          label={t.gs_country_label}
+          label={translations.gs_country_label}
           type="select"
           value={values.country}
           error={resolveError('country')}
-          placeholder={t.gs_country_placeholder}
+          placeholder={translations.gs_country_placeholder}
           required
-          onChange={(val) => handleChange('country', val)}
+          onChange={(value) => handleChange('country', value)}
           onBlur={() => handleBlur('country')}
         >
-          {COUNTRIES.map((c) => (
-            <option key={c.value} value={c.value}>
-              {c.label}
+          {COUNTRIES.map((country) => (
+            <option key={country.value} value={country.value}>
+              {country.label}
             </option>
           ))}
         </FormField>
 
         <FormField
           id="parent-terms"
-          label={t.gs_terms_checkbox}
+          label={translations.gs_terms_checkbox}
           type="checkbox"
           value={values.agreedToTerms ? 'true' : 'false'}
           error={resolveError('agreedToTerms')}
           required
-          onChange={(val) => handleChange('agreedToTerms', val === 'true')}
+          onChange={(value) => handleChange('agreedToTerms', value === 'true')}
         />
 
         <button
@@ -159,10 +160,12 @@ export default function StepParentAccount({
           {isSubmitting ? (
             <span className={styles.spinner} aria-hidden="true" />
           ) : null}
-          {t.gs_next_button}
+          {translations.gs_next_button}
           {!isSubmitting ? <ArrowRight size={18} aria-hidden="true" /> : null}
         </button>
       </form>
     </div>
   );
-}
+};
+
+export default StepParentAccount;

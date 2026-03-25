@@ -1,3 +1,4 @@
+/** Complete translation strings for all supported languages (en, fr, es, it, ar, ch). */
 import type { Translations } from '../types';
 
 const translations: Translations = {
@@ -701,7 +702,7 @@ const translations: Translations = {
     error_pin_must_be_4_digits: 'يجب أن يكون رمز PIN ٤ أرقام بالضبط',
     error_pins_dont_match: 'رموز PIN غير متطابقة',
   },
-  zh: {
+  ch: {
     dir: 'ltr',
     nav_login: '登录',
     nav_start: '开始使用',

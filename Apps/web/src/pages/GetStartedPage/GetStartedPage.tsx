@@ -1,21 +1,22 @@
+/** GetStartedPage — Multi-step onboarding flow for new parent registration with 4 steps. */
 import { useState, useCallback } from 'react';
-import { useTheme } from '../hooks/useTheme';
-import { useLanguage } from '../hooks/useLanguage';
-import { useMultiStep } from '../hooks/useMultiStep';
+import { useTheme } from '../../hooks/useTheme';
+import { useLanguage } from '../../hooks/useLanguage';
+import { useMultiStep } from '../../hooks/useMultiStep';
 import type {
   OnboardingStep,
   ParentAccountFormData,
   ChildProfileFormData,
   PreferencesFormData,
   TranslationMap,
-} from '../types';
-import AuthLayout from '../components/shared/AuthLayout/AuthLayout';
-import StepIndicator from '../components/GetStarted/StepIndicator/StepIndicator';
-import ProgressBar from '../components/shared/ProgressBar/ProgressBar';
-import StepParentAccount from '../components/GetStarted/StepParentAccount/StepParentAccount';
-import StepChildProfile from '../components/GetStarted/StepChildProfile/StepChildProfile';
-import StepPreferences from '../components/GetStarted/StepPreferences/StepPreferences';
-import StepWelcome from '../components/GetStarted/StepWelcome/StepWelcome';
+} from '../../types';
+import AuthLayout from '../../components/shared/AuthLayout/AuthLayout';
+import StepIndicator from '../../components/GetStarted/StepIndicator/StepIndicator';
+import ProgressBar from '../../components/shared/ProgressBar/ProgressBar';
+import StepParentAccount from '../../components/GetStarted/StepParentAccount/StepParentAccount';
+import StepChildProfile from '../../components/GetStarted/StepChildProfile/StepChildProfile';
+import StepPreferences from '../../components/GetStarted/StepPreferences/StepPreferences';
+import StepWelcome from '../../components/GetStarted/StepWelcome/StepWelcome';
 import styles from './GetStartedPage.module.css';
 
 /** Total number of steps in the onboarding flow */
@@ -24,7 +25,7 @@ const TOTAL_STEPS = 4;
 /**
  * Builds the step configuration array with current completion state.
  */
-function buildStepConfig(currentIndex: number): OnboardingStep[] {
+const buildStepConfig = (currentIndex: number): OnboardingStep[] => {
   const stepDefinitions: Array<{
     titleKey: keyof TranslationMap;
     subtitleKey: keyof TranslationMap;
@@ -36,25 +37,18 @@ function buildStepConfig(currentIndex: number): OnboardingStep[] {
     { titleKey: 'gs_step4_title', subtitleKey: 'gs_step4_subtitle', iconName: 'CheckCircle' },
   ];
 
-  return stepDefinitions.map((def, index) => ({
+  return stepDefinitions.map((stepDefinition, index) => ({
     index,
-    titleKey: def.titleKey,
-    subtitleKey: def.subtitleKey,
-    iconName: def.iconName,
+    titleKey: stepDefinition.titleKey,
+    subtitleKey: stepDefinition.subtitleKey,
+    iconName: stepDefinition.iconName,
     isComplete: index < currentIndex,
   }));
-}
+};
 
-/**
- * GetStartedPage — Multi-step onboarding flow for new parent users.
- *
- * Manages all step state centrally. Passes partial form data
- * down to each step component. Merges step data upward via
- * onComplete callbacks. Shows progress via StepIndicator and ProgressBar.
- */
-export default function GetStartedPage() {
+const GetStartedPage = () => {
   const { theme, toggleTheme } = useTheme();
-  const { lang, setLang, t } = useLanguage();
+  const { language, setLanguage, translations } = useLanguage();
   const {
     currentStepIndex,
     progressPercent,
@@ -97,14 +91,14 @@ export default function GetStartedPage() {
     [goToNextStep]
   );
 
-  function handleBack() {
+  const handleBack = () => {
     setDirection('backward');
     goToPreviousStep();
-  }
+  };
 
-  function handleFinish() {
+  const handleFinish = () => {
     window.location.href = '/dashboard';
-  }
+  };
 
   const onboardingSteps = buildStepConfig(currentStepIndex);
 
@@ -115,18 +109,18 @@ export default function GetStartedPage() {
   return (
     <div
       data-theme={theme}
-      dir={t.dir}
-      lang={lang}
+      dir={translations.dir}
+      lang={language}
     >
       <AuthLayout
         illustrationVariant="register"
-        t={t}
-        lang={lang}
-        onSetLang={setLang}
+        translations={translations}
+        language={language}
+        onLanguageChange={setLanguage}
         theme={theme}
         onToggleTheme={toggleTheme}
       >
-        <StepIndicator steps={onboardingSteps} currentIndex={currentStepIndex} t={t} />
+        <StepIndicator steps={onboardingSteps} currentIndex={currentStepIndex} translations={translations} />
         <ProgressBar percent={progressPercent} />
 
         <div className={styles.stepNavigation}>
@@ -137,7 +131,7 @@ export default function GetStartedPage() {
               type="button"
               aria-label={`Go back to step ${currentStepIndex}`}
             >
-              {t.gs_back_button}
+              {translations.gs_back_button}
             </button>
           )}
         </div>
@@ -145,27 +139,27 @@ export default function GetStartedPage() {
         <div className={containerClassName} key={currentStepIndex}>
           {currentStepIndex === 0 && (
             <StepParentAccount
-              t={t}
-              lang={lang}
+              translations={translations}
+              language={language}
               onComplete={handleParentComplete}
             />
           )}
           {currentStepIndex === 1 && (
             <StepChildProfile
-              t={t}
-              lang={lang}
+              translations={translations}
+              language={language}
               onComplete={handleChildComplete}
             />
           )}
           {currentStepIndex === 2 && (
             <StepPreferences
-              t={t}
+              translations={translations}
               onComplete={handlePreferencesComplete}
             />
           )}
           {currentStepIndex === 3 && (
             <StepWelcome
-              t={t}
+              translations={translations}
               parentData={parentData}
               childData={childData}
               preferencesData={preferencesData}
@@ -176,13 +170,15 @@ export default function GetStartedPage() {
 
         {currentStepIndex < TOTAL_STEPS - 1 && (
           <div className={styles.bottomLink}>
-            <span>{t.gs_already_have_account}</span>
+            <span>{translations.gs_already_have_account}</span>
             <a href="/login" className={styles.bottomLinkAnchor}>
-              {t.gs_login_link}
+              {translations.gs_login_link}
             </a>
           </div>
         )}
       </AuthLayout>
     </div>
   );
-}
+};
+
+export default GetStartedPage;

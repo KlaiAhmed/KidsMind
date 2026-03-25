@@ -1,3 +1,4 @@
+/** HowItWorks — Three-step explanation section (Sign Up, Set Preferences, Start Learning) with connecting line. */
 import React from 'react';
 import type { TranslationMap } from '../../types';
 import { STEPS } from '../../utils/constants';
@@ -5,10 +6,10 @@ import { useScrollReveal } from '../../hooks/useScrollReveal';
 import styles from './HowItWorks.module.css';
 
 interface HowItWorksProps {
-  t: TranslationMap;
+  translations: TranslationMap;
 }
 
-export default function HowItWorks({ t }: HowItWorksProps) {
+const HowItWorks = ({ translations }: HowItWorksProps) => {
   const { ref, isVisible } = useScrollReveal();
 
   return (
@@ -18,7 +19,7 @@ export default function HowItWorks({ t }: HowItWorksProps) {
     >
       <div className={styles.sectionInner}>
         <h2 id="how-title" className={styles.sectionTitle}>
-          {t.how_title}
+          {translations.how_title}
         </h2>
         <div
           ref={ref as React.RefObject<HTMLDivElement>}
@@ -31,12 +32,14 @@ export default function HowItWorks({ t }: HowItWorksProps) {
               <div className={styles.stepEmoji}>
                 <span aria-hidden="true">{step.emoji}</span>
               </div>
-              <h3 className={styles.stepTitle}>{t[step.titleKey]}</h3>
-              <p className={styles.stepDesc}>{t[step.descKey]}</p>
+              <h3 className={styles.stepTitle}>{translations[step.titleKey]}</h3>
+              <p className={styles.stepDesc}>{translations[step.descKey]}</p>
             </div>
           ))}
         </div>
       </div>
     </section>
   );
-}
+};
+
+export default HowItWorks;

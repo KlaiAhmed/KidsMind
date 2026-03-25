@@ -18,10 +18,7 @@ import type { FormErrors, UseFormReturn } from '../types';
  *   (vals) => validateLoginForm(vals)
  * );
  */
-export function useForm<T extends object>(
-  initialValues: T,
-  validate: (values: T) => FormErrors
-): UseFormReturn<T> {
+const useForm = <T extends object>( initialValues: T, validate: (values: T) => FormErrors ): UseFormReturn<T> => {
   const [values, setValues] = useState<T>(initialValues);
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -38,7 +35,6 @@ export function useForm<T extends object>(
 
   /**
    * handleChange — updates a single field value and runs validation.
-   *
    * Only shows errors for fields that have already been touched,
    * keeping the UX friendly during initial form filling.
    */
@@ -84,16 +80,17 @@ export function useForm<T extends object>(
 
   /**
    * handleSubmit — triggers full form validation and calls onSubmit if valid.
-   *
    * Marks all fields as touched so all errors become visible,
    * then runs the async onSubmit callback if validation passes.
    */
   const handleSubmit = useCallback(
     async (onSubmit: (values: T) => Promise<void>) => {
       const allTouched: Record<string, boolean> = {};
+
       for (const key of Object.keys(values) as string[]) {
         allTouched[key] = true;
       }
+
       setTouched(allTouched);
 
       const validationResult = validate(values);
@@ -136,4 +133,6 @@ export function useForm<T extends object>(
     handleSubmit,
     reset,
   };
-}
+};
+
+export { useForm };

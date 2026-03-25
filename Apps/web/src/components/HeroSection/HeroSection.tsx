@@ -1,14 +1,15 @@
+/** HeroSection — Hero banner with animated title, CTA buttons, trust badges, and owl illustration. */
 import type { TranslationMap, LanguageCode } from '../../types';
 import HeroIllustration from './HeroIllustration';
 import styles from './HeroSection.module.css';
 
 interface HeroSectionProps {
-  t: TranslationMap;
-  lang: LanguageCode;
+  translations: TranslationMap;
+  language: LanguageCode;
 }
 
-export default function HeroSection({ t }: HeroSectionProps) {
-  const titleWords = t.hero_title.split(' ');
+const HeroSection = ({ translations }: HeroSectionProps) => {
+  const animatedTitleWords = translations.hero_title.split(' ');
 
   return (
     <section className={styles.hero} aria-labelledby="hero-title">
@@ -16,11 +17,11 @@ export default function HeroSection({ t }: HeroSectionProps) {
         <div className={styles.heroContent}>
           <div className={styles.badge}>
             <span aria-hidden="true">✨</span>
-            <span>{t.hero_badge}</span>
+            <span>{translations.hero_badge}</span>
           </div>
 
           <h1 id="hero-title" className={styles.title}>
-            {titleWords.map((word, i) => (
+            {animatedTitleWords.map((word, i) => (
               <span
                 key={i}
                 className={styles.titleWord}
@@ -31,25 +32,25 @@ export default function HeroSection({ t }: HeroSectionProps) {
             ))}
           </h1>
 
-          <p className={styles.subtitle}>{t.hero_subtitle}</p>
+          <p className={styles.subtitle}>{translations.hero_subtitle}</p>
 
           <div className={styles.ctaRow}>
-            <button className={styles.ctaPrimary}>{t.hero_cta_primary}</button>
-            <button className={styles.ctaSecondary}>{t.hero_cta_secondary}</button>
+            <button className={styles.ctaPrimary}>{translations.hero_cta_primary}</button>
+            <button className={styles.ctaSecondary}>{translations.hero_cta_secondary}</button>
           </div>
 
           <div className={styles.trustRow}>
             <div className={styles.trustItem}>
               <span className={styles.trustDot} aria-hidden="true" />
-              <span>{t.trust_safe}</span>
+              <span>{translations.trust_safe}</span>
             </div>
             <div className={styles.trustItem}>
               <span className={styles.trustDot} aria-hidden="true" />
-              <span>{t.trust_languages}</span>
+              <span>{translations.trust_languages}</span>
             </div>
             <div className={styles.trustItem}>
               <span className={styles.trustDot} aria-hidden="true" />
-              <span>{t.trust_levels}</span>
+              <span>{translations.trust_levels}</span>
             </div>
           </div>
         </div>
@@ -60,4 +61,6 @@ export default function HeroSection({ t }: HeroSectionProps) {
       </div>
     </section>
   );
-}
+};
+
+export default HeroSection;

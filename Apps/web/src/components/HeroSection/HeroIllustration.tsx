@@ -1,4 +1,5 @@
-export default function HeroIllustration() {
+/** HeroIllustration — Animated SVG owl with graduation cap on a planet, surrounded by twinkling stars. */
+const HeroIllustration = () => {
   return (
     <svg
       width="400"
@@ -75,4 +76,6 @@ export default function HeroIllustration() {
       </g>
     </svg>
   );
-}
+};
+
+export default HeroIllustration;
