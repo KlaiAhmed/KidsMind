@@ -29,12 +29,10 @@ class UserLogin(BaseModel):
 
 class RefreshRequest(BaseModel):
     refresh_token: str | None = None
-    device_type: str | None = None
 
 
 class LogoutRequest(BaseModel):
     refresh_token: str | None = None
-    device_type: str | None = None
 
 
 class AuthUser(BaseModel):

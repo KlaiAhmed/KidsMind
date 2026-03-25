@@ -20,12 +20,11 @@ async def login(
     request: Request,
     response: Response,
     payload: UserLogin = Body(...),
-    device_type: str | None = Body(default=None, embed=True),
     x_client_type: str | None = Header(default=None, alias="X-Client-Type"),
     db: Session= Depends(get_db)
     ):
     timer = time.perf_counter()
-    client_type = get_client_type(x_client_type=x_client_type, device_type=device_type)
+    client_type = get_client_type(x_client_type=x_client_type)
 
     logger.info(f"Login request received from {request.client.host} for email: {payload.email} from {client_type} client")
 
@@ -49,7 +48,7 @@ async def refresh(
     db: Session = Depends(get_db),
 ):
     timer = time.perf_counter()
-    client_type = get_client_type(x_client_type=x_client_type, device_type=payload.device_type)
+    client_type = get_client_type(x_client_type=x_client_type)
 
     logger.info(f"Refresh request received from {request.client.host} from {client_type} client")
 
@@ -79,7 +78,7 @@ async def logout(
     db: Session = Depends(get_db),
 ):
     timer = time.perf_counter()
-    client_type = get_client_type(x_client_type=x_client_type, device_type=payload.device_type)
+    client_type = get_client_type(x_client_type=x_client_type)
 
     logger.info(f"Logout request received from {request.client.host} from {client_type} client")
 

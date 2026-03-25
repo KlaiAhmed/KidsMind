@@ -1,26 +1,22 @@
 from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
+from typing import Literal
 
-from models.user import User
+from core.config import settings
+from models.user import User, UserRole
 from utils.get_db import get_db
 from utils.manage_tokens import verify_token
 
 
-def get_client_type(x_client_type: str | None = Header(default=None, alias="X-Client-Type"), device_type: str | None = None) -> str:
-    """Resolve and validate the client type.
+def get_client_type(
+    x_client_type: Literal["web", "mobile"] | None = Header(default=None, alias="X-Client-Type"),
+) -> Literal["web", "mobile"]:
+    """Resolve and validate the client type from header only.
 
-    Priority order:
-    1) `X-Client-Type` header
-    2) `device_type` fallback
-    3) default `mobile`
-
-    Raises:
-        HTTPException: If the resolved value is not `web` or `mobile`.
+    - `X-Client-Type: web|mobile` is accepted.
+    - Missing header defaults to `mobile`.
     """
-    candidate = (x_client_type or device_type or "mobile").lower()
-    if candidate not in ("web", "mobile"):
-        raise HTTPException(status_code=400, detail="Invalid X-Client-Type header")
-    return candidate
+    return x_client_type or "mobile"
 
 
 def get_current_user(
@@ -56,3 +52,33 @@ def get_current_user(
         raise HTTPException(status_code=401, detail="User not found")
 
     return user
+
+
+def get_current_admin_or_super_admin(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """Return current user only if role is admin or super_admin."""
+    if current_user.role not in (UserRole.ADMIN, UserRole.SUPER_ADMIN):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    return current_user
+
+
+def get_current_admin_or_super_admin_if_prod(
+    request: Request,
+    authorization: str | None = Header(default=None),
+    x_client_type: str | None = Header(default=None, alias="X-Client-Type"),
+    db: Session = Depends(get_db),
+) -> User | None:
+    """Enforce admin/super_admin auth only in production mode."""
+    if not settings.IS_PROD:
+        return None
+
+    current_user = get_current_user(
+        request=request,
+        authorization=authorization,
+        x_client_type=x_client_type,
+        db=db,
+    )
+    if current_user.role not in (UserRole.ADMIN, UserRole.SUPER_ADMIN):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    return current_user

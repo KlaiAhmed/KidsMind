@@ -72,7 +72,7 @@ flowchart LR
 
 ### Auth (`/api/v1/auth`)
 
-Client type is resolved from `X-Client-Type: web|mobile` (fallback: `device_type` in body).
+Client type is resolved from `X-Client-Type: web|mobile` (or defaults to `mobile` when header is omitted).
 
 | Method | Endpoint | Request | Web Behavior | Mobile Behavior |
 |--------|----------|---------|--------------|-----------------|
@@ -216,7 +216,7 @@ sequenceDiagram
    ```env
    STORAGE_ROOT_PASSWORD=your-minio-secret
    CACHE_PASSWORD=your-redis-password
-    SUPER_ADMIN_EMAIL=superadmin@kidsmind.local
+    SUPER_ADMIN_EMAIL=superadmin@kidsmind.com
     SUPER_ADMIN_USERNAME=superadmin
     SUPER_ADMIN_PASSWORD=ChangeMe123!
    STT_SERVICE_ENDPOINT=http://localhost:8001
