@@ -11,8 +11,10 @@ from core.config import settings
 from core.logging_setup import setup_logging, RequestTracingMiddleware
 from core.cache_client import get_cache_client, close_cache_client
 from routers.chat import router as chat_router
+from routers.auth import router as auth_router
 from utils.limiter import limiter
 from utils.logger import logger
+from utils.upstream_headers import build_service_headers
 
 
 
@@ -25,7 +27,7 @@ HTTPX_TIMEOUT = httpx.Timeout(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with httpx.AsyncClient(timeout=HTTPX_TIMEOUT) as client:
+    async with httpx.AsyncClient(timeout=HTTPX_TIMEOUT, headers=build_service_headers()) as client:
         app.state.http_client = client
 
         await get_cache_client()
@@ -58,6 +60,9 @@ def create_app() -> FastAPI:
 
     # Include the chat router
     app.include_router(chat_router, prefix="/api/v1/chat", tags=["Chat"])
+
+    # Include the auth router
+    app.include_router(auth_router, prefix="/api/v1/auth", tags=["Auth"])
 
     # Instrumentation for Prometheus
     Instrumentator().instrument(app).expose(app)

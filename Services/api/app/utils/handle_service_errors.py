@@ -6,6 +6,14 @@ from utils.logger import logger
 
 @asynccontextmanager
 async def handle_service_errors():
+    """Map upstream/network exceptions to consistent API HTTP errors.
+
+    Args:
+        None.
+
+    Returns:
+        An async context manager that yields control to wrapped logic.
+    """
     try:
         yield
     except httpx.RequestError as e:

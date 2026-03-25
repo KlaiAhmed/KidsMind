@@ -58,6 +58,8 @@ def upload_audio(file: UploadFile = File(...), user_id: str = "", child_id: str 
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
         raise HTTPException(status_code=500, detail="Internal Storage Error")
+    
+    
 
 def remove_audio(filename: str):
     bucket_name = "media-private"

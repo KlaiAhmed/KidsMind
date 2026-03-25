@@ -152,8 +152,6 @@ services:
   # Prometheus Service for Monitoring
   prometheus:
     image: prom/prometheus:v3.9.1
-    profiles:
-      - monitoring
     ports:
       - "${PROMETHEUS_PORT}:9090"
     volumes:
@@ -163,9 +161,6 @@ services:
   # Grafana Service for Visualization
   grafana:
     image: grafana/grafana:12.3
-    profiles:
-      - monitoring
-      - logs
     ports:
       - "${GRAFANA_PORT}:3000"
     environment:
@@ -179,8 +174,6 @@ services:
   loki:
     image: grafana/loki:3.6.7
     user: "0"
-    profiles:
-      - logs
     ports:
       - "${LOKI_PORT}:3100"
     environment:
@@ -188,13 +181,13 @@ services:
       - STORAGE_ROOT_PASSWORD=${STORAGE_ROOT_PASSWORD}
     volumes:
       - ./infra/observability/logs/loki/config.yml:/etc/loki/local-config.yaml:ro
-      - loki_index:/loki/index  # only local index — chunks go to MinIO
+      - loki_index:/loki/index  # only local index — chunks go to file storage
     command: -config.file=/etc/loki/local-config.yaml -config.expand-env=true
     depends_on:
       file-storage:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:3100/ready || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3100/ready >/dev/null 2>&1 || curl -fsS http://127.0.0.1:3100/ready >/dev/null 2>&1 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -202,8 +195,6 @@ services:
   # Promtail Service for Log Shipping
   promtail:
     image: grafana/promtail:3.6.7
-    profiles:
-      - logs
     volumes:
       - ./infra/observability/logs/promtail/config.yml:/etc/promtail/config.yml:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -211,14 +202,12 @@ services:
     command: -config.file=/etc/promtail/config.yml
     depends_on:
       loki:
-        condition: service_healthy
+        condition: service_started
 
 
   # Postgres Exporter for Prometheus
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:v0.19.0
-    profiles:
-      - monitoring
     environment:
       DATA_SOURCE_NAME: "postgresql://${DB_USER}:${DB_PASSWORD}@database:5432/${DB_NAME}?sslmode=disable"
     depends_on:
@@ -230,8 +219,6 @@ services:
   # Redis Exporter for Prometheus
   redis-exporter:
     image: oliver006/redis_exporter:v1.81.0-alpine
-    profiles:
-      - monitoring
     depends_on:
       cache:
         condition: service_healthy

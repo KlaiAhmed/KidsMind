@@ -1,16 +1,15 @@
-from pydoc import text
-
 from fastapi import APIRouter, HTTPException, Request, UploadFile, Form, Depends
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel
-from typing import Optional
+from fastapi.responses import StreamingResponse
 import httpx
 import time
 
 # Local imports
 from core.config import settings
+from schemas.chat_schema import TextChatRequest
 from services.upload_file import upload_audio, remove_audio
-from services.generate_content import generate_content
+from services.generate_content import generate_content, stream_content
+from services.chat_history import get_conversation_history, clear_conversation_history
 from middlewares.vallidate_audio_file import validate_audio_file
 from utils.get_client import get_client
 from utils.limiter import limiter
@@ -30,6 +29,8 @@ async def voice_chat(
     session_id: str,
     audio_file: UploadFile = Depends(validate_audio_file),
     context: str = Form(""),
+    age_group: str = Form("3-15"),
+    stream: bool = Form(False),
     store_audio: bool = Form(True),
     client: httpx.AsyncClient = Depends(get_client),
 ):
@@ -57,20 +58,40 @@ async def voice_chat(
                 logger.warning("STT Service did not return text")
                 raise HTTPException(status_code=500, detail="STT Service did not return text")
 
+            if stream:
+                stream_generator = stream_content(
+                    user_id=user_id,
+                    child_id=child_id,
+                    session_id=session_id,
+                    text=text,
+                    context=context,
+                    age_group=age_group,
+                    client=client,
+                )
+                return StreamingResponse(
+                    stream_generator,
+                    media_type="text/event-stream",
+                    headers={
+                        "Cache-Control": "no-cache",
+                        "X-Accel-Buffering": "no",
+                    },
+                )
+
             # Send Response to AI Service
-            ai_response =await generate_content(
+            ai_response = await generate_content(
                 user_id=user_id,
                 child_id=child_id,
                 session_id=session_id,
                 text=text,
                 context=context,
-                client=client
+                age_group=age_group,
+                client=client,
             )
 
             duration = time.perf_counter() - duration
             logger.info(f"Content generation completed in {duration:.3f} seconds")
             return {
-                "ai_data": ai_response.json(),
+                "ai_data": ai_response,
             }
 
     finally:
@@ -79,10 +100,6 @@ async def voice_chat(
             await run_in_threadpool(remove_audio, filename)
 
 
-
-class TextChatRequest(BaseModel):
-    text: str
-    context: Optional[str] = ""
 
 # Text chat endpoint
 @router.post("/text/{user_id}/{child_id}/{session_id}")
@@ -100,19 +117,77 @@ async def text_chat(
 
         logger.info(f"Received text chat request: {body.text} with context: {body.context}")
 
+        if body.stream:
+            stream_generator = stream_content(
+                user_id=user_id,
+                child_id=child_id,
+                session_id=session_id,
+                text=body.text,
+                context=body.context,
+                age_group=body.age_group,
+                client=client,
+            )
+            return StreamingResponse(
+                stream_generator,
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "X-Accel-Buffering": "no",
+                },
+            )
+
         # Send Response to AI Service
-        ai_response =await generate_content(
+        ai_response = await generate_content(
             user_id=user_id,
             child_id=child_id,
             session_id=session_id,
             text=body.text,
             context=body.context,
-            client=client
+            age_group=body.age_group,
+            client=client,
         )
 
         duration = time.perf_counter() - duration
         logger.info(f"Content generation completed in {duration:.3f} seconds")
 
-        return ai_response,
+        return ai_response
+
+
+@router.get("/history/{user_id}/{child_id}/{session_id}")
+@limiter.limit(settings.RATE_LIMIT)
+async def get_history(
+    request: Request,
+    user_id: str,
+    child_id: str,
+    session_id: str,
+    client: httpx.AsyncClient = Depends(get_client),
+):
+    async with handle_service_errors():
+        history = await get_conversation_history(
+            user_id=user_id,
+            child_id=child_id,
+            session_id=session_id,
+            client=client,
+        )
+        return history
+
+
+@router.delete("/history/{user_id}/{child_id}/{session_id}")
+@limiter.limit(settings.RATE_LIMIT)
+async def clear_history(
+    request: Request,
+    user_id: str,
+    child_id: str,
+    session_id: str,
+    client: httpx.AsyncClient = Depends(get_client),
+):
+    async with handle_service_errors():
+        result = await clear_conversation_history(
+            user_id=user_id,
+            child_id=child_id,
+            session_id=session_id,
+            client=client,
+        )
+        return result
 
 
