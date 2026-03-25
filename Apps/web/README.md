@@ -44,6 +44,18 @@ npm run dev
 | `/` | HomePage | Eager |
 | `/login` | LoginPage | Lazy |
 | `/get-started` | GetStartedPage | Lazy |
+| `/error` | ErrorPage | Eager (error fallback route) |
+| `*` | NotFoundPage | Lazy |
+
+### Status + error handling
+
+- `AppErrorBoundary` catches unexpected render/runtime errors and shows `ErrorPage`.
+- Unknown routes are handled by `NotFoundPage` via wildcard route (`*`).
+- Status page UI is centralized in `components/shared/StatusPage` for consistency and reuse.
+- All status page strings are localized through `types/index.ts` + `utils/translations.ts`.
+- Current status actions:
+  - Not Found: `Go to home`, `Go back`
+  - Error: `Go to home`, `Try again`
 
 ---
 
@@ -92,6 +104,12 @@ Apps/web/
 │  ├─ pages/
 │  │  ├─ HomePage/HomePage.tsx
 │  │  ├─ LoginPage/LoginPage.tsx
+│  │  ├─ NotFoundPage/
+│  │  │  ├─ NotFoundPage.tsx
+│  │  │  └─ NotFoundPage.module.css
+│  │  ├─ ErrorPage/
+│  │  │  ├─ ErrorPage.tsx
+│  │  │  └─ ErrorPage.module.css
 │  │  └─ GetStartedPage/
 │  │     ├─ GetStartedPage.tsx
 │  │     └─ GetStartedPage.module.css
@@ -99,7 +117,7 @@ Apps/web/
 │  │  ├─ NavBar/ HeroSection/ Footer/
 │  │  ├─ LoginForm/
 │  │  ├─ GetStarted/ (StepParentAccount, StepChildProfile, StepPreferences, StepWelcome, StepIndicator)
-│  │  └─ shared/ (AuthLayout, FormField, PasswordField, AvatarPicker, ProgressBar)
+│  │  └─ shared/ (AuthLayout, FormField, PasswordField, AvatarPicker, ProgressBar, StatusPage, AppErrorBoundary)
 │  ├─ hooks/
 │  ├─ utils/
 │  ├─ types/index.ts
@@ -207,6 +225,15 @@ flowchart LR
 - Use CSS Modules (avoid global leakage)
 - Keep validation pure and reusable
 - Avoid introducing global state library unless needed by product scope
+
+---
+
+## Forward Notes
+
+- Keep `StatusPage` generic; create variant pages by composition instead of duplicating UI.
+- For any new user-facing error/state screen, add translation keys in `types/index.ts` before implementing UI.
+- Prefer lazy loading for low-frequency pages (like special status pages) unless required by fallback flow.
+- Preserve accessibility baseline: semantic heading, clear actions, keyboard focus, and minimum 44px targets.
 
 ---
 

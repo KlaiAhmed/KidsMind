@@ -143,6 +143,17 @@ const translations: Translations = {
     error_pin_required: 'PIN code is required',
     error_pin_must_be_4_digits: 'PIN must be exactly 4 digits',
     error_pins_dont_match: 'PIN codes do not match',
+
+    // ─── Status / Error Pages ─────────────────────────────────────────
+    status_not_found_code: '404',
+    status_not_found_title: 'Page not found',
+    status_not_found_description: 'The page you are looking for does not exist or may have moved.',
+    status_error_code: '500',
+    status_error_title: 'Something went wrong',
+    status_error_description: 'An unexpected error occurred. Please try again or go back to the home page.',
+    status_go_home: 'Go to home',
+    status_try_again: 'Try again',
+    status_go_back: 'Go back',
   },
   fr: {
     dir: 'ltr',
@@ -285,6 +296,17 @@ const translations: Translations = {
     error_pin_required: 'Le code PIN est requis',
     error_pin_must_be_4_digits: 'Le PIN doit contenir exactement 4 chiffres',
     error_pins_dont_match: 'Les codes PIN ne correspondent pas',
+
+    // ─── Pages de statut / d'erreur ───────────────────────────────────
+    status_not_found_code: '404',
+    status_not_found_title: 'Page introuvable',
+    status_not_found_description: 'La page que vous recherchez n\'existe pas ou a peut-être été déplacée.',
+    status_error_code: '500',
+    status_error_title: 'Une erreur est survenue',
+    status_error_description: 'Une erreur inattendue est survenue. Veuillez réessayer ou revenir à la page d\'accueil.',
+    status_go_home: 'Aller à l\'accueil',
+    status_try_again: 'Réessayer',
+    status_go_back: 'Retour',
   },
   es: {
     dir: 'ltr',
@@ -427,6 +449,17 @@ const translations: Translations = {
     error_pin_required: 'El código PIN es obligatorio',
     error_pin_must_be_4_digits: 'El PIN debe tener exactamente 4 dígitos',
     error_pins_dont_match: 'Los códigos PIN no coinciden',
+
+    // ─── Páginas de estado / error ────────────────────────────────────
+    status_not_found_code: '404',
+    status_not_found_title: 'Página no encontrada',
+    status_not_found_description: 'La página que buscas no existe o puede haber sido movida.',
+    status_error_code: '500',
+    status_error_title: 'Algo salió mal',
+    status_error_description: 'Ocurrió un error inesperado. Inténtalo de nuevo o vuelve a la página de inicio.',
+    status_go_home: 'Ir al inicio',
+    status_try_again: 'Intentar de nuevo',
+    status_go_back: 'Volver',
   },
   it: {
     dir: 'ltr',
@@ -569,6 +602,17 @@ const translations: Translations = {
     error_pin_required: 'Il codice PIN è obbligatorio',
     error_pin_must_be_4_digits: 'Il PIN deve avere esattamente 4 cifre',
     error_pins_dont_match: 'I codici PIN non corrispondono',
+
+    // ─── Pagine di stato / errore ─────────────────────────────────────
+    status_not_found_code: '404',
+    status_not_found_title: 'Pagina non trovata',
+    status_not_found_description: 'La pagina che stai cercando non esiste o potrebbe essere stata spostata.',
+    status_error_code: '500',
+    status_error_title: 'Qualcosa è andato storto',
+    status_error_description: 'Si è verificato un errore imprevisto. Riprova oppure torna alla home page.',
+    status_go_home: 'Vai alla home',
+    status_try_again: 'Riprova',
+    status_go_back: 'Indietro',
   },
   ar: {
     dir: 'rtl',
@@ -711,6 +755,17 @@ const translations: Translations = {
     error_pin_required: 'رمز PIN مطلوب',
     error_pin_must_be_4_digits: 'يجب أن يكون رمز PIN ٤ أرقام بالضبط',
     error_pins_dont_match: 'رموز PIN غير متطابقة',
+
+    // ─── صفحات الحالة / الخطأ ────────────────────────────────────────
+    status_not_found_code: '404',
+    status_not_found_title: 'الصفحة غير موجودة',
+    status_not_found_description: 'الصفحة التي تبحث عنها غير موجودة أو ربما تم نقلها.',
+    status_error_code: '500',
+    status_error_title: 'حدث خطأ ما',
+    status_error_description: 'حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى أو العودة إلى الصفحة الرئيسية.',
+    status_go_home: 'العودة إلى الرئيسية',
+    status_try_again: 'حاول مرة أخرى',
+    status_go_back: 'رجوع',
   },
   ch: {
     dir: 'ltr',
@@ -853,6 +908,17 @@ const translations: Translations = {
     error_pin_required: 'PIN码为必填项',
     error_pin_must_be_4_digits: 'PIN码必须是4位数字',
     error_pins_dont_match: '两次PIN码不一致',
+
+    // ─── 状态 / 错误页面 ────────────────────────────────────────────────
+    status_not_found_code: '404',
+    status_not_found_title: '页面未找到',
+    status_not_found_description: '您访问的页面不存在，或可能已被移动。',
+    status_error_code: '500',
+    status_error_title: '出现了一些问题',
+    status_error_description: '发生了意外错误。请重试，或返回首页。',
+    status_go_home: '返回首页',
+    status_try_again: '重试',
+    status_go_back: '返回',
   },
 } as const satisfies Translations;
 

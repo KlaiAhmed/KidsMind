@@ -1,0 +1,15 @@
+.page {
+  min-height: 100vh;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+}
+
+.main {
+  min-height: calc(100vh - var(--nav-height));
+  padding-top: calc(var(--nav-height) + var(--spacing-xl));
+  padding-inline: var(--spacing-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

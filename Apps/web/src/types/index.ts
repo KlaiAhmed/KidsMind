@@ -136,6 +136,17 @@ export interface TranslationMap {
   gs_welcome_summary_safety: string;
   gs_welcome_cta: string;
 
+  // ─── Status / Error Pages ──────────────────────────────────────────────────
+  status_not_found_code: string;
+  status_not_found_title: string;
+  status_not_found_description: string;
+  status_error_code: string;
+  status_error_title: string;
+  status_error_description: string;
+  status_go_home: string;
+  status_try_again: string;
+  status_go_back: string;
+
   // ─── Validation errors ────────────────────────────────────────────────────────
   error_email_required: string;
   error_email_invalid: string;
