@@ -210,7 +210,7 @@ sequenceDiagram
 | `COOKIE_SAMESITE` | No | `strict` | SameSite policy for auth and CSRF cookies |
 | `COOKIE_SECURE` | No | `False` | Force secure cookies; in prod secure is enabled |
 | `COOKIE_DOMAIN` | No | empty | Optional cookie domain |
-| `CSRF_TOKEN_EXPIRE_SECONDS` | No | `3600` | CSRF token max age |
+| `CSRF_TOKEN_EXPIRE_SECONDS` | No | `604800` | CSRF token max age |
 | `STORAGE_ROOT_USERNAME` | No | `admin` | MinIO access key |
 | `STORAGE_ROOT_PASSWORD` | **Yes** | — | MinIO secret key (validated non-empty) |
 | `CACHE_PASSWORD` | **Yes** | — | Redis password for rate limiter (validated non-empty) |

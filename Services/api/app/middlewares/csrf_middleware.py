@@ -10,6 +10,9 @@ from utils.csrf import verify_csrf_token
 
 class CSRFMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
+        if request.url.path == "/api/v1/auth/login":
+            return await call_next(request)
+
         if request.method in ("GET", "HEAD", "OPTIONS", "TRACE"):
             return await call_next(request)
 

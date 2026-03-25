@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     COOKIE_DOMAIN: str | None = None
     COOKIE_SAMESITE: str = "strict"
     COOKIE_SECURE: bool = False
-    CSRF_TOKEN_EXPIRE_SECONDS: int = 3600
+    CSRF_TOKEN_EXPIRE_SECONDS: int = 604800
 
     # Service Endpoints
     STT_SERVICE_ENDPOINT: str = "http://stt-service:8000"

@@ -8,15 +8,10 @@ const GetStartedPage = React.lazy(() => import('./pages/GetStartedPage/GetStarte
 
 interface GuestOnlyRouteProps {
   isAuthenticated: boolean;
-  isLoading: boolean;
   children: React.ReactElement;
 }
 
-const GuestOnlyRoute = ({ isAuthenticated, isLoading, children }: GuestOnlyRouteProps) => {
-  if (isLoading) {
-    return null;
-  }
-
+const GuestOnlyRoute = ({ isAuthenticated, children }: GuestOnlyRouteProps) => {
   if (isAuthenticated) {
     return <Navigate to="/" replace />;
   }
@@ -25,7 +20,7 @@ const GuestOnlyRoute = ({ isAuthenticated, isLoading, children }: GuestOnlyRoute
 };
 
 const App = () => {
-  const { isAuthenticated, isLoading } = useAuthStatus();
+  const { isAuthenticated } = useAuthStatus();
 
   return (
     <BrowserRouter>
@@ -61,7 +56,7 @@ const App = () => {
           <Route
             path="/login"
             element={(
-              <GuestOnlyRoute isAuthenticated={isAuthenticated} isLoading={isLoading}>
+              <GuestOnlyRoute isAuthenticated={isAuthenticated}>
                 <LoginPage />
               </GuestOnlyRoute>
             )}
@@ -69,7 +64,7 @@ const App = () => {
           <Route
             path="/get-started"
             element={(
-              <GuestOnlyRoute isAuthenticated={isAuthenticated} isLoading={isLoading}>
+              <GuestOnlyRoute isAuthenticated={isAuthenticated}>
                 <GetStartedPage />
               </GuestOnlyRoute>
             )}

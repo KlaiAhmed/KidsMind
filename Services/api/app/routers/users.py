@@ -15,7 +15,7 @@ router = APIRouter()
 
 
 @router.get("/me", response_model=UserFullResponse)
-@limiter.limit(settings.RATE_LIMIT)
+@limiter.limit('60/minute')
 async def get_current_user_full_data(
     request: Request,
     current_user: User = Depends(get_current_user),
@@ -30,7 +30,7 @@ async def get_current_user_full_data(
 
 
 @router.get("/me/summary", response_model=UserSummaryResponse)
-@limiter.limit(settings.RATE_LIMIT)
+@limiter.limit('60/minute')
 async def get_current_user_summary_data(
     request: Request,
     current_user: User = Depends(get_current_user),
@@ -45,7 +45,7 @@ async def get_current_user_summary_data(
 
 
 @router.get("/", response_model=list[UserFullResponse])
-@limiter.limit(settings.RATE_LIMIT)
+@limiter.limit('60/minute')
 async def get_all_users(
     request: Request,
     _: User | None = Depends(get_current_admin_or_super_admin_if_prod),
@@ -61,7 +61,7 @@ async def get_all_users(
 
 
 @router.get("/{user_id}", response_model=UserFullResponse)
-@limiter.limit(settings.RATE_LIMIT)
+@limiter.limit('60/minute')
 async def get_user_by_id(
     user_id: int,
     request: Request,

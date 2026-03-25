@@ -76,6 +76,8 @@ export interface TranslationMap {
   login_no_account: string;
   login_start_link: string;
   login_error_invalid: string;
+  login_error_session: string;
+  login_error_network: string;
   login_loading: string;
 
   // ─── Get Started — General ────────────────────────────────────────────────────
