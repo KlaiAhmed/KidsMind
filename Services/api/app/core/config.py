@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     COOKIE_DOMAIN: str | None = None
     COOKIE_SAMESITE: str = "strict"
     COOKIE_SECURE: bool = False
+    CSRF_TOKEN_EXPIRE_SECONDS: int = 3600
 
     # Service Endpoints
     STT_SERVICE_ENDPOINT: str = "http://stt-service:8000"
@@ -66,6 +67,7 @@ class Settings(BaseSettings):
     RATE_LIMIT: str = "100/minute"
     SERVICE_TOKEN: str = ""
     DUMMY_HASH: str = "OwUlzdWgNRnK9JW7mVzTqL3Ia6kVdLiH9u7sQh8j324dghgzyzx"
+    SECRET_KEY: str | None = None
     SECRET_ACCESS_KEY: str
     SECRET_REFRESH_KEY: str
 
@@ -79,6 +81,15 @@ class Settings(BaseSettings):
     def check_not_empty(cls, v: str) -> str:
         if not v or v.strip() == "":
             raise ValueError("Missing required environment variable")
+        return v
+
+    @field_validator("SECRET_KEY")
+    @classmethod
+    def check_optional_secret_key(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if not v.strip():
+            raise ValueError("SECRET_KEY cannot be empty")
         return v
 
 settings = Settings()

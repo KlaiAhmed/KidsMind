@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from core.config import settings
 from models.refresh_token_session import RefreshTokenSession
 from models.user import User
+from utils.csrf import generate_csrf_token
 from utils.logger import logger
 from utils.manage_pwd import verify_password
 from utils.manage_tokens import verify_token
@@ -54,6 +55,19 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str) 
     )
 
 
+def set_csrf_cookie(response: Response, csrf_token: str) -> None:
+    response.set_cookie(
+        key="csrf_token",
+        value=csrf_token,
+        max_age=settings.CSRF_TOKEN_EXPIRE_SECONDS,
+        path="/",
+        httponly=False,
+        secure=settings.COOKIE_SECURE or settings.IS_PROD,
+        samesite=settings.COOKIE_SAMESITE,
+        domain=settings.COOKIE_DOMAIN,
+    )
+
+
 def clear_auth_cookies(response: Response) -> None:
     """Expire auth cookies for browser logout."""
     cookie_config = get_cookie_config()
@@ -64,6 +78,16 @@ def clear_auth_cookies(response: Response) -> None:
         max_age=0,
         path="/api/v1/auth/refresh",
         **cookie_config,
+    )
+    response.set_cookie(
+        key="csrf_token",
+        value="",
+        max_age=0,
+        path="/",
+        httponly=False,
+        secure=settings.COOKIE_SECURE or settings.IS_PROD,
+        samesite=settings.COOKIE_SAMESITE,
+        domain=settings.COOKIE_DOMAIN,
     )
 
 
@@ -77,10 +101,13 @@ def deliver_tokens(
 ) -> dict:
     """Deliver tokens through cookies for web or JSON for mobile clients."""
     if client_type == "web":
+        csrf_token = generate_csrf_token(str(user.id))
         set_auth_cookies(response, access_token, refresh_token)
+        set_csrf_cookie(response, csrf_token)
         return {
             "message": message,
             "user": build_user_data(user),
+            "csrf_token": csrf_token,
         }
 
     return {

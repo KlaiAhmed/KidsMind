@@ -43,7 +43,9 @@ flowchart TD
 ```mermaid
 flowchart LR
     subgraph Middleware Pipeline
-        Req([Incoming Request]) --> Tracing[RequestTracingMiddleware]
+        Req([Incoming Request]) --> CORS[CORSMiddleware]
+        CORS --> CSRF[CSRFMiddleware]
+        CSRF --> Tracing[RequestTracingMiddleware]
         Tracing -->|set X-Request-ID ContextVar| App[Route Handler]
         App --> Tracing
         Tracing -->|inject X-Request-ID header| Res([Response])
@@ -76,18 +78,28 @@ Client type is resolved from `X-Client-Type: web|mobile` (or defaults to `mobile
 
 | Method | Endpoint | Request | Web Behavior | Mobile Behavior |
 |--------|----------|---------|--------------|-----------------|
-| POST | `/login` | `{"email":"...","password":"..."}` | Sets HttpOnly cookies: `access_token` (path `/`), `refresh_token` (path `/api/v1/auth/refresh`) | Returns JSON tokens (`access_token`, `refresh_token`, `token_type`, `expires_in`) |
-| POST | `/refresh` | Optional body `{"refresh_token":"..."}` | Reads refresh token from cookie and rotates tokens; returns updated cookies | Reads refresh token from `Authorization: Bearer <refresh_token>` or body; returns rotated JSON tokens |
+| POST | `/login` | `{"email":"...","password":"..."}` | Sets `access_token` + `refresh_token` HttpOnly cookies and non-HttpOnly `csrf_token`; returns `csrf_token` in body | Returns JSON tokens (`access_token`, `refresh_token`, `token_type`, `expires_in`) |
+| POST | `/refresh` | Optional body `{"refresh_token":"..."}` | Requires valid CSRF token for cookie-auth requests; rotates auth cookies and `csrf_token`; returns new `csrf_token` | Reads refresh token from `Authorization: Bearer <refresh_token>` or body; returns rotated JSON tokens |
 | POST | `/logout` | Optional body `{"refresh_token":"..."}` | Revokes session if token present and clears auth cookies | Revokes refresh token session; client discards local tokens |
 
 #### Auth security notes
 
 - Access token lifetime defaults to `900` seconds.
 - Refresh token lifetime defaults to `604800` seconds.
+- CSRF token lifetime defaults to `3600` seconds.
 - Refresh tokens are stored server-side with rotation metadata (token family, revoke status, replacement chain).
 - Refresh token reuse detection revokes active tokens in the same family.
 - Cookies are `HttpOnly` and scoped (`refresh_token` limited to `/api/v1/auth/refresh`).
+- CSRF uses stateless double-submit cookie with signed timed tokens (`itsdangerous`).
 - For browser cookies, frontend requests must include credentials (`fetch(..., { credentials: "include" })` or `axios` `withCredentials: true`).
+
+#### CSRF contract for web clients
+
+- On login and refresh, the API returns a signed `csrf_token` in JSON and also sets `csrf_token` as a non-HttpOnly cookie.
+- For mutating requests (`POST`, `PUT`, `PATCH`, `DELETE`) that use cookie auth, frontend must send `X-CSRF-Token` with the same token value.
+- On token refresh, frontend must replace the in-memory CSRF token with the newly returned one.
+- Keep CSRF token in memory (or read from `csrf_token` cookie per request); do not persist it in `localStorage`.
+- API clients using `Authorization: Bearer` are exempt from CSRF checks.
 
 ### Streaming Selection Examples
 
@@ -195,9 +207,16 @@ sequenceDiagram
 | `DB_SERVICE_ENDPOINT` | No | `http://db:5432` | Database endpoint (configured, not yet used) |
 | `MAX_SIZE` | No | `10485760` (10 MB) | Maximum upload file size in bytes |
 | `ALLOWED_CONTENT_TYPES` | No | `audio/mpeg, audio/wav, audio/x-wav, audio/mp3` | Accepted audio MIME types |
+| `COOKIE_SAMESITE` | No | `strict` | SameSite policy for auth and CSRF cookies |
+| `COOKIE_SECURE` | No | `False` | Force secure cookies; in prod secure is enabled |
+| `COOKIE_DOMAIN` | No | empty | Optional cookie domain |
+| `CSRF_TOKEN_EXPIRE_SECONDS` | No | `3600` | CSRF token max age |
 | `STORAGE_ROOT_USERNAME` | No | `admin` | MinIO access key |
 | `STORAGE_ROOT_PASSWORD` | **Yes** | — | MinIO secret key (validated non-empty) |
 | `CACHE_PASSWORD` | **Yes** | — | Redis password for rate limiter (validated non-empty) |
+| `SECRET_KEY` | No | falls back to `SECRET_ACCESS_KEY` | Primary signing key for CSRF token serializer |
+| `SECRET_ACCESS_KEY` | **Yes** | — | JWT access token signing key |
+| `SECRET_REFRESH_KEY` | **Yes** | — | JWT refresh token signing key |
 | `SUPER_ADMIN_EMAIL` | No | empty | Bootstrap admin email used at startup seeding |
 | `SUPER_ADMIN_USERNAME` | No | empty | Bootstrap admin username used at startup seeding |
 | `SUPER_ADMIN_PASSWORD` | No | empty | Bootstrap admin password used at startup seeding |
@@ -216,6 +235,9 @@ sequenceDiagram
    ```env
    STORAGE_ROOT_PASSWORD=your-minio-secret
    CACHE_PASSWORD=your-redis-password
+    SECRET_ACCESS_KEY=your-access-secret
+    SECRET_REFRESH_KEY=your-refresh-secret
+    SECRET_KEY=your-csrf-secret-optional
     SUPER_ADMIN_EMAIL=superadmin@kidsmind.com
     SUPER_ADMIN_USERNAME=superadmin
     SUPER_ADMIN_PASSWORD=ChangeMe123!
@@ -249,6 +271,7 @@ docker run -p 8000:8000 \
 | **Redis** | Rate limiter backend (slowapi) | Yes |
 | **httpx** | Async HTTP client for inter-service calls | Built-in |
 | **slowapi** | IP-based rate limiting | Built-in |
+| **itsdangerous** | Signed, timed CSRF tokens (double-submit cookie) | Built-in |
 | **prometheus-fastapi-instrumentator** | `/metrics` endpoint for Prometheus scraping | Built-in |
 | **pydantic-settings** | Typed config from env vars / `.env` files | Built-in |
 

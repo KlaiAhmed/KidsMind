@@ -9,6 +9,7 @@ from utils.get_db import get_db
 from utils.limiter import limiter
 from utils.logger import logger
 from utils.auth_dependencies import get_client_type
+from utils.csrf_dependencies import verify_csrf_dep
 
 
 router = APIRouter()
@@ -43,6 +44,7 @@ async def refresh(
     request: Request,
     response: Response,
     payload: RefreshRequest = Body(default_factory=RefreshRequest),
+    _: None = Depends(verify_csrf_dep),
     x_client_type: str | None = Header(default=None, alias="X-Client-Type"),
     authorization: str | None = Header(default=None, alias="Authorization"),
     db: Session = Depends(get_db),
