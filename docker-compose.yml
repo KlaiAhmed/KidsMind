@@ -138,7 +138,10 @@ services:
   # Bucket Provisioner Service
   bucket-provisioner:
     image: minio/mc:RELEASE.2025-08-13T08-35-41Z-cpuv1
-    entrypoint: ["/bin/sh", "/provision.sh"]
+    entrypoint:
+      - /bin/sh
+      - -c
+      - tr -d '\r' < /provision.sh > /tmp/provision.sh && /bin/sh /tmp/provision.sh
     depends_on:
       file-storage:
         condition: service_healthy

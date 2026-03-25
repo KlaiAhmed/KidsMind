@@ -124,6 +124,29 @@ The entire backend stack (API, AI Service, and PostgreSQL) is containerized usin
 docker compose up --build
 ```
 
+### 3.1 Storage Provisioning (MinIO Buckets)
+On startup, `bucket-provisioner` ensures these buckets exist:
+- `media-public`
+- `media-private`
+- `loki-chunks`
+
+To run/re-run only bucket provisioning:
+```bash
+docker compose up --force-recreate --no-deps bucket-provisioner
+```
+
+Expected success output includes:
+- `Added \`myminio\` successfully.`
+- `Bucket created successfully ...` (or already exists)
+- `Setup complete. Buckets are ready.`
+
+### 3.2 Windows Note (CRLF vs LF)
+If you see errors like `/provision.sh: line 2: set: -`, it is a line-ending issue (`CRLF`) when mounting shell scripts into Linux containers.
+
+This repository now mitigates that in two ways:
+- `.gitattributes` enforces `LF` for `*.sh`, `*.yml`, `*.yaml`
+- `bucket-provisioner` entrypoint normalizes `\r` at runtime before executing the script
+
 ### 4. Client Setup
 
 **Web Client:**
