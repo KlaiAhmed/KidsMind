@@ -3,7 +3,6 @@ from sqlalchemy import (
     Column, Integer, String, Boolean, DateTime,
     Enum as SAEnum, func
 )
-from sqlalchemy.orm import relationship
 from core.database import Base
 
 
@@ -54,19 +53,6 @@ class User(Base):
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
     deleted_at = Column(DateTime, nullable=True)
-
-    # RELATIONS 
-    child_profiles = relationship(
-        "ChildProfile",
-        back_populates="parent",
-        cascade="all, delete-orphan",
-        lazy="selectin"
-    )
-    audit_logs = relationship(
-        "AuditLog",
-        back_populates="parent",
-        lazy="dynamic"
-    )
 
     # Helpers :
 

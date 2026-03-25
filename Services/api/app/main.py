@@ -8,10 +8,12 @@ import httpx
 
 # Local imports
 from core.config import settings
+from core.database import init_db
 from core.logging_setup import setup_logging, RequestTracingMiddleware
 from core.cache_client import get_cache_client, close_cache_client
 from routers.chat import router as chat_router
 from routers.auth import router as auth_router
+from routers.users import router as users_router
 from services.bootstrap_admin import ensure_super_admin_exists
 from utils.limiter import limiter
 from utils.logger import logger
@@ -32,6 +34,7 @@ async def lifespan(app: FastAPI):
         app.state.http_client = client
 
         await get_cache_client()
+        init_db()
         ensure_super_admin_exists()
 
         yield
@@ -65,6 +68,9 @@ def create_app() -> FastAPI:
 
     # Include the auth router
     app.include_router(auth_router, prefix="/api/v1/auth", tags=["Auth"])
+
+    # Include the users router
+    app.include_router(users_router, prefix="/api/v1/users", tags=["Users"])
 
     # Instrumentation for Prometheus
     Instrumentator().instrument(app).expose(app)
