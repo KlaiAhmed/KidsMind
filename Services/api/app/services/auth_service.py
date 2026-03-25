@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from schemas.auth_schema import UserLogin
 from utils.auth_service_utils import (
-    clear_auth_cookies,
+    build_logout_response,
     create_refresh_session,
     deliver_tokens,
     extract_refresh_token,
@@ -115,7 +115,4 @@ class AuthService:
             except HTTPException:
                 logger.warning("Logout called with invalid refresh token")
 
-        if self.client_type == "web":
-            clear_auth_cookies(self.response)
-
-        return {"message": "Logout successful"}
+        return build_logout_response(self.client_type, self.response)

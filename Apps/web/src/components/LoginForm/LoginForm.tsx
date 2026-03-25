@@ -20,6 +20,7 @@ interface LoginFormProps {
 }
 
 interface ApiErrorResponse {
+  status?: number;
   detail?: string | Array<{ msg?: string }>;
 }
 
@@ -31,6 +32,18 @@ const LoginForm = ({ translations, onSuccess }: LoginFormProps) => {
   const [serverError, setServerError] = useState<string>('');
 
   const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000').replace(/\/$/, '');
+
+  const hasActiveSession = async (): Promise<boolean> => {
+    const response = await fetch(`${apiBaseUrl}/api/v1/users/me/summary`, {
+      method: 'GET',
+      headers: {
+        'X-Client-Type': 'web',
+      },
+      credentials: 'include',
+    });
+
+    return response.ok;
+  };
 
   const {
     values,
@@ -49,12 +62,20 @@ const LoginForm = ({ translations, onSuccess }: LoginFormProps) => {
     return translations[errorKey as keyof TranslationMap] || errorKey;
   };
 
-  const getApiErrorMessage = (errorBody: ApiErrorResponse | null): string => {
+  const getApiErrorMessage = (errorBody: ApiErrorResponse | null, status: number): string => {
+    if (status === 403) {
+      return translations.login_error_session;
+    }
+
     if (!errorBody?.detail) {
       return translations.login_error_invalid;
     }
 
     if (typeof errorBody.detail === 'string') {
+      if (errorBody.detail.toLowerCase().includes('csrf')) {
+        return translations.login_error_session;
+      }
+
       if (errorBody.detail.toLowerCase() === 'invalid credentials') {
         return translations.login_error_invalid;
       }
@@ -83,12 +104,24 @@ const LoginForm = ({ translations, onSuccess }: LoginFormProps) => {
       });
 
       if (!response.ok) {
+        try {
+          const sessionIsActive = await hasActiveSession();
+          if (sessionIsActive) {
+            onSuccess();
+            return;
+          }
+        } catch {
+          // fall through to regular error handling
+        }
+
         let errorMessage = translations.login_error_invalid;
         try {
           const errorBody = (await response.json()) as ApiErrorResponse;
-          errorMessage = getApiErrorMessage(errorBody);
+          errorMessage = getApiErrorMessage(errorBody, response.status);
         } catch {
-          errorMessage = translations.login_error_invalid;
+          errorMessage = response.status === 403
+            ? translations.login_error_session
+            : translations.login_error_invalid;
         }
 
         setServerError(errorMessage);
@@ -104,7 +137,17 @@ const LoginForm = ({ translations, onSuccess }: LoginFormProps) => {
 
       onSuccess();
     } catch {
-      setServerError(translations.login_error_invalid);
+      try {
+        const sessionIsActive = await hasActiveSession();
+        if (sessionIsActive) {
+          onSuccess();
+          return;
+        }
+      } catch {
+        // ignore and use fallback error message below
+      }
+
+      setServerError(translations.login_error_network);
     }
   };
 

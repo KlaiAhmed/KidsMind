@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { clearCsrfToken, getCsrfHeader, setCsrfToken } from '../utils/csrf';
+import { clearCsrfToken, getCsrfHeader, getCsrfToken, setCsrfToken } from '../utils/csrf';
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000').replace(/\/$/, '');
 
@@ -51,6 +51,14 @@ const useAuthStatus = () => {
 
     const checkAuth = async () => {
       try {
+        const csrfToken = getCsrfToken();
+        if (!csrfToken) {
+          if (!cancelled) {
+            setIsAuthenticated(false);
+          }
+          return;
+        }
+
         let response = await fetchSummary();
 
         if (response.status === 401) {

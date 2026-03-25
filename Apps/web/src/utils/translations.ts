@@ -67,6 +67,8 @@ const translations: Translations = {
     login_no_account: 'No account yet?',
     login_start_link: 'Get started free',
     login_error_invalid: 'Invalid email or password',
+    login_error_session: 'Session validation failed. Please refresh the page and try again.',
+    login_error_network: 'Unable to reach server. Please check your connection and try again.',
     login_loading: 'Signing in...',
 
     // ─── Get Started — General ──────────────────────────────────────────
@@ -207,6 +209,8 @@ const translations: Translations = {
     login_no_account: 'Pas encore de compte ?',
     login_start_link: 'Commencer gratuitement',
     login_error_invalid: 'E-mail ou mot de passe invalide',
+    login_error_session: 'La validation de session a échoué. Actualisez la page puis réessayez.',
+    login_error_network: 'Impossible de joindre le serveur. Vérifiez votre connexion et réessayez.',
     login_loading: 'Connexion en cours...',
 
     // ─── Get Started — General ──────────────────────────────────────────
@@ -347,6 +351,8 @@ const translations: Translations = {
     login_no_account: '¿No tienes cuenta?',
     login_start_link: 'Empieza gratis',
     login_error_invalid: 'Correo o contraseña inválidos',
+    login_error_session: 'La validación de sesión falló. Actualiza la página e inténtalo de nuevo.',
+    login_error_network: 'No se pudo conectar con el servidor. Verifica tu conexión e inténtalo de nuevo.',
     login_loading: 'Iniciando sesión...',
 
     // ─── Get Started — General ──────────────────────────────────────────
@@ -487,6 +493,8 @@ const translations: Translations = {
     login_no_account: 'Non hai un account?',
     login_start_link: 'Inizia gratis',
     login_error_invalid: 'E-mail o password non validi',
+    login_error_session: 'La convalida della sessione non è riuscita. Aggiorna la pagina e riprova.',
+    login_error_network: 'Impossibile raggiungere il server. Controlla la connessione e riprova.',
     login_loading: 'Accesso in corso...',
 
     // ─── Get Started — General ──────────────────────────────────────────
@@ -627,6 +635,8 @@ const translations: Translations = {
     login_no_account: 'ليس لديك حساب؟',
     login_start_link: 'ابدأ مجاناً',
     login_error_invalid: 'بريد إلكتروني أو كلمة مرور غير صحيحة',
+    login_error_session: 'فشل التحقق من الجلسة. حدّث الصفحة ثم حاول مرة أخرى.',
+    login_error_network: 'تعذر الوصول إلى الخادم. تحقق من اتصالك وحاول مرة أخرى.',
     login_loading: 'جاري تسجيل الدخول...',
 
     // ─── Get Started — General ──────────────────────────────────────────
@@ -767,6 +777,8 @@ const translations: Translations = {
     login_no_account: '还没有账户？',
     login_start_link: '免费注册',
     login_error_invalid: '邮箱或密码无效',
+    login_error_session: '会话校验失败。请刷新页面后重试。',
+    login_error_network: '无法连接到服务器。请检查网络后重试。',
     login_loading: '正在登录...',
 
     // ─── Get Started — General ──────────────────────────────────────────

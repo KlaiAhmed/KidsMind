@@ -2,6 +2,7 @@ import hashlib
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from core.config import settings
@@ -50,7 +51,7 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str) 
         key="refresh_token",
         value=refresh_token,
         max_age=settings.REFRESH_TOKEN_EXPIRE_SECONDS,
-        path="/api/v1/auth/refresh",
+        path="/",
         **cookie_config,
     )
 
@@ -76,7 +77,7 @@ def clear_auth_cookies(response: Response) -> None:
         key="refresh_token",
         value="",
         max_age=0,
-        path="/api/v1/auth/refresh",
+        path="/",
         **cookie_config,
     )
     response.set_cookie(
@@ -98,17 +99,20 @@ def deliver_tokens(
     access_token: str,
     refresh_token: str,
     message: str,
-) -> dict:
+) -> Response | dict:
     """Deliver tokens through cookies for web or JSON for mobile clients."""
     if client_type == "web":
         csrf_token = generate_csrf_token(str(user.id))
-        set_auth_cookies(response, access_token, refresh_token)
-        set_csrf_cookie(response, csrf_token)
-        return {
-            "message": message,
-            "user": build_user_data(user),
-            "csrf_token": csrf_token,
-        }
+        web_response = JSONResponse(
+            content={
+                "message": message,
+                "user": build_user_data(user),
+                "csrf_token": csrf_token,
+            }
+        )
+        set_auth_cookies(web_response, access_token, refresh_token)
+        set_csrf_cookie(web_response, csrf_token)
+        return web_response
 
     return {
         "access_token": access_token,
@@ -117,6 +121,16 @@ def deliver_tokens(
         "expires_in": settings.ACCESS_TOKEN_EXPIRE_SECONDS,
         "user": build_user_data(user),
     }
+
+
+def build_logout_response(client_type: str, response: Response) -> Response | dict:
+    """Return logout payload while ensuring cookie clearing is preserved for web clients."""
+    if client_type == "web":
+        web_response = JSONResponse(content={"message": "Logout successful"})
+        clear_auth_cookies(web_response)
+        return web_response
+
+    return {"message": "Logout successful"}
 
 
 def extract_refresh_token(
