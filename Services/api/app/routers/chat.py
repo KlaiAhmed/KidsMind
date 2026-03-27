@@ -3,51 +3,26 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 import httpx
 import time
+from redis.asyncio import Redis
 from sqlalchemy.orm import Session
 
 # Local imports
 from core.config import settings
-from models.child_profile import ChildProfile
 from schemas.chat_schema import TextChatRequest
 from services.upload_file import upload_audio, remove_audio
 from services.generate_content import generate_content, stream_content
 from services.chat_history import get_conversation_history, clear_conversation_history
+from services.child_profile_context_cache import get_child_profile_context
 from middlewares.vallidate_audio_file import validate_audio_file
-from utils.child_profile_logic import evaluate_stage_alignment, get_age_group
 from utils.get_client import get_client
 from utils.get_db import get_db
+from utils.get_redis import get_redis
 from utils.limiter import limiter
 from utils.handle_service_errors import handle_service_errors
 from utils.logger import logger
 
 
 router = APIRouter()
-
-
-def resolve_child_profile_context(db: Session, child_id: str, user_id: str):
-    try:
-        child_profile_id = int(child_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="child_id must be an integer") from exc
-
-    query = db.query(ChildProfile).filter(ChildProfile.id == child_profile_id)
-    if user_id.isdigit():
-        query = query.filter(ChildProfile.parent_id == int(user_id))
-
-    child_profile = query.first()
-    if not child_profile:
-        raise HTTPException(status_code=404, detail="Child profile not found")
-
-    is_accelerated, is_below_expected_stage, _, _ = evaluate_stage_alignment(
-        child_profile.birth_date,
-        child_profile.education_stage,
-    )
-    return {
-        "age_group": get_age_group(child_profile.birth_date),
-        "education_stage": child_profile.education_stage.value,
-        "is_accelerated": is_accelerated,
-        "is_below_expected_stage": is_below_expected_stage,
-    }
 
 # Voice chat endpoint
 @router.post("/voice/{user_id}/{child_id}/{session_id}")
@@ -63,6 +38,7 @@ async def voice_chat(
     store_audio: bool = Form(True),
     client: httpx.AsyncClient = Depends(get_client),
     db: Session = Depends(get_db),
+    redis: Redis = Depends(get_redis),
 ):
     filename = None
     try:
@@ -89,7 +65,7 @@ async def voice_chat(
                 raise HTTPException(status_code=500, detail="STT Service did not return text")
 
             if stream:
-                profile_context = resolve_child_profile_context(db, child_id, user_id)
+                profile_context = await get_child_profile_context(child_id, redis, db)
                 stream_generator = stream_content(
                     user_id=user_id,
                     child_id=child_id,
@@ -112,7 +88,7 @@ async def voice_chat(
                 )
 
             # Send Response to AI Service
-            profile_context = resolve_child_profile_context(db, child_id, user_id)
+            profile_context = await get_child_profile_context(child_id, redis, db)
             ai_response = await generate_content(
                 user_id=user_id,
                 child_id=child_id,
@@ -150,10 +126,11 @@ async def text_chat(
     body: TextChatRequest,
     client: httpx.AsyncClient = Depends(get_client),
     db: Session = Depends(get_db),
+    redis: Redis = Depends(get_redis),
 ):
     async with handle_service_errors():
         duration = time.perf_counter()
-        profile_context = resolve_child_profile_context(db, child_id, user_id)
+        profile_context = await get_child_profile_context(child_id, redis, db)
 
         logger.info(f"Received text chat request: {body.text} with context: {body.context}")
 
