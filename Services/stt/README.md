@@ -1,18 +1,59 @@
 # STT Service
 
-## Overview
+## 1. Basics
 
-A FastAPI microservice that transcribes audio files via [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (CTranslate2 backend). Accepts a URL pointing to an audio file, downloads it, runs a dual-model pipeline (tiny model for language detection, configurable main model for transcription), and returns the text with detected language and processing duration. Designed to run GPU-accelerated inside Docker with semaphore-based concurrency control.
+- Service Name: stt-service
+- Primary Port: 8000 (Uvicorn inside the container)
+- Docker Network Port: ${STT_PORT}:8000 (host:container from docker-compose)
+- Role in ecosystem: speech-to-text microservice used by upstream services (mainly core-api). It fetches audio from a provided URL, detects language, and returns transcription text.
 
-## Architecture
+## 2. Quick Start
+
+### With pip (local)
+
+1. cd services/stt/app
+2. pip install -r ../requirements.txt
+3. Copy .env.example to .env and set required values for your environment.
+4. uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+### With docker compose
+
+1. Make sure root .env and services/stt/app/.env exist.
+2. Start service:
+```bash
+docker compose build stt-service
+```
+
+GPU requires the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html). For CPU-only, omit `--gpus all` and set `WHISPER_MODE=cpu`.
+
+Docker Compose GPU reservation:
+```yaml
+deploy:
+  resources:
+    reservations:
+      devices:
+        - driver: nvidia
+          count: 1
+          capabilities: [gpu]
+```
+
+## 3. Service Dependencies & Topology
+
+| Dependency | Purpose | Connection Method | Endpoint / Port |
+|---|---|---|---|
+| Core API (caller) | Sends transcription requests | HTTP | POST /v1/stt/transcriptions |
+| Audio source URL (often MinIO presigned URL) | Provides audio bytes to transcribe | Outbound HTTP GET | request.audio_url |
+| Hugging Face Hub (optional) | Model download/cache warmup | HTTPS | huggingface.co |
+| Prometheus | Metrics scraping | HTTP pull | GET /metrics |
+| Promtail/Loki/Grafana | Centralized logs | Docker label + log shipping | logging=promtail |
+
+### Service Map
 
 ```mermaid
 flowchart TD
-    Client([Client]) --> MW[RequestTracingMiddleware<br/>X-Request-ID · duration]
-    MW --> Router[stt_router<br/>POST /v1/stt/transcriptions]
-    Router -- "Depends" --> Sem[acquire_worker<br/>asyncio.Semaphore]
-    Router -- "Depends" --> Models[get_models<br/>main + tiny]
-    Router -- "Depends" --> HC[get_client<br/>httpx.AsyncClient]
+    Client([Caller]) --> MW[RequestTracingMiddleware]
+    MW --> Router[POST /v1/stt/transcriptions]
+    Router --> Sem[acquire_worker semaphore]
     Router --> Ctrl[stt_controller]
     Ctrl --> Fetch[fetch_audio<br/>validate ext · HTTP GET · validate size]
     Ctrl --> Decode[decode_audio<br/>faster_whisper.audio.decode_audio]
@@ -78,75 +119,24 @@ The configurable main model (default: `large-v3-turbo`) runs beam search over th
 
 The `tiny` model is fast enough that its language detection cost is negligible relative to the main model transcription pass. The net result is a measurable end-to-end speedup without sacrificing accuracy, and an explicit safety net against the silent misclassification failure mode that would occur if a low-confidence language tag were passed through unchecked.
 
-
-
-## API Reference
-
-### Speech-to-Text
-
-| Method | Endpoint | Request Body | Response | Description |
-|--------|----------|-------------|----------|-------------|
-| `POST` | `/v1/stt/transcriptions` | `TranscriptionRequest` (JSON) | `TranscriptionResult` (JSON) | Fetch audio from URL, detect language, transcribe |
-
-**`TranscriptionRequest`**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `audio_url` | `HttpUrl` | Yes | Accessible URL pointing to the audio file |
-| `initial_prompt` | `string` | No | Context text passed to the model to condition transcription |
-
-**`TranscriptionResult`**
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `text` | `string` | Full transcription |
-| `language` | `string \| null` | BCP-47 language code, or `null` if detection was uncertain |
-| `duration_seconds` | `float` | Wall-clock time for language detection + transcription |
-
-### Infrastructure
-
-| Method | Endpoint | Response | Description |
-|--------|----------|----------|-------------|
-| `GET` | `/health` | `{"status": "ok"}` | Liveness probe |
-| `GET` | `/metrics` | Prometheus text | Auto-instrumented request metrics (counts, latencies, in-flight gauges) |
-
 ## Data Flow
 
 ```mermaid
 sequenceDiagram
-    participant C as Client
-    participant MW as TracingMiddleware
-    participant R as Router
-    participant S as Semaphore
-    participant Ctrl as Controller
-    participant Ext as Audio Storage
-    participant Tiny as Tiny Model
-    participant Main as Main Model
+    participant C as Caller
+    participant API as STT Service
+    participant SRC as Audio URL Source
+    participant T as Tiny Model
+    participant M as Main Model
 
-    C->>MW: POST /v1/stt/transcriptions
-    MW->>MW: Assign X-Request-ID
-    MW->>R: Forward request
-    R->>S: acquire(timeout=STT_TIMEOUT_SECONDS)
-    alt Semaphore timeout
-        S-->>R: TimeoutError
-        R-->>C: 503 Service Busy
-    end
-    S-->>R: Acquired
-    R->>Ctrl: stt_controller(request, client, models)
-    Ctrl->>Ctrl: Validate audio extension
-    Ctrl->>Ext: HTTP GET audio_url (30s timeout)
-    Ext-->>Ctrl: Audio bytes
-    Ctrl->>Ctrl: Validate size (≤50 MB)
-    Ctrl->>Ctrl: decode_audio → numpy ndarray
-    Ctrl->>Tiny: asyncio.to_thread(detect_language)
-    Tiny-->>Ctrl: language or None
-    Ctrl->>Main: asyncio.to_thread(transcribe_audio)
-    Main-->>Ctrl: Transcribed text
-    Ctrl-->>R: TranscriptionResult
-    R->>S: release()
-    R-->>MW: Response
-    MW->>MW: Log request · inject X-Request-ID header
-    MW-->>C: 200 + TranscriptionResult
+    C->>API: POST /v1/stt/transcriptions
+    API->>API: acquire semaphore
+    API->>SRC: GET audio_url
+    SRC-->>API: audio bytes
+    API->>API: decode + validate size/ext
+    API->>T: detect language
+    API->>M: transcribe
+    API-->>C: {text, language, duration_seconds}
 ```
 
 ## Configuration
@@ -171,25 +161,6 @@ All settings are loaded via `pydantic-settings` from environment variables or `.
 
 **Constraints**: `MAX_AUDIO_BYTES` = 50 MB, `SUPPORTED_AUDIO_EXTENSIONS` = `.mp3`, `.wav`, `.ogg`, `.flac`, `.m4a`.
 
-
-## Docker
-
-```bash
-docker compose build stt-service
-```
-
-GPU requires the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html). For CPU-only, omit `--gpus all` and set `WHISPER_MODE=cpu`.
-
-Docker Compose GPU reservation:
-```yaml
-deploy:
-  resources:
-    reservations:
-      devices:
-        - driver: nvidia
-          count: 1
-          capabilities: [gpu]
-```
 
 ## Dependencies & Integrations
 
