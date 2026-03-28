@@ -3,6 +3,7 @@ import { useState, useCallback } from 'react';
 import { useTheme } from '../../hooks/useTheme';
 import { useLanguage } from '../../hooks/useLanguage';
 import { useMultiStep } from '../../hooks/useMultiStep';
+import { getCsrfHeader, setCsrfToken } from '../../utils/csrf';
 import type {
   OnboardingStep,
   ParentAccountFormData,
@@ -21,6 +22,34 @@ import styles from './GetStartedPage.module.css';
 
 /** Total number of steps in the onboarding flow */
 const TOTAL_STEPS = 4;
+const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000').replace(/\/$/, '');
+
+interface ApiErrorResponse {
+  detail?: string | Array<{ msg?: string }>;
+}
+
+interface LoginSuccessResponse {
+  csrf_token?: string;
+}
+
+const extractApiErrorMessage = async (response: Response, fallbackMessage: string): Promise<string> => {
+  try {
+    const errorBody = (await response.json()) as ApiErrorResponse;
+
+    if (!errorBody.detail) {
+      return fallbackMessage;
+    }
+
+    if (typeof errorBody.detail === 'string') {
+      return errorBody.detail;
+    }
+
+    const firstValidationError = errorBody.detail.find((item) => item?.msg)?.msg;
+    return firstValidationError || fallbackMessage;
+  } catch {
+    return fallbackMessage;
+  }
+};
 
 /**
  * Builds the step configuration array with current completion state.
@@ -61,12 +90,110 @@ const GetStartedPage = () => {
   const [parentData, setParentData] = useState<Partial<ParentAccountFormData>>({});
   const [childData, setChildData] = useState<Partial<ChildProfileFormData>>({});
   const [preferencesData, setPreferencesData] = useState<Partial<PreferencesFormData>>({});
+  const [submitError, setSubmitError] = useState('');
 
   const [direction, setDirection] = useState<'forward' | 'backward'>('forward');
+
+  const completeRegistrationFlow = useCallback(
+    async (
+      parent: ParentAccountFormData,
+      child: ChildProfileFormData,
+      preferences: PreferencesFormData
+    ): Promise<void> => {
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+
+      const registerPayload = {
+        email: parent.email,
+        password: parent.password,
+        default_language: parent.language,
+        timezone,
+        consents: {
+          terms: parent.agreedToTerms,
+          data_processing: parent.agreedToTerms,
+          analytics: false,
+        },
+        parent_pin: preferences.parentPinCode,
+        ...(parent.country ? { country: parent.country } : {}),
+      };
+
+      const registerResponse = await fetch(`${apiBaseUrl}/api/v1/auth/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Client-Type': 'web',
+        },
+        credentials: 'include',
+        body: JSON.stringify(registerPayload),
+      });
+
+      if (!registerResponse.ok && registerResponse.status !== 409) {
+        throw new Error(await extractApiErrorMessage(registerResponse, 'Unable to create account.'));
+      }
+
+      const loginResponse = await fetch(`${apiBaseUrl}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Client-Type': 'web',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          email: parent.email,
+          password: parent.password,
+        }),
+      });
+
+      if (!loginResponse.ok) {
+        throw new Error(await extractApiErrorMessage(loginResponse, 'Unable to log in after registration.'));
+      }
+
+      try {
+        const loginBody = (await loginResponse.json()) as LoginSuccessResponse;
+        setCsrfToken(loginBody.csrf_token ?? null);
+      } catch {
+        setCsrfToken(null);
+      }
+
+      const childPayload = {
+        nickname: child.nickname,
+        birth_date: child.birthDate,
+        education_stage: child.educationStage,
+        languages: [child.preferredLanguage],
+        avatar: child.avatarEmoji,
+        settings_json: {
+          daily_limit_minutes: preferences.dailyLimitMinutes,
+          allowed_subjects: preferences.allowedSubjects,
+          voice_enabled: preferences.enableVoice,
+        },
+      };
+
+      const childResponse = await fetch(`${apiBaseUrl}/api/v1/children`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Client-Type': 'web',
+          ...getCsrfHeader(),
+        },
+        credentials: 'include',
+        body: JSON.stringify(childPayload),
+      });
+
+      if (!childResponse.ok) {
+        throw new Error(
+          await extractApiErrorMessage(
+            childResponse,
+            'Account created, but child profile setup failed. Please retry.'
+          )
+        );
+      }
+    },
+    []
+  );
 
   const handleParentComplete = useCallback(
     (data: ParentAccountFormData) => {
       setParentData(data);
+      setSubmitError('');
       setDirection('forward');
       goToNextStep();
     },
@@ -76,6 +203,7 @@ const GetStartedPage = () => {
   const handleChildComplete = useCallback(
     (data: ChildProfileFormData) => {
       setChildData(data);
+      setSubmitError('');
       setDirection('forward');
       goToNextStep();
     },
@@ -83,15 +211,50 @@ const GetStartedPage = () => {
   );
 
   const handlePreferencesComplete = useCallback(
-    (data: PreferencesFormData) => {
+    async (data: PreferencesFormData) => {
       setPreferencesData(data);
-      setDirection('forward');
-      goToNextStep();
+      setSubmitError('');
+
+      const parentIsComplete =
+        !!parentData.email
+        && !!parentData.password
+        && !!parentData.confirmPassword
+        && !!parentData.language
+        && typeof parentData.agreedToTerms === 'boolean';
+
+      const childIsComplete =
+        !!childData.nickname
+        && !!childData.birthDate
+        && !!childData.educationStage
+        && !!childData.avatarEmoji
+        && !!childData.preferredLanguage;
+
+      if (!parentIsComplete || !childIsComplete) {
+        setSubmitError('Please complete previous steps before continuing.');
+        return;
+      }
+
+      try {
+        await completeRegistrationFlow(
+          parentData as ParentAccountFormData,
+          childData as ChildProfileFormData,
+          data
+        );
+        setDirection('forward');
+        goToNextStep();
+      } catch (error) {
+        setSubmitError(
+          error instanceof Error
+            ? error.message
+            : 'Registration failed. Please try again.'
+        );
+      }
     },
-    [goToNextStep]
+    [childData, completeRegistrationFlow, goToNextStep, parentData]
   );
 
   const handleBack = () => {
+    setSubmitError('');
     setDirection('backward');
     goToPreviousStep();
   };
@@ -155,6 +318,7 @@ const GetStartedPage = () => {
             <StepPreferences
               translations={translations}
               onComplete={handlePreferencesComplete}
+              submitError={submitError}
             />
           )}
           {currentStepIndex === 3 && (

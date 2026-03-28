@@ -14,7 +14,8 @@ import styles from './StepPreferences.module.css';
 
 interface StepPreferencesProps {
   translations: TranslationMap;
-  onComplete: (data: PreferencesFormData) => void;
+  onComplete: (data: PreferencesFormData) => Promise<void> | void;
+  submitError?: string;
 }
 
 /* ─── Constants ────────────────────────────────────────────────────────────── */
@@ -52,6 +53,7 @@ interface PreferencesInternalForm extends Record<string, unknown> {
 const StepPreferences = ({
   translations,
   onComplete,
+  submitError,
 }: StepPreferencesProps) => {
   const pinRefs = useRef<(HTMLInputElement | null)[]>([]);
   const confirmPinRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -211,7 +213,7 @@ const StepPreferences = ({
 
   const onSubmit = useCallback(async () => {
     await handleSubmit(async (formValues) => {
-      onComplete(formValues as PreferencesFormData);
+      await onComplete(formValues as PreferencesFormData);
     });
   }, [handleSubmit, onComplete]);
 
@@ -402,6 +404,12 @@ const StepPreferences = ({
         <hr className={styles.divider} />
 
         {/* ── Submit ─────────────────────────────────────────────────────── */}
+        {submitError && (
+          <p className={styles.serverError} role="alert">
+            {submitError}
+          </p>
+        )}
+
         <button
           type="button"
           className={styles.submitButton}

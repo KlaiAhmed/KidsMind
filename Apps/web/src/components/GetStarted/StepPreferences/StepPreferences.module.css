@@ -399,6 +399,15 @@
   animation: errorSlideDown 0.3s ease forwards;
 }
 
+.serverError {
+  border: 1px solid #FECACA;
+  background: #FEF2F2;
+  color: #991B1B;
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: var(--font-size-sm);
+}
+
 /* ─── Submit Button ────────────────────────────────────────────────────────── */
 
 .submitButton {

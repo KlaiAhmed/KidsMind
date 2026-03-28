@@ -86,12 +86,12 @@ const StepWelcome = ({
     const educationStage = childData.educationStage;
     if (!educationStage) return '';
     const labels: Record<string, string> = {
-      KINDERGARTEN: 'Kindergarten',
-      PRIMARY: 'Primary',
-      SECONDARY: 'Secondary',
+      KINDERGARTEN: translations.gs_school_level_kindergarten,
+      PRIMARY: translations.gs_school_level_primary,
+      SECONDARY: translations.gs_school_level_secondary,
     };
     return labels[educationStage] ?? educationStage;
-  }, [childData.educationStage]);
+  }, [childData.educationStage, translations]);
 
   return (
     <div className={styles.stepContainer}>

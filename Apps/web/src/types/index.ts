@@ -99,6 +99,8 @@ export interface TranslationMap {
   gs_confirm_password_placeholder: string;
   gs_country_label: string;
   gs_country_placeholder: string;
+  gs_country_search_placeholder: string;
+  gs_country_search_hint: string;
   gs_terms_checkbox: string;
   gs_terms_required_error: string;
   gs_password_strength_weak: string;
@@ -111,8 +113,20 @@ export interface TranslationMap {
   gs_nickname_label: string;
   gs_nickname_placeholder: string;
   gs_nickname_hint: string;
+  gs_birth_date_label: string;
+  gs_birth_date_placeholder: string;
   gs_age_group_label: string;
   gs_grade_level_label: string;
+  gs_grade_level_placeholder: string;
+  gs_school_level_kindergarten: string;
+  gs_school_level_primary: string;
+  gs_school_level_secondary: string;
+  gs_school_level_auto_hint: string;
+  gs_birth_date_warning_min: string;
+  gs_birth_date_warning_max: string;
+  gs_school_level_mismatch_disclaimer: string;
+  gs_school_level_mismatch_accelerated_note: string;
+  gs_school_level_mismatch_learning_requirements_note: string;
   gs_avatar_label: string;
   gs_child_language_label: string;
 
@@ -154,11 +168,16 @@ export interface TranslationMap {
   error_password_too_short: string;
   error_password_no_uppercase: string;
   error_password_no_number: string;
+  error_country_required: string;
   error_passwords_dont_match: string;
   error_nickname_required: string;
   error_nickname_too_short: string;
   error_nickname_too_long: string;
   error_age_group_required: string;
+  error_birth_date_required: string;
+  error_birth_date_invalid: string;
+  error_birth_date_too_young: string;
+  error_birth_date_too_old: string;
   error_grade_required: string;
   error_pin_required: string;
   error_pin_must_be_4_digits: string;
@@ -235,7 +254,7 @@ export interface ParentAccountFormData {
 export interface ChildProfileFormData {
   nickname: string;
   birthDate: string;
-  educationStage: EducationStageId;
+  educationStage: EducationStageId | '';
   avatarEmoji: string;
   preferredLanguage: LanguageCode;
 }
@@ -323,7 +342,7 @@ export interface UseMultiStepReturn {
 export interface FormFieldProps {
   id: string;
   label: string;
-  type?: 'text' | 'email' | 'number' | 'select' | 'checkbox';
+  type?: 'text' | 'email' | 'number' | 'date' | 'select' | 'checkbox';
   value: string;
   error?: string;
   placeholder?: string;

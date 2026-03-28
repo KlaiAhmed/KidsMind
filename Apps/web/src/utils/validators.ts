@@ -5,6 +5,11 @@ import type {
   ChildProfileFormData,
   PreferencesFormData,
 } from '../types';
+import {
+  MIN_CHILD_AGE,
+  MAX_CHILD_AGE,
+  calculateAgeFromBirthDate,
+} from './childProfileRules';
 
 // ─── Individual Field Validators ──────────────────────────────────────────────
 
@@ -31,7 +36,8 @@ const validateEmail = (email: string): string => {
 /**
  * validatePassword — enforces minimum security requirements.
  *
- * Requirements: at least 8 characters, 1 uppercase letter, 1 number.
+ * Requirements: at least 8 characters, 1 uppercase letter, 1 lowercase
+ * letter, 1 number, and 1 special character.
  *
  * @param password - The password string to validate
  * @returns Error message string, or empty string if valid
@@ -46,8 +52,14 @@ const validatePassword = (password: string): string => {
   if (!/[A-Z]/.test(password)) {
     return 'error_password_no_uppercase';
   }
+  if (!/[a-z]/.test(password)) {
+    return 'Password must contain one lowercase letter';
+  }
   if (!/[0-9]/.test(password)) {
     return 'error_password_no_number';
+  }
+  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+    return 'Password must contain one special character (!@#$...)';
   }
   return '';
 };
@@ -80,9 +92,9 @@ const getPasswordStrength = (password: string): 0 | 1 | 2 | 3 => {
 };
 
 /**
- * validateNickname — enforces 2–20 character limit with no special characters.
+ * validateNickname — enforces backend-compatible length and non-blank value.
  *
- * Allows letters (any script via Unicode), numbers, spaces, and hyphens.
+ * API contract: min length 1, max length 64, and not blank after trim.
  *
  * @param nickname - The nickname string to validate
  * @returns Error message string, or empty string if valid
@@ -91,11 +103,8 @@ const validateNickname = (nickname: string): string => {
   if (!nickname.trim()) {
     return 'error_nickname_required';
   }
-  if (nickname.trim().length < 2) {
-    return 'error_nickname_too_short';
-  }
-  if (nickname.trim().length > 20) {
-    return 'error_nickname_too_long';
+  if (nickname.trim().length > 64) {
+    return 'Nickname must be at most 64 characters';
   }
   return '';
 };
@@ -186,18 +195,17 @@ const validateChildProfileStep = (values: ChildProfileFormData): FormErrors => {
   if (nicknameError) errors.nickname = nicknameError;
 
   if (!values.birthDate) {
-    errors.birthDate = 'error_age_group_required';
+    errors.birthDate = 'error_birth_date_required';
   } else {
-    const birthDate = new Date(values.birthDate);
-    const today = new Date();
-    if (Number.isNaN(birthDate.getTime()) || birthDate > today) {
-      errors.birthDate = 'error_age_group_required';
+    const age = calculateAgeFromBirthDate(values.birthDate);
+
+    if (age === null) {
+      errors.birthDate = 'error_birth_date_invalid';
     } else {
-      const age = today.getFullYear() - birthDate.getFullYear() - (
-        today < new Date(today.getFullYear(), birthDate.getMonth(), birthDate.getDate()) ? 1 : 0
-      );
-      if (age < 3 || age > 15) {
-        errors.birthDate = 'error_age_group_required';
+      if (age < MIN_CHILD_AGE) {
+        errors.birthDate = 'error_birth_date_too_young';
+      } else if (age > MAX_CHILD_AGE) {
+        errors.birthDate = 'error_birth_date_too_old';
       }
     }
   }
@@ -227,10 +235,6 @@ const validatePreferencesStep = (values: PreferencesFormData): FormErrors => {
     errors.confirmPinCode = 'error_pin_required';
   } else if (values.parentPinCode !== values.confirmPinCode) {
     errors.confirmPinCode = 'error_pins_dont_match';
-  }
-
-  if (values.allowedSubjects.length < 2) {
-    errors.allowedSubjects = 'error_min_two_subjects';
   }
 
   return errors;
