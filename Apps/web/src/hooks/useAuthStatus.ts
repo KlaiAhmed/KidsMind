@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { apiBaseUrl } from '../utils/api';
 import { clearCsrfToken, getCsrfHeader, getCsrfToken, setCsrfToken } from '../utils/csrf';
+import { AUTH_STATE_CHANGED_EVENT } from '../utils/authEvents';
 
 interface RefreshResponse {
   csrf_token?: string;
@@ -81,10 +82,22 @@ const useAuthStatus = () => {
       }
     };
 
+    const handleAuthStateChanged = () => {
+      void checkAuth();
+    };
+
     void checkAuth();
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener(AUTH_STATE_CHANGED_EVENT, handleAuthStateChanged);
+    }
 
     return () => {
       cancelled = true;
+
+      if (typeof window !== 'undefined') {
+        window.removeEventListener(AUTH_STATE_CHANGED_EVENT, handleAuthStateChanged);
+      }
     };
   }, []);
 

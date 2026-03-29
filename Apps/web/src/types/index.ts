@@ -78,6 +78,7 @@ export interface TranslationMap {
   login_error_invalid: string;
   login_error_session: string;
   login_error_network: string;
+  login_error_locked: string;
   login_loading: string;
 
   // ─── Get Started — General ────────────────────────────────────────────────────

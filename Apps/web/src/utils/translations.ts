@@ -69,6 +69,7 @@ const translations: Translations = {
     login_error_invalid: 'Invalid email or password',
     login_error_session: 'Session validation failed. Please refresh the page and try again.',
     login_error_network: 'Unable to reach server. Please check your connection and try again.',
+    login_error_locked: 'Account is temporarily locked due to multiple failed login attempts. Please try again later.',
     login_loading: 'Signing in...',
 
     // ─── Get Started — General ──────────────────────────────────────────
@@ -241,6 +242,7 @@ const translations: Translations = {
     login_error_invalid: 'E-mail ou mot de passe invalide',
     login_error_session: 'La validation de session a échoué. Actualisez la page puis réessayez.',
     login_error_network: 'Impossible de joindre le serveur. Vérifiez votre connexion et réessayez.',
+    login_error_locked: 'Le compte est temporairement verrouillé suite à plusieurs tentatives de connexion échouées. Veuillez réessayer plus tard.',
     login_loading: 'Connexion en cours...',
 
     // ─── Get Started — General ──────────────────────────────────────────
@@ -413,6 +415,7 @@ const translations: Translations = {
     login_error_invalid: 'Correo o contraseña inválidos',
     login_error_session: 'La validación de sesión falló. Actualiza la página e inténtalo de nuevo.',
     login_error_network: 'No se pudo conectar con el servidor. Verifica tu conexión e inténtalo de nuevo.',
+    login_error_locked: 'La cuenta está temporalmente bloqueada debido a múltiples intentos fallidos de inicio de sesión. Por favor, inténtalo más tarde.',
     login_loading: 'Iniciando sesión...',
 
     // ─── Get Started — General ──────────────────────────────────────────
@@ -585,6 +588,7 @@ const translations: Translations = {
     login_error_invalid: 'E-mail o password non validi',
     login_error_session: 'La convalida della sessione non è riuscita. Aggiorna la pagina e riprova.',
     login_error_network: 'Impossibile raggiungere il server. Controlla la connessione e riprova.',
+    login_error_locked: 'L\'account è temporaneamente bloccato a causa di diversi tentativi di accesso falliti. Riprova più tardi.',
     login_loading: 'Accesso in corso...',
 
     // ─── Get Started — General ──────────────────────────────────────────
@@ -757,6 +761,7 @@ const translations: Translations = {
     login_error_invalid: 'بريد إلكتروني أو كلمة مرور غير صحيحة',
     login_error_session: 'فشل التحقق من الجلسة. حدّث الصفحة ثم حاول مرة أخرى.',
     login_error_network: 'تعذر الوصول إلى الخادم. تحقق من اتصالك وحاول مرة أخرى.',
+    login_error_locked: 'الحساب مقفل مؤقتاً بسبب محاولات تسجيل دخول فاشلة متعددة. يرجى المحاولة لاحقاً.',
     login_loading: 'جاري تسجيل الدخول...',
 
     // ─── Get Started — General ──────────────────────────────────────────
@@ -929,6 +934,7 @@ const translations: Translations = {
     login_error_invalid: '邮箱或密码无效',
     login_error_session: '会话校验失败。请刷新页面后重试。',
     login_error_network: '无法连接到服务器。请检查网络后重试。',
+    login_error_locked: '由于多次登录失败，账户已被暂时锁定。请稍后再试。',
     login_loading: '正在登录...',
 
     // ─── Get Started — General ──────────────────────────────────────────

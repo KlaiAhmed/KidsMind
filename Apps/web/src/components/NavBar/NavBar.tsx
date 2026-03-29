@@ -7,6 +7,7 @@ import { LANGUAGES } from '../../utils/constants';
 import { useScrollPosition } from '../../hooks/useScrollPosition';
 import { apiBaseUrl } from '../../utils/api';
 import { clearCsrfToken, getCsrfHeader } from '../../utils/csrf';
+import { dispatchAuthStateChanged } from '../../utils/authEvents';
 import styles from './NavBar.module.css';
 
 interface NavBarProps {
@@ -111,6 +112,7 @@ const NavBar = ({
       // Logout should still clear local auth state if the network call fails.
     } finally {
       clearCsrfToken();
+      dispatchAuthStateChanged();
       window.location.assign('/login');
     }
   }, [closeAllDropdownMenus, isLoggingOut]);

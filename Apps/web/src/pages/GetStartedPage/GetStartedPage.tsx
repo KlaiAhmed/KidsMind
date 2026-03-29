@@ -1,11 +1,14 @@
 /** GetStartedPage — Multi-step onboarding flow for new parent registration with 4 steps. */
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../../hooks/useTheme';
 import { useLanguage } from '../../hooks/useLanguage';
 import { useMultiStep } from '../../hooks/useMultiStep';
+import { useAuthStatus } from '../../hooks/useAuthStatus';
 import { apiBaseUrl } from '../../utils/api';
 import { getPrimaryTimezoneByCountryCode } from '../../utils/countries';
 import { getCsrfHeader, setCsrfToken } from '../../utils/csrf';
+import { dispatchAuthStateChanged } from '../../utils/authEvents';
 import type {
   OnboardingStep,
   ParentAccountFormData,
@@ -28,6 +31,8 @@ const TOTAL_STEPS = 4;
 interface ApiErrorResponse {
   message?: string;
   error?: string;
+  error_code?: string;
+  errors?: Array<{ field?: string; message?: string; type?: string }>;
   detail?: string | Array<{ msg?: string; message?: string }>;
 }
 
@@ -96,6 +101,13 @@ const extractApiErrorMessage = async (
   try {
     const errorBody = (await response.json()) as ApiErrorResponse;
 
+    if (Array.isArray(errorBody.errors)) {
+      const firstError = errorBody.errors.find((item) => item?.message);
+      if (firstError?.message) {
+        return firstError.message;
+      }
+    }
+
     if (typeof errorBody.detail === 'string') {
       return errorBody.detail;
     }
@@ -158,14 +170,17 @@ const buildStepConfig = (currentIndex: number): OnboardingStep[] => {
 };
 
 const GetStartedPage = () => {
+  const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
   const { language, setLanguage, translations } = useLanguage();
+  const { isAuthenticated, isLoading: isAuthLoading } = useAuthStatus();
   const {
     currentStepIndex,
     progressPercent,
     goToNextStep,
     goToPreviousStep,
     isFirstStep,
+    goToStep,
   } = useMultiStep(TOTAL_STEPS);
 
   // ─── Onboarding State ──────────────────────────────────────────────────
@@ -176,6 +191,13 @@ const GetStartedPage = () => {
   const [submitError, setSubmitError] = useState('');
 
   const [direction, setDirection] = useState<'forward' | 'backward'>('forward');
+
+  // ─── Auth Redirect: Skip step 1 if already logged in ────────────────────
+  useEffect(() => {
+    if (!isAuthLoading && isAuthenticated && currentStepIndex === 0) {
+      goToStep(1); // Jump to step 2 (child profile)
+    }
+  }, [isAuthLoading, isAuthenticated, currentStepIndex, goToStep]);
 
   const handleParentComplete = useCallback(
     async (data: ParentAccountFormData): Promise<void> => {
@@ -239,6 +261,8 @@ const GetStartedPage = () => {
         } catch {
           setCsrfToken(null);
         }
+
+        dispatchAuthStateChanged();
 
         setParentData(data);
         setChildData({});
@@ -357,9 +381,14 @@ const GetStartedPage = () => {
   );
 
   const handleBack = () => {
-    setSubmitError('');
-    setDirection('backward');
-    goToPreviousStep();
+    if (isAuthenticated && currentStepIndex === 1) {
+      // If logged in on step 2, back button goes to home
+      navigate('/');
+    } else {
+      setSubmitError('');
+      setDirection('backward');
+      goToPreviousStep();
+    }
   };
 
   const handleFinish = () => {
@@ -437,7 +466,7 @@ const GetStartedPage = () => {
           )}
         </div>
 
-        {currentStepIndex < TOTAL_STEPS - 1 && (
+        {!isAuthenticated && currentStepIndex < TOTAL_STEPS - 1 && (
           <div className={styles.bottomLink}>
             <span>{translations.gs_already_have_account}</span>
             <a href="/login" className={styles.bottomLinkAnchor}>
