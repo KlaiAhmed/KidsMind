@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from controllers.children import (
     create_child_controller,
     delete_child_controller,
+    get_child_controller,
     list_children_controller,
     update_child_controller,
 )
@@ -69,6 +70,26 @@ async def get_my_children(
 
     timer = time.perf_counter() - timer
     logger.info(f"List child profiles request processed in {timer:.3f} seconds")
+
+    return result
+
+
+@router.get("/{child_id}", response_model=ChildProfileResponse)
+@limiter.limit(settings.RATE_LIMIT)
+async def get_my_child_by_id(
+    child_id: int,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return one child profile owned by the authenticated parent."""
+    timer = time.perf_counter()
+
+    logger.info(f"Get child profile request received for child_id={child_id} parent_id={current_user.id}")
+    result = await get_child_controller(child_id, current_user, db)
+
+    timer = time.perf_counter() - timer
+    logger.info(f"Get child profile request processed in {timer:.3f} seconds")
 
     return result
 

@@ -78,6 +78,17 @@ class ChildProfileService:
             .all()
         )
 
+    def get_child_profile_for_parent(self, child_id: int, parent_user: User) -> ChildProfile:
+        """Return one child profile when it belongs to the authenticated parent."""
+        child_profile = (
+            self.db.query(ChildProfile)
+            .filter(ChildProfile.id == child_id, ChildProfile.parent_id == parent_user.id)
+            .first()
+        )
+        if not child_profile:
+            raise HTTPException(status_code=404, detail="Child profile not found")
+        return child_profile
+
     def update_child_profile(self, child_id: int, parent_user: User, payload: ChildProfileUpdate) -> ChildProfile:
         """Update an existing child profile owned by the authenticated parent."""
         child_profile = (

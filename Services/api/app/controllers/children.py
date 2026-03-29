@@ -70,6 +70,34 @@ async def list_children_controller(
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
+async def get_child_controller(
+    child_id: int,
+    current_user: User,
+    db: Session,
+) -> ChildProfile:
+    """Get one child profile that belongs to the authenticated parent user.
+
+    Args:
+        child_id: Numeric identifier of the child profile to retrieve.
+        current_user: The authenticated parent user.
+        db: Active database session.
+
+    Returns:
+        ChildProfile ORM instance belonging to the parent.
+
+    Raises:
+        HTTPException: 404 if profile not found or doesn't belong to parent.
+    """
+    try:
+        child_service = ChildProfileService(db)
+        return child_service.get_child_profile_for_parent(child_id, current_user)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error occurred while getting child profile: {e}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+
 async def update_child_controller(
     child_id: int,
     payload: ChildProfileUpdate,

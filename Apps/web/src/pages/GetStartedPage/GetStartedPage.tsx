@@ -416,20 +416,6 @@ const GetStartedPage = () => {
         onToggleTheme={toggleTheme}
       >
         <StepIndicator steps={onboardingSteps} currentIndex={currentStepIndex} translations={translations} />
-        <ProgressBar percent={progressPercent} />
-
-        <div className={styles.stepNavigation}>
-          {!isFirstStep && currentStepIndex < TOTAL_STEPS - 1 && (
-            <button
-              className={styles.backButton}
-              onClick={handleBack}
-              type="button"
-              aria-label={`Go back to step ${currentStepIndex}`}
-            >
-              {translations.gs_back_button}
-            </button>
-          )}
-        </div>
 
         <div className={containerClassName} key={currentStepIndex}>
           {currentStepIndex === 0 && (
