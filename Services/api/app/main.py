@@ -25,6 +25,7 @@ from core.logging_setup import setup_logging, RequestTracingMiddleware
 from core.cache_client import get_cache_client, close_cache_client
 from middlewares.csrf_middleware import CSRFMiddleware
 from routers.auth import router as auth_router
+from routers.admin_users import router as admin_users_router
 from routers.chat import router as chat_router
 from routers.children import router as children_router
 from routers.health import router as health_router
@@ -115,6 +116,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router, prefix="/api/v1/auth", tags=["Auth"])
     app.include_router(chat_router, prefix="/api/v1/chat", tags=["Chat"])
     app.include_router(children_router, prefix="/api/v1/children", tags=["Children"])
+    app.include_router(admin_users_router, prefix="/api/v1/users", tags=["Admin Users"])
     app.include_router(users_router, prefix="/api/v1/users", tags=["Users"])
 
     # Prometheus instrumentation
