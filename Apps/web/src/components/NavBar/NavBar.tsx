@@ -160,9 +160,6 @@ const NavBar = ({
 
   return (
     <>
-      <a href="#main-content" className={styles.skipNav}>
-        Skip to content
-      </a>
       <nav
         className={`${styles.nav} ${isAtPageTop ? styles.navAtTop : ''} ${shouldHideNav ? styles.navHidden : ''}`}
         aria-label="Main navigation"
