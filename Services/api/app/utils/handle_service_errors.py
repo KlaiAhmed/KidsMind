@@ -6,13 +6,11 @@ Layer: Utils
 Domain: Error Handling
 """
 
-import logging
 from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import HTTPException
-
-logger = logging.getLogger(__name__)
+from utils.logger import logger
 
 
 @asynccontextmanager

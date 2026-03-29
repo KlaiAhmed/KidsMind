@@ -11,10 +11,7 @@ from fastapi import APIRouter, Request
 
 from core.cache_client import get_cache_client
 from utils.limiter import limiter
-
-import logging
-
-logger = logging.getLogger(__name__)
+from utils.logger import logger
 
 router = APIRouter()
 

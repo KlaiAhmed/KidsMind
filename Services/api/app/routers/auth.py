@@ -7,7 +7,6 @@ Layer: Router
 Domain: Auth
 """
 
-import logging
 import time
 
 from fastapi import APIRouter, Body, Depends, Header, Request, Response
@@ -25,8 +24,7 @@ from dependencies.infrastructure import get_db
 from dependencies.request_security import verify_csrf_dep
 from schemas.auth_schema import LogoutRequest, RefreshRequest, RegisterResponse, UserLogin, UserRegister
 from utils.limiter import limiter
-
-logger = logging.getLogger(__name__)
+from utils.logger import logger
 
 router = APIRouter()
 

@@ -6,15 +6,12 @@ Layer: Controller
 Domain: Auth
 """
 
-import logging
-
 from fastapi import HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
 from schemas.auth_schema import UserLogin, UserRegister
 from services.auth_service import AuthService
-
-logger = logging.getLogger(__name__)
+from utils.logger import logger
 
 
 async def register_controller(payload: UserRegister, db: Session) -> dict:

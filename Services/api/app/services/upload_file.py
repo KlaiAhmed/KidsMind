@@ -7,7 +7,6 @@ Layer: Service
 Domain: Storage
 """
 
-import logging
 import time
 from datetime import timedelta
 
@@ -16,8 +15,7 @@ from minio.error import S3Error
 
 from core.storage import minio_client
 from utils.file_name import generate_storage_path
-
-logger = logging.getLogger(__name__)
+from utils.logger import logger
 
 
 def upload_audio(file: UploadFile = File(...), user_id: str = "", child_id: str = "", session_id: str = "", store_audio: bool = True):

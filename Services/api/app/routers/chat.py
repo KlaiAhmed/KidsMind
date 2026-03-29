@@ -7,8 +7,6 @@ Layer: Router
 Domain: Chat
 """
 
-import logging
-
 import httpx
 from fastapi import APIRouter, Depends, Request, UploadFile, Form
 from redis.asyncio import Redis
@@ -25,8 +23,7 @@ from dependencies.infrastructure import get_client, get_db, get_redis
 from dependencies.media import validate_audio_file
 from schemas.chat_schema import TextChatRequest
 from utils.limiter import limiter
-
-logger = logging.getLogger(__name__)
+from utils.logger import logger
 
 router = APIRouter()
 

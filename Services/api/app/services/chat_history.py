@@ -7,13 +7,10 @@ Layer: Service
 Domain: Chat
 """
 
-import logging
-
 import httpx
 
 from core.config import settings
-
-logger = logging.getLogger(__name__)
+from utils.logger import logger
 
 
 async def get_conversation_history(

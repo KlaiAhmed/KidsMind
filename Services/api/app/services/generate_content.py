@@ -7,14 +7,12 @@ Layer: Service
 Domain: Chat / AI
 """
 
-import logging
 from collections.abc import AsyncGenerator
 
 import httpx
 
 from core.config import settings
-
-logger = logging.getLogger(__name__)
+from utils.logger import logger
 
 async def generate_content(
     user_id: str,
