@@ -8,16 +8,18 @@ Domain: Application Infrastructure
 """
 
 from contextlib import asynccontextmanager
-import logging
 
 import httpx
+from fastapi.exceptions import RequestValidationError
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from core.config import settings
+from core.error_handlers import http_exception_handler, request_validation_exception_handler
 from core.database import init_db
 from core.logging_setup import setup_logging, RequestTracingMiddleware
 from core.cache_client import get_cache_client, close_cache_client
@@ -29,9 +31,8 @@ from routers.health import router as health_router
 from routers.users import router as users_router
 from services.bootstrap_admin import ensure_super_admin_exists
 from utils.limiter import limiter
+from utils.logger import logger
 from utils.upstream_headers import build_service_headers
-
-logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -106,6 +107,8 @@ def create_app() -> FastAPI:
     # Rate limiting
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    app.add_exception_handler(RequestValidationError, request_validation_exception_handler)
+    app.add_exception_handler(StarletteHTTPException, http_exception_handler)
 
     # Mount routers
     app.include_router(health_router, prefix="", tags=["Health"])
