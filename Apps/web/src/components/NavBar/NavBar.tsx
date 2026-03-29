@@ -8,7 +8,7 @@ import {
   type ClipboardEvent as ReactClipboardEvent,
 } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Sun, Moon, Menu, X, Languages, User } from 'lucide-react';
+import { Sun, Moon, Menu, X, Languages, User, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { ThemeMode, LanguageCode, TranslationMap } from '../../types';
 import { LANGUAGES } from '../../utils/constants';
 import { useScrollPosition } from '../../hooks/useScrollPosition';
@@ -33,6 +33,13 @@ interface NavBarProps {
 
 const PARENT_PROFILE_ROUTE = '/parent-profile';
 const PIN_LENGTH = 4;
+type MobileMenuView = 'main' | 'language' | 'theme';
+
+const MOBILE_MENU_OFFSET_BY_VIEW: Record<MobileMenuView, number> = {
+  main: 0,
+  language: 100,
+  theme: 200,
+};
 
 const RocketLogo = () => {
   return (
@@ -65,8 +72,8 @@ const NavBar = ({
   const { isAtPageTop, isHiddenByScroll } = useScrollPosition();
   const [isLanguageDropdownOpen, setIsLanguageDropdownOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [activeMobileMenu, setActiveMobileMenu] = useState<MobileMenuView>('main');
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
-  const [isMobileUserDropdownOpen, setIsMobileUserDropdownOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isPinModalOpen, setIsPinModalOpen] = useState(false);
   const [pinDigits, setPinDigits] = useState<string[]>(Array(PIN_LENGTH).fill(''));
@@ -75,24 +82,40 @@ const NavBar = ({
   const [isPinErrorShaking, setIsPinErrorShaking] = useState(false);
   const languageDropdownRef = useRef<HTMLDivElement>(null);
   const userDropdownRef = useRef<HTMLDivElement>(null);
-  const mobileUserDropdownRef = useRef<HTMLDivElement>(null);
   const pinInputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const lastSubmittedPinRef = useRef<string | null>(null);
   const shouldHideNav = isHiddenByScroll && !isMobileMenuOpen;
+  const mobileMenuOffset = MOBILE_MENU_OFFSET_BY_VIEW[activeMobileMenu];
 
   const closeAllDropdownMenus = useCallback(() => {
     setIsLanguageDropdownOpen(false);
     setIsUserDropdownOpen(false);
-    setIsMobileUserDropdownOpen(false);
   }, []);
 
-  const handleLanguageSelect = useCallback(
+  const handleDesktopLanguageSelect = useCallback(
     (code: LanguageCode) => {
       onLanguageChange(code);
       closeAllDropdownMenus();
-      setIsMobileMenuOpen(false);
     },
     [closeAllDropdownMenus, onLanguageChange]
+  );
+
+  const handleMobileLanguageSelect = useCallback(
+    (code: LanguageCode) => {
+      onLanguageChange(code);
+      setActiveMobileMenu('main');
+    },
+    [onLanguageChange]
+  );
+
+  const handleThemeSelect = useCallback(
+    (selectedTheme: ThemeMode) => {
+      if (selectedTheme !== theme) {
+        onToggleTheme();
+      }
+      setActiveMobileMenu('main');
+    },
+    [onToggleTheme, theme]
   );
 
   const handleDesktopUserMenuToggle = useCallback(() => {
@@ -100,8 +123,14 @@ const NavBar = ({
     setIsUserDropdownOpen((previousValue) => !previousValue);
   }, []);
 
-  const handleMobileUserMenuToggle = useCallback(() => {
-    setIsMobileUserDropdownOpen((previousValue) => !previousValue);
+  const handleMobileMenuToggle = useCallback(() => {
+    setIsMobileMenuOpen((previousValue) => {
+      const nextValue = !previousValue;
+      if (!nextValue) {
+        setActiveMobileMenu('main');
+      }
+      return nextValue;
+    });
   }, []);
 
   const closePinModal = useCallback(() => {
@@ -373,10 +402,6 @@ const NavBar = ({
       if (userDropdownRef.current && !userDropdownRef.current.contains(e.target as Node)) {
         setIsUserDropdownOpen(false);
       }
-
-      if (mobileUserDropdownRef.current && !mobileUserDropdownRef.current.contains(e.target as Node)) {
-        setIsMobileUserDropdownOpen(false);
-      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -414,7 +439,7 @@ const NavBar = ({
 
   useEffect(() => {
     if (!isMobileMenuOpen) {
-      setIsMobileUserDropdownOpen(false);
+      setActiveMobileMenu('main');
     }
   }, [isMobileMenuOpen]);
 
@@ -453,7 +478,7 @@ const NavBar = ({
                     <button
                       key={languageOption.code}
                       className={`${styles.langOption} ${languageOption.code === language ? styles.langOptionActive : ''}`}
-                      onClick={() => handleLanguageSelect(languageOption.code)}
+                      onClick={() => handleDesktopLanguageSelect(languageOption.code)}
                       role="option"
                       aria-selected={languageOption.code === language}
                     >
@@ -518,7 +543,7 @@ const NavBar = ({
 
           <button
             className={styles.mobileMenuButton}
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            onClick={handleMobileMenuToggle}
             aria-expanded={isMobileMenuOpen}
             aria-label={isMobileMenuOpen ? translations.nav_menu_close : translations.nav_menu_open}
           >
@@ -532,66 +557,127 @@ const NavBar = ({
         className={`${styles.mobileDrawer} ${isMobileMenuOpen ? styles.mobileDrawerOpen : styles.mobileDrawerClosed}`}
         aria-hidden={!isMobileMenuOpen}
       >
-        <div className={styles.mobileLangList}>
-          {LANGUAGES.map((languageOption) => (
-            <button
-              key={languageOption.code}
-              className={`${styles.langOption} ${languageOption.code === language ? styles.langOptionActive : ''}`}
-              onClick={() => handleLanguageSelect(languageOption.code)}
-            >
-              <span>{languageOption.label}</span>
-            </button>
-          ))}
-        </div>
-        <button
-          className={styles.themeToggle}
-          onClick={onToggleTheme}
-          aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
-        >
-          {theme === 'light' ? <Moon size={20} strokeWidth={2} /> : <Sun size={20} strokeWidth={2} />}
-        </button>
-        {isAuthenticated ? (
-          <div className={styles.mobileUserMenuWrapper} ref={mobileUserDropdownRef}>
-            <button
-              type="button"
-              className={styles.userButton}
-              aria-label={translations.nav_user_account}
-              aria-haspopup="menu"
-              aria-expanded={isMobileUserDropdownOpen}
-              onClick={handleMobileUserMenuToggle}
-            >
-              <User size={20} strokeWidth={2} aria-hidden="true" />
-            </button>
-            {isMobileUserDropdownOpen && (
-              <div className={styles.mobileUserDropdown} role="menu" aria-label={translations.nav_user_menu_label}>
+        <div className={styles.mobileMenuViewport}>
+          <div className={styles.mobileMenuTrack} style={{ transform: `translateX(-${mobileMenuOffset}%)` }}>
+            <section className={styles.mobileMenuPanel} aria-hidden={activeMobileMenu !== 'main'}>
+              <div className={styles.mobileMenuSection}>
+                {isAuthenticated ? (
+                  <>
+                    <button
+                      type="button"
+                      className={styles.userMenuItem}
+                      onClick={() => {
+                        void handleParentProfileClick();
+                      }}
+                    >
+                      {translations.nav_parent_profile}
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.userMenuItem}
+                      onClick={() => void handleLogout()}
+                      disabled={isLoggingOut}
+                    >
+                      {translations.nav_logout}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <Link to="/login" className={styles.loginButton} onClick={() => setIsMobileMenuOpen(false)}>{translations.nav_login}</Link>
+                    <Link to="/get-started" className={styles.startButton} onClick={() => setIsMobileMenuOpen(false)}>{translations.nav_start}</Link>
+                  </>
+                )}
+              </div>
+
+              <div className={styles.mobileMenuSection}>
                 <button
                   type="button"
-                  className={styles.userMenuItem}
-                  role="menuitem"
-                  onClick={() => {
-                    void handleParentProfileClick();
-                  }}
+                  className={styles.mobileSubmenuTrigger}
+                  onClick={() => setActiveMobileMenu('language')}
+                  aria-haspopup="listbox"
                 >
-                  {translations.nav_parent_profile}
-                </button>
-                <button
-                  type="button"
-                  className={styles.userMenuItem}
-                  role="menuitem"
-                  onClick={() => void handleLogout()}
-                  disabled={isLoggingOut}
-                >
-                  {translations.nav_logout}
+                  <span>{translations.nav_change_language}</span>
+                  <ChevronRight size={18} strokeWidth={2} aria-hidden="true" />
                 </button>
               </div>
-            )}
+
+              <div className={styles.mobileMenuSection}>
+                <button
+                  type="button"
+                  className={styles.mobileSubmenuTrigger}
+                  onClick={() => setActiveMobileMenu('theme')}
+                  aria-haspopup="listbox"
+                >
+                  <span>{translations.nav_change_theme}</span>
+                  <ChevronRight size={18} strokeWidth={2} aria-hidden="true" />
+                </button>
+              </div>
+            </section>
+
+            <section className={styles.mobileMenuPanel} aria-hidden={activeMobileMenu !== 'language'}>
+              <div className={styles.mobileSubmenuHeader}>
+                <button
+                  type="button"
+                  className={styles.mobileBackButton}
+                  onClick={() => setActiveMobileMenu('main')}
+                >
+                  <ChevronLeft size={18} strokeWidth={2} aria-hidden="true" />
+                  <span>{translations.gs_back_button}</span>
+                </button>
+                <h3 className={styles.mobileSubmenuTitle}>{translations.nav_change_language}</h3>
+              </div>
+
+              <div className={styles.mobileMenuSection} role="listbox" aria-label={translations.nav_language_menu_label}>
+                {LANGUAGES.map((languageOption) => (
+                  <button
+                    key={languageOption.code}
+                    className={`${styles.mobileOptionButton} ${languageOption.code === language ? styles.mobileOptionButtonActive : ''}`}
+                    onClick={() => handleMobileLanguageSelect(languageOption.code)}
+                    role="option"
+                    aria-selected={languageOption.code === language}
+                  >
+                    <span>{languageOption.label}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section className={styles.mobileMenuPanel} aria-hidden={activeMobileMenu !== 'theme'}>
+              <div className={styles.mobileSubmenuHeader}>
+                <button
+                  type="button"
+                  className={styles.mobileBackButton}
+                  onClick={() => setActiveMobileMenu('main')}
+                >
+                  <ChevronLeft size={18} strokeWidth={2} aria-hidden="true" />
+                  <span>{translations.gs_back_button}</span>
+                </button>
+                <h3 className={styles.mobileSubmenuTitle}>{translations.nav_change_theme}</h3>
+              </div>
+
+              <div className={styles.mobileMenuSection} role="listbox" aria-label={translations.nav_change_theme}>
+                <button
+                  type="button"
+                  className={`${styles.mobileOptionButton} ${theme === 'light' ? styles.mobileOptionButtonActive : ''}`}
+                  onClick={() => handleThemeSelect('light')}
+                  role="option"
+                  aria-selected={theme === 'light'}
+                >
+                  <span>{translations.nav_theme_light}</span>
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.mobileOptionButton} ${theme === 'dark' ? styles.mobileOptionButtonActive : ''}`}
+                  onClick={() => handleThemeSelect('dark')}
+                  role="option"
+                  aria-selected={theme === 'dark'}
+                >
+                  <span>{translations.nav_theme_dark}</span>
+                </button>
+              </div>
+            </section>
           </div>
-        ) : (
-          <>
-            <Link to="/login" className={styles.loginButton} onClick={() => setIsMobileMenuOpen(false)}>{translations.nav_login}</Link>
-            <Link to="/get-started" className={styles.startButton} onClick={() => setIsMobileMenuOpen(false)}>{translations.nav_start}</Link>
-          </>
-        )}
+        </div>
       </div>
 
       {isPinModalOpen && (

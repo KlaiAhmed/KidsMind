@@ -24,6 +24,10 @@ export interface TranslationMap {
   nav_user_menu_label: string;
   nav_language_menu_open: string;
   nav_language_menu_label: string;
+  nav_change_language: string;
+  nav_change_theme: string;
+  nav_theme_light: string;
+  nav_theme_dark: string;
   nav_pin_title: string;
   nav_pin_subtitle: string;
   nav_pin_submit: string;

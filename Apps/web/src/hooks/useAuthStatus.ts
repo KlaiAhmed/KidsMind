@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { apiBaseUrl } from '../utils/api';
 import { clearCsrfToken, getCsrfHeader, getCsrfToken, setCsrfToken } from '../utils/csrf';
 import { AUTH_STATE_CHANGED_EVENT } from '../utils/authEvents';
@@ -13,7 +13,6 @@ let refreshPromise: Promise<boolean> | null = null;
 const useAuthStatus = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const isRefreshingRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
