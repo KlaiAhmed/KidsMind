@@ -11,9 +11,7 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Set
 
-import logging
-
-logger = logging.getLogger(__name__)
+from utils.logger import logger
 
 
 class Settings(BaseSettings):
@@ -29,6 +27,7 @@ class Settings(BaseSettings):
 
     # App State
     IS_PROD: bool = False
+    DEV_USER_ID: int | None = None
     logger.info(f"Running in {'production' if IS_PROD else 'development'} mode")
 
     # CORS configuration

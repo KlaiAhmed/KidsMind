@@ -14,6 +14,7 @@ from core.config import settings
 from .infrastructure import get_db
 from models.user import User, UserRole
 from services.auth_service import verify_token
+from utils.token_blocklist import is_access_token_blocklisted
 
 
 STRICT_NON_PROD_AUTH_PATHS = {
@@ -37,7 +38,7 @@ def get_client_type(
     return x_client_type or "mobile"
 
 
-def get_current_user(
+async def get_current_user(
     request: Request,
     authorization: str | None = Header(default=None),
     x_client_type: str | None = Header(default=None, alias="X-Client-Type"),
@@ -59,9 +60,20 @@ def get_current_user(
         HTTPException: 401 when token is missing/invalid or user is inactive.
     """
     if not settings.IS_PROD and request.url.path not in STRICT_NON_PROD_AUTH_PATHS:
-        dev_user = db.query(User).filter(User.is_active.is_(True)).order_by(User.id.asc()).first()
+        if settings.DEV_USER_ID is None:
+            raise HTTPException(status_code=401, detail="DEV_USER_ID must be configured for non-prod auth bypass")
+
+        dev_user = (
+            db.query(User)
+            .filter(
+                User.id == settings.DEV_USER_ID,
+                User.is_active.is_(True),
+                User.deleted_at.is_(None),
+            )
+            .first()
+        )
         if not dev_user:
-            raise HTTPException(status_code=401, detail="No active user available for non-prod fallback auth")
+            raise HTTPException(status_code=401, detail="Configured DEV_USER_ID user not found or inactive")
         return dev_user
 
     client_type = get_client_type(x_client_type=x_client_type)
@@ -75,10 +87,16 @@ def get_current_user(
 
     payload = verify_token(token, "access")
     user_id = payload.get("sub")
-    if not user_id:
+    token_jti = payload.get("jti")
+    if not user_id or not token_jti:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    user = db.query(User).filter(User.id == int(user_id), User.is_active.is_(True)).first()
+    if await is_access_token_blocklisted(token_jti):
+        raise HTTPException(status_code=401, detail="Token has been revoked")
+
+    request.state.access_token_payload = payload
+
+    user = db.query(User).filter(User.id == int(user_id), User.is_active.is_(True), User.deleted_at.is_(None)).first()
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
 
@@ -105,7 +123,7 @@ def get_current_admin_or_super_admin(
     return current_user
 
 
-def get_current_admin_or_super_admin_if_prod(
+async def get_current_admin_or_super_admin_if_prod(
     request: Request,
     authorization: str | None = Header(default=None),
     x_client_type: str | None = Header(default=None, alias="X-Client-Type"),
@@ -129,7 +147,7 @@ def get_current_admin_or_super_admin_if_prod(
     if not settings.IS_PROD:
         return None
 
-    current_user = get_current_user(
+    current_user = await get_current_user(
         request=request,
         authorization=authorization,
         x_client_type=x_client_type,

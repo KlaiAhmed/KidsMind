@@ -2,12 +2,11 @@
 Authentication Service
 
 Responsibility: Implements core authentication business logic including
-               registration, login, token refresh, and logout operations.
+registration, login, token refresh, and logout operations.
 Layer: Service
 Domain: Auth
 """
 
-import logging
 import re
 import hashlib
 from datetime import datetime, timedelta, timezone
@@ -24,8 +23,7 @@ from models.user import User, UserRole
 from schemas.auth_schema import UserLogin, UserRegister
 from utils.csrf import generate_csrf_token
 from utils.manage_pwd import hash_password, verify_password
-
-logger = logging.getLogger(__name__)
+from utils.logger import logger
 
 
 class AuthService:
@@ -94,6 +92,7 @@ class AuthService:
         now = datetime.now(timezone.utc)
         user = require_existing_user_or_reject(self.db, payload.email, payload.password)
 
+        ensure_account_is_active_for_login(user, payload.email)
         ensure_account_not_locked(user, now, payload.email)
         verify_password_or_apply_lockout(self.db, user, payload.password, now, payload.email)
         reset_login_security_state(user, now)
@@ -103,7 +102,6 @@ class AuthService:
         self.db.commit()
 
         return deliver_tokens(self.response, self.client_type, user, access_token, refresh_token, "Login successful")
-
 
     # Refresh Token
     async def refresh_token(self, request: Request, refresh_token: str | None = None, authorization: str | None = None) -> dict:
@@ -179,8 +177,9 @@ class AuthService:
 
 def generate_tokens(user_id: int, role: str, token_family: str | None = None) -> tuple[str, str, str, str]:
     """Create signed access and refresh JWTs for a user."""
+    access_jti = uuid4().hex
     access_token = _create_token(
-        payload={"sub": str(user_id), "role": role},
+        payload={"sub": str(user_id), "role": role, "jti": access_jti, "type": "access"},
         expires_delta=timedelta(seconds=settings.ACCESS_TOKEN_EXPIRE_SECONDS),
         secret=settings.SECRET_ACCESS_KEY,
     )
@@ -213,6 +212,13 @@ def verify_token(token: str, token_type: str) -> dict:
     secret = settings.SECRET_REFRESH_KEY if token_type == "refresh" else settings.SECRET_ACCESS_KEY
     try:
         payload = jwt.decode(token, secret, algorithms=["HS256"])
+
+        payload_type = payload.get("type")
+        if token_type == "refresh" and payload_type != "refresh":
+            raise jwt.InvalidTokenError("Invalid token type")
+        if token_type == "access" and payload_type and payload_type != "access":
+            raise jwt.InvalidTokenError("Invalid token type")
+
         return payload
     except jwt.ExpiredSignatureError:
         raise HTTPException(
@@ -425,10 +431,21 @@ def require_existing_user_or_reject(db: Session, email: str, password: str) -> U
 
 def ensure_account_not_locked(user: User, now: datetime, email: str) -> None:
     """Reject login when the account is still in lockout window."""
-    if user.locked_until and user.locked_until > now:
-        time_remaining = int((user.locked_until - now).total_seconds() // 60)
-        logger.warning(f"Login attempt for locked account: {email} time remaining: {time_remaining} more minutes")
-        raise HTTPException(status_code=403, detail=f"Account is locked. Please try again in {time_remaining} minutes.")
+    if user.locked_until:
+        locked_until_utc = user.locked_until.replace(tzinfo=timezone.utc) if user.locked_until.tzinfo is None else user.locked_until
+        if locked_until_utc > now:
+            time_remaining = int((locked_until_utc - now).total_seconds() // 60)
+            logger.warning(f"Login attempt for locked account: {email} time remaining: {time_remaining} more minutes")
+            raise HTTPException(status_code=403, detail=f"Account is locked. Please try again in {time_remaining} minutes.")
+
+
+def ensure_account_is_active_for_login(user: User, email: str) -> None:
+    """Reject login attempts for deactivated or soft-deleted accounts."""
+    if user.is_active and user.deleted_at is None:
+        return
+
+    logger.warning(f"Login attempt for deactivated or deleted account: {email}")
+    raise HTTPException(status_code=403, detail="Account is deactivated")
 
 
 def verify_password_or_apply_lockout(db: Session, user: User, password: str, now: datetime, email: str) -> None:
@@ -460,7 +477,7 @@ def reset_login_security_state(user: User, now: datetime) -> None:
 
 def get_active_user_by_id(db: Session, user_id: int) -> User:
     """Return an active user by id or raise unauthorized."""
-    user = db.query(User).filter(User.id == user_id, User.is_active.is_(True)).first()
+    user = db.query(User).filter(User.id == user_id, User.is_active.is_(True), User.deleted_at.is_(None)).first()
     if not user:
         raise HTTPException(status_code=401, detail="User not found or inactive")
     return user

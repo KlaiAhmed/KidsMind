@@ -6,11 +6,20 @@ Layer: Schema
 Domain: Users
 """
 
+import enum
+
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr
 
 from models.user import UserRole
+
+
+class AccountDeletionMode(str, enum.Enum):
+    """Supported account deletion modes."""
+
+    SOFT = "soft"
+    HARD = "hard"
 
 
 class UserSummaryResponse(BaseModel):
@@ -53,3 +62,12 @@ class UserFullResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     deleted_at: datetime | None
+
+
+class DeleteAccountResponse(BaseModel):
+    """Response schema for user account deletion operations."""
+
+    message: str
+    mode: AccountDeletionMode
+    deleted_at: datetime
+    scheduled_hard_delete_at: datetime | None
