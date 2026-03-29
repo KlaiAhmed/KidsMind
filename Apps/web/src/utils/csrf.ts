@@ -1,6 +1,7 @@
 const CSRF_COOKIE_KEY = 'csrf_token';
 
 let csrfTokenInMemory: string | null = null;
+let csrfTokenLoaded = false;
 
 const readCookieValue = (cookieKey: string): string | null => {
   if (typeof document === 'undefined') {
@@ -30,15 +31,17 @@ const normalizeToken = (token: string | null | undefined): string | null => {
 
 const setCsrfToken = (token: string | null | undefined): void => {
   csrfTokenInMemory = normalizeToken(token);
+  csrfTokenLoaded = true;
 };
 
 const getCsrfToken = (): string | null => {
-  if (csrfTokenInMemory) {
+  if (csrfTokenLoaded) {
     return csrfTokenInMemory;
   }
 
   const cookieToken = readCookieValue(CSRF_COOKIE_KEY);
   csrfTokenInMemory = normalizeToken(cookieToken);
+  csrfTokenLoaded = true;
   return csrfTokenInMemory;
 };
 
@@ -49,6 +52,7 @@ const getCsrfHeader = (): Record<string, string> => {
 
 const clearCsrfToken = (): void => {
   csrfTokenInMemory = null;
+  csrfTokenLoaded = false;
 };
 
 export {

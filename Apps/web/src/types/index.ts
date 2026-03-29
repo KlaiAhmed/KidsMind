@@ -15,6 +15,27 @@ export interface TranslationMap {
   dir: 'ltr' | 'rtl';
   nav_login: string;
   nav_start: string;
+  nav_parent_profile: string;
+  nav_logout: string;
+  nav_menu_label: string;
+  nav_menu_open: string;
+  nav_menu_close: string;
+  nav_user_account: string;
+  nav_user_menu_label: string;
+  nav_language_menu_open: string;
+  nav_language_menu_label: string;
+  nav_change_language: string;
+  nav_change_theme: string;
+  nav_theme_light: string;
+  nav_theme_dark: string;
+  nav_pin_title: string;
+  nav_pin_subtitle: string;
+  nav_pin_submit: string;
+  nav_pin_cancel: string;
+  nav_pin_clear: string;
+  nav_pin_verifying: string;
+  nav_pin_invalid: string;
+  nav_pin_not_set: string;
   hero_badge: string;
   hero_title: string;
   hero_subtitle: string;
@@ -78,6 +99,7 @@ export interface TranslationMap {
   login_error_invalid: string;
   login_error_session: string;
   login_error_network: string;
+  login_error_locked: string;
   login_loading: string;
 
   // ─── Get Started — General ────────────────────────────────────────────────────
@@ -99,6 +121,8 @@ export interface TranslationMap {
   gs_confirm_password_placeholder: string;
   gs_country_label: string;
   gs_country_placeholder: string;
+  gs_country_search_placeholder: string;
+  gs_country_search_hint: string;
   gs_terms_checkbox: string;
   gs_terms_required_error: string;
   gs_password_strength_weak: string;
@@ -111,8 +135,20 @@ export interface TranslationMap {
   gs_nickname_label: string;
   gs_nickname_placeholder: string;
   gs_nickname_hint: string;
+  gs_birth_date_label: string;
+  gs_birth_date_placeholder: string;
   gs_age_group_label: string;
   gs_grade_level_label: string;
+  gs_grade_level_placeholder: string;
+  gs_school_level_kindergarten: string;
+  gs_school_level_primary: string;
+  gs_school_level_secondary: string;
+  gs_school_level_auto_hint: string;
+  gs_birth_date_warning_min: string;
+  gs_birth_date_warning_max: string;
+  gs_school_level_mismatch_disclaimer: string;
+  gs_school_level_mismatch_accelerated_note: string;
+  gs_school_level_mismatch_learning_requirements_note: string;
   gs_avatar_label: string;
   gs_child_language_label: string;
 
@@ -122,8 +158,17 @@ export interface TranslationMap {
   gs_daily_limit_label: string;
   gs_daily_limit_unit: string;
   gs_subjects_label: string;
+  gs_access_days_label: string;
+  gs_weekday_monday: string;
+  gs_weekday_tuesday: string;
+  gs_weekday_wednesday: string;
+  gs_weekday_thursday: string;
+  gs_weekday_friday: string;
+  gs_weekday_saturday: string;
+  gs_weekday_sunday: string;
   gs_voice_label: string;
   gs_voice_hint: string;
+  gs_store_audio_history_label: string;
   gs_pin_label: string;
   gs_pin_hint: string;
   gs_confirm_pin_label: string;
@@ -154,11 +199,16 @@ export interface TranslationMap {
   error_password_too_short: string;
   error_password_no_uppercase: string;
   error_password_no_number: string;
+  error_country_required: string;
   error_passwords_dont_match: string;
   error_nickname_required: string;
   error_nickname_too_short: string;
   error_nickname_too_long: string;
   error_age_group_required: string;
+  error_birth_date_required: string;
+  error_birth_date_invalid: string;
+  error_birth_date_too_young: string;
+  error_birth_date_too_old: string;
   error_grade_required: string;
   error_pin_required: string;
   error_pin_must_be_4_digits: string;
@@ -234,8 +284,8 @@ export interface ParentAccountFormData {
 /** Child profile creation form data */
 export interface ChildProfileFormData {
   nickname: string;
-  ageGroup: AgeGroupId;
-  gradeLevel: GradeLevel;
+  birthDate: string;
+  educationStage: EducationStageId | '';
   avatarEmoji: string;
   preferredLanguage: LanguageCode;
 }
@@ -244,22 +294,27 @@ export interface ChildProfileFormData {
 export interface PreferencesFormData {
   dailyLimitMinutes: number;
   allowedSubjects: SubjectId[];
+  allowedWeekdays: WeekdayId[];
   enableVoice: boolean;
+  storeAudioHistory: boolean;
   parentPinCode: string;
   confirmPinCode: string;
 }
 
 // ─── Domain Enums ─────────────────────────────────────────────────────────────
 
-export type AgeGroupId = '3-6' | '7-11' | '12-15';
-
-export type GradeLevel =
-  | 'preschool'
-  | 'kindergarten'
-  | 'grade1' | 'grade2' | 'grade3' | 'grade4' | 'grade5' | 'grade6'
-  | 'grade7' | 'grade8' | 'grade9' | 'grade10';
+export type EducationStageId = 'KINDERGARTEN' | 'PRIMARY' | 'SECONDARY';
 
 export type SubjectId = 'math' | 'french' | 'english' | 'science' | 'history' | 'art';
+
+export type WeekdayId =
+  | 'monday'
+  | 'tuesday'
+  | 'wednesday'
+  | 'thursday'
+  | 'friday'
+  | 'saturday'
+  | 'sunday';
 
 // ─── Multi-Step Flow ──────────────────────────────────────────────────────────
 
@@ -329,7 +384,7 @@ export interface UseMultiStepReturn {
 export interface FormFieldProps {
   id: string;
   label: string;
-  type?: 'text' | 'email' | 'number' | 'select' | 'checkbox';
+  type?: 'text' | 'email' | 'number' | 'date' | 'select' | 'checkbox';
   value: string;
   error?: string;
   placeholder?: string;

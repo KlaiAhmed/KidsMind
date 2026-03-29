@@ -5,6 +5,11 @@ import type {
   ChildProfileFormData,
   PreferencesFormData,
 } from '../types';
+import {
+  MIN_CHILD_AGE,
+  MAX_CHILD_AGE,
+  calculateAgeFromBirthDate,
+} from './childProfileRules';
 
 // ─── Individual Field Validators ──────────────────────────────────────────────
 
@@ -31,7 +36,8 @@ const validateEmail = (email: string): string => {
 /**
  * validatePassword — enforces minimum security requirements.
  *
- * Requirements: at least 8 characters, 1 uppercase letter, 1 number.
+ * Requirements: at least 8 characters, 1 uppercase letter, 1 lowercase
+ * letter, 1 number, and 1 special character.
  *
  * @param password - The password string to validate
  * @returns Error message string, or empty string if valid
@@ -46,43 +52,48 @@ const validatePassword = (password: string): string => {
   if (!/[A-Z]/.test(password)) {
     return 'error_password_no_uppercase';
   }
+  if (!/[a-z]/.test(password)) {
+    return 'Password must contain one lowercase letter';
+  }
   if (!/[0-9]/.test(password)) {
     return 'error_password_no_number';
+  }
+  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+    return 'Password must contain one special character (!@#$...)';
   }
   return '';
 };
 
 /**
- * getPasswordStrength — returns a 0–3 score for the password strength meter.
+ * getPasswordStrength — returns a 0–4 score for the password strength meter.
  *
  * Scoring criteria:
  * - 0: empty or very short (< 4 chars)
- * - 1: weak — meets length but few criteria
- * - 2: fair — meets some criteria
- * - 3: strong — meets all criteria (length, uppercase, number, special char)
+ * - 1: weak
+ * - 2: fair
+ * - 3: strong
+ * - 4: max strength (all criteria met)
  *
  * @param password - The password string to evaluate
- * @returns A score from 0 to 3
+ * @returns A score from 0 to 4
  */
-const getPasswordStrength = (password: string): 0 | 1 | 2 | 3 => {
+const getPasswordStrength = (password: string): 0 | 1 | 2 | 3 | 4 => {
   if (!password || password.length < 4) return 0;
 
   let score = 0;
 
-  if (password.length >= 8) score++;
-  if (/[A-Z]/.test(password) && /[a-z]/.test(password)) score++;
-  if (/[0-9]/.test(password)) score++;
-  if (/[^a-zA-Z0-9]/.test(password)) score++;
+  if (password.length >= 8) score += 1;
+  if (/[A-Z]/.test(password) && /[a-z]/.test(password)) score += 1;
+  if (/[0-9]/.test(password)) score += 1;
+  if (/[^a-zA-Z0-9]/.test(password)) score += 1;
 
-  if (score <= 1) return 1;
-  if (score <= 2) return 2;
-  return 3;
+  return Math.min(score, 4) as 0 | 1 | 2 | 3 | 4;
 };
 
 /**
- * validateNickname — enforces 2–20 character limit with no special characters.
+ * validateNickname — enforces backend-compatible length and non-blank value.
  *
- * Allows letters (any script via Unicode), numbers, spaces, and hyphens.
+ * API contract: min length 1, max length 64, and not blank after trim.
  *
  * @param nickname - The nickname string to validate
  * @returns Error message string, or empty string if valid
@@ -91,11 +102,8 @@ const validateNickname = (nickname: string): string => {
   if (!nickname.trim()) {
     return 'error_nickname_required';
   }
-  if (nickname.trim().length < 2) {
-    return 'error_nickname_too_short';
-  }
-  if (nickname.trim().length > 20) {
-    return 'error_nickname_too_long';
+  if (nickname.trim().length > 64) {
+    return 'Nickname must be at most 64 characters';
   }
   return '';
 };
@@ -174,7 +182,7 @@ const validateParentAccountStep = (values: ParentAccountFormData): FormErrors =>
 /**
  * validateChildProfileStep — validates step 2 of onboarding.
  *
- * Checks nickname, age group selection, and grade level.
+ * Checks nickname, birth date, and education stage.
  *
  * @param values - The child profile form data
  * @returns FormErrors object
@@ -185,12 +193,24 @@ const validateChildProfileStep = (values: ChildProfileFormData): FormErrors => {
   const nicknameError = validateNickname(values.nickname);
   if (nicknameError) errors.nickname = nicknameError;
 
-  if (!values.ageGroup) {
-    errors.ageGroup = 'error_age_group_required';
+  if (!values.birthDate) {
+    errors.birthDate = 'error_birth_date_required';
+  } else {
+    const age = calculateAgeFromBirthDate(values.birthDate);
+
+    if (age === null) {
+      errors.birthDate = 'error_birth_date_invalid';
+    } else {
+      if (age < MIN_CHILD_AGE) {
+        errors.birthDate = 'error_birth_date_too_young';
+      } else if (age > MAX_CHILD_AGE) {
+        errors.birthDate = 'error_birth_date_too_old';
+      }
+    }
   }
 
-  if (!values.gradeLevel) {
-    errors.gradeLevel = 'error_grade_required';
+  if (!values.educationStage) {
+    errors.educationStage = 'error_grade_required';
   }
 
   return errors;
@@ -214,10 +234,6 @@ const validatePreferencesStep = (values: PreferencesFormData): FormErrors => {
     errors.confirmPinCode = 'error_pin_required';
   } else if (values.parentPinCode !== values.confirmPinCode) {
     errors.confirmPinCode = 'error_pins_dont_match';
-  }
-
-  if (values.allowedSubjects.length < 2) {
-    errors.allowedSubjects = 'error_min_two_subjects';
   }
 
   return errors;

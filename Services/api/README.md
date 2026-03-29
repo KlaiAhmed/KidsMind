@@ -1,10 +1,43 @@
 # Core API Service
 
-## Overview
+## 1. Basics
 
-Gateway microservice that orchestrates voice and text chat for the KidsMind platform. Mobile/web clients send audio or text; this service handles file storage (MinIO), speech-to-text delegation, and AI content generation by coordinating the STT, AI, and Storage services behind a single API surface. Built with FastAPI, instrumented with Prometheus, rate-limited via Redis-backed slowapi, and structured-JSON-logged with per-request trace IDs.
+- Service Name: core-api
+- Primary Port: 8000 (Uvicorn inside the container)
+- Docker Network Port: ${API_PORT}:8000 (host:container from docker-compose)
+- Role in ecosystem: gateway service for auth, users, children, and chat orchestration. It delegates STT and AI calls and manages audio storage through MinIO.
 
-## Architecture
+## 2. Quick Start
+
+### With pip (local)
+
+1. cd services/api/app
+2. pip install -r ../requirements.txt
+3. Copy .env.example to .env and fill required secrets.
+4. uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+### With docker compose
+
+1. Make sure root .env and services/api/app/.env exist.
+2. Start dependencies and API:
+
+   docker compose up -d --build database cache file-storage ai-service stt-service core-api
+
+3. Optional (MinIO buckets):
+
+   docker compose up -d bucket-provisioner
+
+## 3. Service Dependencies & Topology
+
+| Dependency | Purpose | Connection Method | Endpoint / Port |
+|---|---|---|---|
+| STT Service | Speech-to-text for voice chat | HTTP | POST http://stt-service:8000/v1/stt/transcriptions |
+| AI Service | Text generation and chat logic | HTTP / SSE | POST http://ai-service:8000/v1/ai/chat/... and /v1/ai/chat/stream/... |
+| MinIO (file-storage) | Audio object storage and presigned URL serving | S3 API (minio client) | http://file-storage:9000 |
+| Redis (cache) | Rate limit backend and cache | Redis protocol | redis://cache:6379 |
+| PostgreSQL (database) | User, auth, and child profile persistence | SQLAlchemy + psycopg2 | database:5432 |
+
+### Service Map
 
 ```mermaid
 flowchart TD
@@ -15,133 +48,23 @@ flowchart TD
         Router --> TextHandler[text_chat]
         Router --> HistoryHandler[get_history]
         Router --> ClearHistoryHandler[clear_history]
-        Router --> HealthCheck[health_check]
-
-        VoiceHandler --> ValidateAudio[validate_audio_file]
-        VoiceHandler --> UploadService[upload_file service]
-        VoiceHandler --> GenContent[generate_content service]
-        TextHandler --> GenContent
-
-        UploadService --> MinIOClient[MinIO Client]
+        Router --> Auth[auth routes]
+        Router --> Users[users routes]
+        Router --> Children[children routes]
     end
 
     subgraph External Services
-        MinIOClient -->|S3 API| MinIO[(MinIO Storage)]
+        VoiceHandler -->|S3 API| MinIO[(MinIO)]
         VoiceHandler -->|POST /v1/stt/transcriptions| STT[STT Service]
-        GenContent -->|POST /v1/ai/chat/… or /v1/ai/chat/stream/…| AI[AI Service]
+        VoiceHandler -->|POST /v1/ai/chat/...| AI[AI Service]
+        TextHandler -->|POST /v1/ai/chat/...| AI
     end
 
-    subgraph Infrastructure
-        Limiter[slowapi Limiter] -.->|rate limit state| Redis[(Redis)]
-        Instrumentator[Prometheus] -.->|/metrics| Prometheus[(Prometheus)]
-    end
-
-    Router --> Limiter
-    Router --> Instrumentator
-```
-
-```mermaid
-flowchart LR
-    subgraph Middleware Pipeline
-        Req([Incoming Request]) --> CORS[CORSMiddleware]
-        CORS --> CSRF[CSRFMiddleware]
-        CSRF --> Tracing[RequestTracingMiddleware]
-        Tracing -->|set X-Request-ID ContextVar| App[Route Handler]
-        App --> Tracing
-        Tracing -->|inject X-Request-ID header| Res([Response])
+    subgraph Infra
+        Router -. rate limit .-> Redis[(Redis)]
+        Router -. metrics .-> Prometheus[(Prometheus)]
     end
 ```
-
-## API Reference
-
-### Health
-
-| Method | Endpoint | Request Body | Response | Description |
-|--------|----------|-------------|----------|-------------|
-| GET | `/` | — | `{"status": "ok"}` | Health check (rate-limited: 10/min) |
-| GET | `/metrics` | — | Prometheus text | Prometheus metrics (auto-exposed) |
-
-### Chat (`/api/v1/chat`)
-
-| Method | Endpoint | Request Body | Response | Description |
-|--------|----------|-------------|----------|-------------|
-| POST | `/voice/{user_id}/{child_id}/{session_id}` | `multipart/form-data`: `audio_file` (required), `context` (str, optional), `age_group` (`3-6` \| `7-11` \| `12-15` \| `3-15`, default `3-15`), `stream` (bool, default `false`), `store_audio` (bool, default `true`) | JSON when `stream=false`, SSE when `stream=true` | Upload audio → STT transcription → AI response |
-| POST | `/text/{user_id}/{child_id}/{session_id}` | `{"text": "...", "context": "...", "age_group": "3-15", "stream": false}` | JSON when `stream=false`, SSE when `stream=true` | Send text directly → AI response |
-| GET | `/history/{user_id}/{child_id}/{session_id}` | — | `{"messages": [{"role": "...", "content": "..."}]}` | Fetch conversation history from AI service |
-| DELETE | `/history/{user_id}/{child_id}/{session_id}` | — | `{"status": "cleared"}` | Clear conversation history in AI service |
-
-**Path parameters** (all strings): `user_id`, `child_id`, `session_id` — identify the user, child profile, and conversation session.
-
-### Auth (`/api/v1/auth`)
-
-Client type is resolved from `X-Client-Type: web|mobile` (or defaults to `mobile` when header is omitted).
-
-| Method | Endpoint | Request | Web Behavior | Mobile Behavior |
-|--------|----------|---------|--------------|-----------------|
-| POST | `/login` | `{"email":"...","password":"..."}` | Sets `access_token` + `refresh_token` HttpOnly cookies and non-HttpOnly `csrf_token`; returns `csrf_token` in body | Returns JSON tokens (`access_token`, `refresh_token`, `token_type`, `expires_in`) |
-| POST | `/refresh` | Optional body `{"refresh_token":"..."}` | Requires valid CSRF token for cookie-auth requests; rotates auth cookies and `csrf_token`; returns new `csrf_token` | Reads refresh token from `Authorization: Bearer <refresh_token>` or body; returns rotated JSON tokens |
-| POST | `/logout` | Optional body `{"refresh_token":"..."}` | Revokes session if token present and clears auth cookies | Revokes refresh token session; client discards local tokens |
-
-#### Auth security notes
-
-- Access token lifetime defaults to `900` seconds.
-- Refresh token lifetime defaults to `604800` seconds.
-- CSRF token lifetime defaults to `3600` seconds.
-- Refresh tokens are stored server-side with rotation metadata (token family, revoke status, replacement chain).
-- Refresh token reuse detection revokes active tokens in the same family.
-- Cookies are `HttpOnly` and scoped (`refresh_token` limited to `/api/v1/auth/refresh`).
-- CSRF uses stateless double-submit cookie with signed timed tokens (`itsdangerous`).
-- For browser cookies, frontend requests must include credentials (`fetch(..., { credentials: "include" })` or `axios` `withCredentials: true`).
-
-#### CSRF contract for web clients
-
-- On login and refresh, the API returns a signed `csrf_token` in JSON and also sets `csrf_token` as a non-HttpOnly cookie.
-- For mutating requests (`POST`, `PUT`, `PATCH`, `DELETE`) that use cookie auth, frontend must send `X-CSRF-Token` with the same token value.
-- On token refresh, frontend must replace the in-memory CSRF token with the newly returned one.
-- Keep CSRF token in memory (or read from `csrf_token` cookie per request); do not persist it in `localStorage`.
-- API clients using `Authorization: Bearer` are exempt from CSRF checks.
-
-### Streaming Selection Examples
-
-**Text (full response / default):**
-
-```bash
-curl -X POST "http://localhost:8000/api/v1/chat/text/u1/c1/s1" \
-    -H "Content-Type: application/json" \
-    -d '{"text":"Explain gravity for kids","context":"science","age_group":"7-11","stream":false}'
-```
-
-**Text (streaming SSE):**
-
-```bash
-curl -N -X POST "http://localhost:8000/api/v1/chat/text/u1/c1/s1" \
-    -H "Content-Type: application/json" \
-    -d '{"text":"Explain gravity for kids","context":"science","age_group":"7-11","stream":true}'
-```
-
-**Voice (full response / default):**
-
-```bash
-curl -X POST "http://localhost:8000/api/v1/chat/voice/u1/c1/s1" \
-    -F "audio_file=@sample.wav" \
-    -F "context=science" \
-    -F "age_group=7-11" \
-    -F "stream=false"
-```
-
-**Voice (streaming SSE):**
-
-```bash
-curl -N -X POST "http://localhost:8000/api/v1/chat/voice/u1/c1/s1" \
-    -F "audio_file=@sample.wav" \
-    -F "context=science" \
-    -F "age_group=7-11" \
-    -F "stream=true"
-```
-
-## Data Flow
-
-### Voice Chat — Critical Path
 
 ```mermaid
 sequenceDiagram
@@ -151,138 +74,72 @@ sequenceDiagram
     participant STT as STT Service
     participant AI as AI Service
 
-    C->>API: POST /api/v1/chat/voice/{ids}<br/>multipart audio + context + age_group
-    API->>API: validate_audio_file<br/>(type ∈ allowed set, size ≤ MAX_SIZE)
-    API->>S3: put_object(media-private, …)<br/>with user metadata
-    S3-->>API: OK
-    API->>S3: presigned_get_object (15 min TTL)
-    S3-->>API: presigned URL
-    API->>STT: POST /v1/stt/transcriptions<br/>{"audio_url", "context"}
-    STT-->>API: {"text": "transcribed…"}
-    alt stream = false
-        API->>AI: POST /v1/ai/chat/{ids}<br/>{"text", "context", "age_group"}
-        AI-->>API: {"response": { … }}
-        API-->>C: {"ai_data": { … }}
-    else stream = true
-        API->>AI: POST /v1/ai/chat/stream/{ids}<br/>{"text", "context", "age_group"}
-        AI-->>API: SSE stream
-        API-->>C: SSE stream
-    end
-
-    opt store_audio = false
-        API->>S3: remove_object(filename)
-    end
+    C->>API: POST /api/v1/chat/voice/{ids}
+    API->>S3: put_object(audio)
+    API->>STT: transcription request
+    STT-->>API: transcribed text
+    API->>AI: chat request (JSON or SSE)
+    AI-->>API: response stream/data
+    API-->>C: response stream/data
 ```
 
-### Text Chat
+## 4. API Documentation (The FastAPI Edge)
 
-```mermaid
-sequenceDiagram
-    participant C as Client
-    participant API as Core API
-    participant AI as AI Service
+- Swagger UI: /docs
+- ReDoc: /redoc
+- OpenAPI JSON: /openapi.json
 
-    C->>API: POST /api/v1/chat/text/{ids}<br/>{"text", "context", "age_group", "stream"}
-    alt stream = false
-        API->>AI: POST /v1/ai/chat/{ids}<br/>{"text", "context", "age_group"}
-        AI-->>API: {"response": { … }}
-        API-->>C: AI response JSON
-    else stream = true
-        API->>AI: POST /v1/ai/chat/stream/{ids}<br/>{"text", "context", "age_group"}
-        AI-->>API: SSE stream
-        API-->>C: SSE stream
-    end
-```
+### API endpoints
 
-## Configuration
+| Group | Method | Endpoint |
+|---|---|---|
+| Health | GET | / |
+| Health | GET | /metrics |
+| Auth | POST | /api/v1/auth/register |
+| Auth | POST | /api/v1/auth/login |
+| Auth | POST | /api/v1/auth/refresh |
+| Auth | POST | /api/v1/auth/logout |
+| Users | GET | /api/v1/users/me |
+| Users | GET | /api/v1/users/me/summary |
+| Users | GET | /api/v1/users/ |
+| Users | GET | /api/v1/users/{user_id} |
+| Children | POST | /api/v1/children |
+| Children | GET | /api/v1/children |
+| Children | PATCH | /api/v1/children/{child_id} |
+| Chat | POST | /api/v1/chat/voice/{user_id}/{child_id}/{session_id} |
+| Chat | POST | /api/v1/chat/text/{user_id}/{child_id}/{session_id} |
+| Chat | GET | /api/v1/chat/history/{user_id}/{child_id}/{session_id} |
+| Chat | DELETE | /api/v1/chat/history/{user_id}/{child_id}/{session_id} |
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `IS_PROD` | No | `False` | Production mode flag |
-| `SERVICE_NAME` | No | `KidsMind API Service` | Name used in structured log output |
-| `STT_SERVICE_ENDPOINT` | No | `http://stt-service:8000` | STT microservice base URL |
-| `STORAGE_SERVICE_ENDPOINT` | No | `http://storage-service:9000` | MinIO/S3 storage endpoint |
-| `AI_SERVICE_ENDPOINT` | No | `http://ai-service:8000` | AI microservice base URL |
-| `SERVICE_TOKEN` | No | empty | Token sent as `X-Service-Token` to upstream services |
-| `DB_SERVICE_ENDPOINT` | No | `http://db:5432` | Database endpoint (configured, not yet used) |
-| `MAX_SIZE` | No | `10485760` (10 MB) | Maximum upload file size in bytes |
-| `ALLOWED_CONTENT_TYPES` | No | `audio/mpeg, audio/wav, audio/x-wav, audio/mp3` | Accepted audio MIME types |
-| `COOKIE_SAMESITE` | No | `strict` | SameSite policy for auth and CSRF cookies |
-| `COOKIE_SECURE` | No | `False` | Force secure cookies; in prod secure is enabled |
-| `COOKIE_DOMAIN` | No | empty | Optional cookie domain |
-| `CSRF_TOKEN_EXPIRE_SECONDS` | No | `604800` | CSRF token max age |
-| `STORAGE_ROOT_USERNAME` | No | `admin` | MinIO access key |
-| `STORAGE_ROOT_PASSWORD` | **Yes** | — | MinIO secret key (validated non-empty) |
-| `CACHE_PASSWORD` | **Yes** | — | Redis password for rate limiter (validated non-empty) |
-| `SECRET_KEY` | No | falls back to `SECRET_ACCESS_KEY` | Primary signing key for CSRF token serializer |
-| `SECRET_ACCESS_KEY` | **Yes** | — | JWT access token signing key |
-| `SECRET_REFRESH_KEY` | **Yes** | — | JWT refresh token signing key |
-| `SUPER_ADMIN_EMAIL` | No | empty | Bootstrap admin email used at startup seeding |
-| `SUPER_ADMIN_USERNAME` | No | empty | Bootstrap admin username used at startup seeding |
-| `SUPER_ADMIN_PASSWORD` | No | empty | Bootstrap admin password used at startup seeding |
-| `LOG_LEVEL` | No | `INFO` | Python log level |
-| `RATE_LIMIT` | No | `100/minute` | Default rate limit per IP (slowapi format) |
+## 5. Environment & Configuration
 
-## Local Development
+Use services/api/app/.env.example as the full template.
 
-1. **Install dependencies** (Python 3.12+):
-   ```bash
-   cd Services/api/app
-   pip install -r ../requirements.txt
-   ```
+| Variable | Required | Notes |
+|---|---|---|
+| CORS_ORIGINS | Yes | Must be a JSON-style list string, for example ["http://localhost:3000"]. |
+| DB_PASSWORD | Yes | Required for DB connection. |
+| SECRET_ACCESS_KEY | Yes | JWT access-token signing key. |
+| SECRET_REFRESH_KEY | Yes | JWT refresh-token signing key. |
+| DUMMY_HASH | Yes | Used in auth flows to reduce timing leak patterns when credentials are invalid. |
+| CACHE_PASSWORD | Yes | Redis password used by limiter/cache. |
+| STORAGE_ROOT_PASSWORD | Yes | MinIO secret key for audio operations. |
+| SERVICE_TOKEN | No | Added as X-Service-Token in upstream service calls. |
+| IS_PROD | No | Changes defaults (for example stricter rate limit and secure cookie behavior). |
+| RATE_LIMIT | No | Slowapi format, for example 100/minute or 5/minute. |
+| ACCESS_TOKEN_EXPIRE_SECONDS | No | Access token TTL in seconds. |
+| REFRESH_TOKEN_EXPIRE_SECONDS | No | Refresh token TTL in seconds. |
+| CSRF_TOKEN_EXPIRE_SECONDS | No | CSRF token TTL in seconds. |
+| COOKIE_DOMAIN | No | Set in production if cookies must be shared across subdomains. |
+| STT_SERVICE_ENDPOINT | No | STT service base URL. |
+| AI_SERVICE_ENDPOINT | No | AI service base URL. |
+| STORAGE_SERVICE_ENDPOINT | No | MinIO endpoint URL. |
 
-2. **Set environment variables** — create `Services/api/app/.env`:
-   ```env
-   STORAGE_ROOT_PASSWORD=your-minio-secret
-   CACHE_PASSWORD=your-redis-password
-    SECRET_ACCESS_KEY=your-access-secret
-    SECRET_REFRESH_KEY=your-refresh-secret
-    SECRET_KEY=your-csrf-secret-optional
-    SUPER_ADMIN_EMAIL=superadmin@kidsmind.com
-    SUPER_ADMIN_USERNAME=superadmin
-    SUPER_ADMIN_PASSWORD=ChangeMe123!
-   STT_SERVICE_ENDPOINT=http://localhost:8001
-   AI_SERVICE_ENDPOINT=http://localhost:8002
-   STORAGE_SERVICE_ENDPOINT=http://localhost:9000
-   ```
+## 6. Observability & Health Checks
 
-3. **Run**:
-   ```bash
-   uvicorn main:app --reload --port 8000
-   ```
-
-## Docker
-
-```bash
-docker build -t kidsmind-api Services/api/
-docker run -p 8000:8000 \
-  -e STORAGE_ROOT_PASSWORD=secret \
-  -e CACHE_PASSWORD=secret \
-  kidsmind-api
-```
-
-## Dependencies & Integrations
-
-| Dependency / Service | Purpose | Required |
-|---------------------|---------|----------|
-| **STT Service** | Speech-to-text transcription of uploaded audio | Yes (voice chat) |
-| **AI Service** | LLM-powered content generation | Yes |
-| **MinIO** | S3-compatible object storage for audio files | Yes (voice chat) |
-| **Redis** | Rate limiter backend (slowapi) | Yes |
-| **httpx** | Async HTTP client for inter-service calls | Built-in |
-| **slowapi** | IP-based rate limiting | Built-in |
-| **itsdangerous** | Signed, timed CSRF tokens (double-submit cookie) | Built-in |
-| **prometheus-fastapi-instrumentator** | `/metrics` endpoint for Prometheus scraping | Built-in |
-| **pydantic-settings** | Typed config from env vars / `.env` files | Built-in |
-
-## Error Handling
-
-- **`413 Payload Too Large`** — uploaded file exceeds `MAX_SIZE`
-- **`415 Unsupported Media Type`** — audio file MIME type not in `ALLOWED_CONTENT_TYPES`
-- **`429 Too Many Requests`** — rate limit exceeded (slowapi auto-handler)
-- **`500 Internal Server Error`** — unexpected payload from upstream (`KeyError`), MinIO `S3Error`, or unhandled exception
-- **`502 Bad Gateway`** — upstream service unreachable (`httpx.RequestError`) or returned an error (`httpx.HTTPStatusError`)
-- All upstream errors are caught by the `handle_service_errors` async context manager, which logs the original error and translates it to the appropriate HTTP status
-- STT returning empty text triggers a `500` with detail `"STT Service did not return text"`
-- Audio cleanup (`remove_audio`) runs in a `finally` block when `store_audio=false`, ensuring temp files are deleted even on failure
-- Request tracing middleware injects `X-Request-ID` into every response for end-to-end correlation
+- Health Check Endpoint: GET /
+- Metrics: GET /metrics
+- Logging:
+  - App emits JSON logs with request tracing (X-Request-ID).
+  - In Docker Compose, containers with label logging=promtail are scraped by Promtail.
+  - Promtail forwards to Loki, and logs are queried in Grafana.

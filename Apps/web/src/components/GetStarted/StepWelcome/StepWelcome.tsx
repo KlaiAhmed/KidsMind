@@ -1,5 +1,6 @@
 /** StepWelcome — Onboarding step 4 (final): confirmation screen with confetti, summary cards, and dashboard CTA. */
 import { useMemo } from 'react';
+import { Check } from 'lucide-react';
 import type {
   TranslationMap,
   ParentAccountFormData,
@@ -63,6 +64,10 @@ const maskEmail = (email: string): string => {
   return `${visibleChars}***${domain}`;
 };
 
+const formatChildNamePlaceholder = (text: string, childName: string): string => {
+  return text.replace(/\{childName\}/g, childName);
+};
+
 /* ─── Component ────────────────────────────────────────────────────────────── */
 
 const StepWelcome = ({
@@ -82,18 +87,31 @@ const StepWelcome = ({
   const dailyTimeLimitMinutes = preferencesData.dailyLimitMinutes ?? 30;
   const isVoiceEnabled = preferencesData.enableVoice ?? false;
 
-  /* ─── Determine age group display ────────────────────────────────────────── */
-
-  const ageGroupLabel = useMemo(() => {
-    const ageGroup = childData.ageGroup;
-    if (!ageGroup) return '';
-    const ageGroupLabels: Record<string, string> = {
-      '3-6': '3-6',
-      '7-11': '7-11',
-      '12-15': '12-15',
+  const educationStageLabel = useMemo(() => {
+    const educationStage = childData.educationStage;
+    if (!educationStage) return '';
+    const labels: Record<string, string> = {
+      KINDERGARTEN: translations.gs_school_level_kindergarten,
+      PRIMARY: translations.gs_school_level_primary,
+      SECONDARY: translations.gs_school_level_secondary,
     };
-    return ageGroupLabels[ageGroup] ?? ageGroup;
-  }, [childData.ageGroup]);
+    return labels[educationStage] ?? educationStage;
+  }, [childData.educationStage, translations]);
+
+  const childName = useMemo(
+    () => childData.nickname?.trim() || translations.gs_step2_title,
+    [childData.nickname, translations.gs_step2_title]
+  );
+
+  const subtitleText = useMemo(
+    () => formatChildNamePlaceholder(translations.gs_step4_subtitle, childName),
+    [translations.gs_step4_subtitle, childName]
+  );
+
+  const profileSummaryLabel = useMemo(
+    () => formatChildNamePlaceholder(translations.gs_welcome_summary_profile, childName),
+    [translations.gs_welcome_summary_profile, childName]
+  );
 
   return (
     <div className={styles.stepContainer}>
@@ -116,29 +134,16 @@ const StepWelcome = ({
         ))}
       </div>
 
-      {/* ── Checkmark SVG ─────────────────────────────────────────────────── */}
+      {/* ── Success check icon ─────────────────────────────────────────────── */}
       <div className={styles.checkmarkContainer}>
-        <svg
-          className={styles.checkmarkCircle}
-          viewBox="0 0 80 80"
-          aria-hidden="true"
-        >
-          <circle
-            className={styles.checkmarkBg}
-            cx="40"
-            cy="40"
-            r="36"
-          />
-          <polyline
-            className={styles.checkmarkPath}
-            points="24,42 34,52 56,30"
-          />
-        </svg>
+        <span className={styles.checkmarkCircle} aria-hidden="true">
+          <Check className={styles.checkIcon} size={42} strokeWidth={3} />
+        </span>
       </div>
 
       {/* ── Title ─────────────────────────────────────────────────────────── */}
       <h2 className={styles.title}>{translations.gs_step4_title}</h2>
-      <p className={styles.subtitle}>{translations.gs_step4_subtitle}</p>
+      <p className={styles.subtitle}>{subtitleText}</p>
 
       {/* ── Summary Cards ─────────────────────────────────────────────────── */}
       <div className={styles.summaryCards}>
@@ -164,10 +169,10 @@ const StepWelcome = ({
           </span>
           <div className={styles.summaryText}>
             <span className={styles.summaryLabel}>
-              {translations.gs_welcome_summary_profile}
+              {profileSummaryLabel}
             </span>
             <span className={styles.summaryValue}>
-              {childData.nickname ?? ''}{ageGroupLabel ? ` (${ageGroupLabel})` : ''}
+              {childData.nickname ?? ''}{educationStageLabel ? ` (${educationStageLabel})` : ''}
             </span>
           </div>
         </div>

@@ -7,20 +7,8 @@ import ErrorPage from './pages/ErrorPage/ErrorPage';
 
 const LoginPage = React.lazy(() => import('./pages/LoginPage/LoginPage'));
 const GetStartedPage = React.lazy(() => import('./pages/GetStartedPage/GetStartedPage'));
+const ParentProfilePage = React.lazy(() => import('./pages/ParentProfilePage/ParentProfilePage'));
 const NotFoundPage = React.lazy(() => import('./pages/NotFoundPage/NotFoundPage'));
-
-interface GuestOnlyRouteProps {
-  isAuthenticated: boolean;
-  children: React.ReactElement;
-}
-
-const GuestOnlyRoute = ({ isAuthenticated, children }: GuestOnlyRouteProps) => {
-  if (isAuthenticated) {
-    return <Navigate to="/" replace />;
-  }
-
-  return children;
-};
 
 const App = () => {
   const { isAuthenticated } = useAuthStatus();
@@ -59,20 +47,10 @@ const App = () => {
             <Route path="/" element={<HomePage isAuthenticated={isAuthenticated} />} />
             <Route
               path="/login"
-              element={(
-                <GuestOnlyRoute isAuthenticated={isAuthenticated}>
-                  <LoginPage />
-                </GuestOnlyRoute>
-              )}
+              element={isAuthenticated ? <Navigate to="/" replace /> : <LoginPage />}
             />
-            <Route
-              path="/get-started"
-              element={(
-                <GuestOnlyRoute isAuthenticated={isAuthenticated}>
-                  <GetStartedPage />
-                </GuestOnlyRoute>
-              )}
-            />
+            <Route path="/get-started" element={<GetStartedPage />} />
+            <Route path="/parent-profile" element={<ParentProfilePage isAuthenticated={isAuthenticated} />} />
             <Route path="/error" element={<ErrorPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>

@@ -3,8 +3,10 @@ import { useState } from 'react';
 import { AlertCircle } from 'lucide-react';
 import type { TranslationMap } from '../../types';
 import { useForm } from '../../hooks/useForm';
+import { apiBaseUrl } from '../../utils/api';
 import { validateLoginForm } from '../../utils/validators';
 import { setCsrfToken } from '../../utils/csrf';
+import { dispatchAuthStateChanged } from '../../utils/authEvents';
 import FormField from '../shared/FormField/FormField';
 import PasswordField from '../shared/PasswordField/PasswordField';
 import styles from './LoginForm.module.css';
@@ -21,6 +23,9 @@ interface LoginFormProps {
 
 interface ApiErrorResponse {
   status?: number;
+  message?: string;
+  error_code?: string;
+  errors?: Array<{ field?: string; message?: string; type?: string }>;
   detail?: string | Array<{ msg?: string }>;
 }
 
@@ -30,8 +35,6 @@ interface LoginSuccessResponse {
 
 const LoginForm = ({ translations, onSuccess }: LoginFormProps) => {
   const [serverError, setServerError] = useState<string>('');
-
-  const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000').replace(/\/$/, '');
 
   const hasActiveSession = async (): Promise<boolean> => {
     const response = await fetch(`${apiBaseUrl}/api/v1/users/me/summary`, {
@@ -62,28 +65,54 @@ const LoginForm = ({ translations, onSuccess }: LoginFormProps) => {
     return translations[errorKey as keyof TranslationMap] || errorKey;
   };
 
-  const getApiErrorMessage = (errorBody: ApiErrorResponse | null, status: number): string => {
-    if (status === 403) {
-      return translations.login_error_session;
+  const resolveRawApiMessage = (errorBody: ApiErrorResponse | null): string => {
+    if (!errorBody) {
+      return '';
     }
 
-    if (!errorBody?.detail) {
-      return translations.login_error_invalid;
+    const firstUnifiedValidationMessage = errorBody.errors?.find((item) => item?.message)?.message;
+    if (firstUnifiedValidationMessage) {
+      return firstUnifiedValidationMessage;
+    }
+
+    if (typeof errorBody.message === 'string') {
+      return errorBody.message;
     }
 
     if (typeof errorBody.detail === 'string') {
-      if (errorBody.detail.toLowerCase().includes('csrf')) {
-        return translations.login_error_session;
-      }
-
-      if (errorBody.detail.toLowerCase() === 'invalid credentials') {
-        return translations.login_error_invalid;
-      }
       return errorBody.detail;
     }
 
-    const firstValidationMessage = errorBody.detail.find((item) => item?.msg)?.msg;
-    return firstValidationMessage || translations.login_error_invalid;
+    const firstLegacyValidationMessage = errorBody.detail?.find((item) => item?.msg)?.msg;
+    return firstLegacyValidationMessage ?? '';
+  };
+
+  const getApiErrorMessage = (errorBody: ApiErrorResponse | null, status: number): string => {
+    const rawMessage = resolveRawApiMessage(errorBody).toLowerCase();
+
+    if (status === 403) {
+      if (rawMessage.includes('locked')) {
+        return translations.login_error_locked;
+      }
+      if (rawMessage.includes('csrf')) {
+        return translations.login_error_session;
+      }
+      return translations.login_error_session;
+    }
+
+    if (!rawMessage) {
+      return translations.login_error_invalid;
+    }
+
+    if (rawMessage.includes('csrf')) {
+      return translations.login_error_session;
+    }
+
+    if (rawMessage === 'invalid credentials') {
+      return translations.login_error_invalid;
+    }
+
+    return resolveRawApiMessage(errorBody);
   };
 
   const onSubmit = async (formValues: LoginFormValues): Promise<void> => {
@@ -107,6 +136,7 @@ const LoginForm = ({ translations, onSuccess }: LoginFormProps) => {
         try {
           const sessionIsActive = await hasActiveSession();
           if (sessionIsActive) {
+            dispatchAuthStateChanged();
             onSuccess();
             return;
           }
@@ -135,11 +165,14 @@ const LoginForm = ({ translations, onSuccess }: LoginFormProps) => {
         setCsrfToken(null);
       }
 
+      dispatchAuthStateChanged();
+
       onSuccess();
     } catch {
       try {
         const sessionIsActive = await hasActiveSession();
         if (sessionIsActive) {
+          dispatchAuthStateChanged();
           onSuccess();
           return;
         }

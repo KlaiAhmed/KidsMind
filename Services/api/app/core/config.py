@@ -1,3 +1,12 @@
+"""
+Application Configuration
+
+Responsibility: Centralizes all application settings using pydantic-settings.
+               All environment variables and configuration values are defined here.
+Layer: Core
+Domain: Configuration
+"""
+
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Set
@@ -18,17 +27,18 @@ class Settings(BaseSettings):
 
     # App State
     IS_PROD: bool = False
+    DEV_USER_ID: int | None = None
     logger.info(f"Running in {'production' if IS_PROD else 'development'} mode")
 
     # CORS configuration
-    CORS_ORIGINS: list[str] = ["http://localhost:5173"]
+    CORS_ORIGINS: list[str] 
 
     # Auth tokens and cookies
     ACCESS_TOKEN_EXPIRE_SECONDS: int = 900
     REFRESH_TOKEN_EXPIRE_SECONDS: int = 604800
     COOKIE_DOMAIN: str | None = None
     COOKIE_SAMESITE: str = "strict"
-    COOKIE_SECURE: bool = False
+    COOKIE_SECURE: bool = False if not IS_PROD else True
     CSRF_TOKEN_EXPIRE_SECONDS: int = 604800
 
     # Service Endpoints
@@ -64,9 +74,9 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     
     # App Config
-    RATE_LIMIT: str = "100/minute"
+    RATE_LIMIT: str = "100/minute" if not IS_PROD else "5/minute"
     SERVICE_TOKEN: str = ""
-    DUMMY_HASH: str = "OwUlzdWgNRnK9JW7mVzTqL3Ia6kVdLiH9u7sQh8j324dghgzyzx"
+    DUMMY_HASH: str 
     SECRET_KEY: str | None = None
     SECRET_ACCESS_KEY: str
     SECRET_REFRESH_KEY: str

@@ -1,9 +1,20 @@
-from fastapi import UploadFile, File, HTTPException
-from core.storage import minio_client
-from minio.error import S3Error
-from utils.file_name import generate_storage_path
+"""
+File Upload Service
+
+Responsibility: Handles audio file upload and removal operations with
+MinIO object storage.
+Layer: Service
+Domain: Storage
+"""
+
 import time
 from datetime import timedelta
+
+from fastapi import File, HTTPException, UploadFile
+from minio.error import S3Error
+
+from core.storage import minio_client
+from utils.file_name import generate_storage_path
 from utils.logger import logger
 
 
@@ -18,6 +29,15 @@ def upload_audio(file: UploadFile = File(...), user_id: str = "", child_id: str 
         file.file.seek(0)
 
         filename = generate_storage_path(file.filename, user_id=user_id, child_id=child_id, session_id=session_id, store_audio=store_audio)
+
+        logger.info(
+            "Starting audio upload to storage",
+            extra={
+                "filename": filename,
+                "file_size_bytes": file_size,
+                "content_type": file.content_type,
+            },
+        )
 
         metadata = {
             "user_id": str(user_id),
@@ -44,31 +64,55 @@ def upload_audio(file: UploadFile = File(...), user_id: str = "", child_id: str 
         )
 
         timer= time.time() - timer
-        logger.info(f"File uploaded to storage in {timer:.2f} seconds. Filename: {filename}, Size: {file_size} bytes")
-        
+        logger.info(
+            "Audio file uploaded successfully",
+            extra={
+                "filename": filename,
+                "file_size_bytes": file_size,
+                "duration_seconds": round(timer, 3),
+            },
+        )
+
         return {
-            "message": "Audio file uploaded successfully!", 
+            "message": "Audio file uploaded successfully!",
             "filename": filename,
             "url": url
         }
 
     except S3Error as e:
-        logger.error(f"Storage error: {e}")
+        logger.exception(
+            "Storage error during audio upload",
+            extra={"error_type": "S3Error"},
+        )
         raise HTTPException(status_code=500, detail="Internal Storage Error")
     except Exception as e:
-        logger.error(f"Unexpected error: {e}")
+        logger.exception("Unexpected error during audio upload")
         raise HTTPException(status_code=500, detail="Internal Storage Error")
-    
-    
+
+
 
 def remove_audio(filename: str):
     bucket_name = "media-private"
     try:
+        logger.info(
+            "Removing audio file from storage",
+            extra={"filename": filename, "bucket": bucket_name},
+        )
         minio_client.remove_object(bucket_name, filename)
+        logger.info(
+            "Audio file removed successfully",
+            extra={"filename": filename},
+        )
         return {"message": "Audio file removed successfully!"}
     except S3Error as e:
-        logger.error(f"Storage error: {e}")
+        logger.exception(
+            "Storage error during audio removal",
+            extra={"filename": filename, "error_type": "S3Error"},
+        )
         raise HTTPException(status_code=500, detail="Internal Storage Error")
     except Exception as e:
-        logger.error(f"Unexpected error: {e}")
+        logger.exception(
+            "Unexpected error during audio removal",
+            extra={"filename": filename},
+        )
         raise HTTPException(status_code=500, detail="Internal Storage Error")
