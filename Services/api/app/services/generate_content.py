@@ -7,6 +7,7 @@ Layer: Service
 Domain: Chat / AI
 """
 
+import json
 import time
 from collections.abc import AsyncGenerator
 
@@ -17,6 +18,32 @@ from utils.logger import logger
 
 
 SLOW_CALL_THRESHOLD_SECONDS = 3.0
+
+
+def _merge_text_chunks(previous: str, incoming: str) -> str:
+    """Merge streamed text that can arrive as either delta or cumulative chunks."""
+    if not previous:
+        return incoming
+    if not incoming:
+        return previous
+
+    if incoming.startswith(previous):
+        return incoming
+
+    if previous.startswith(incoming):
+        return previous
+
+    return previous + incoming
+
+
+def _merge_chunk_payload(accumulated: dict, payload: dict) -> dict:
+    for key, value in payload.items():
+        if isinstance(value, str):
+            accumulated[key] = _merge_text_chunks(str(accumulated.get(key, "")), value)
+        else:
+            accumulated[key] = value
+
+    return accumulated
 
 
 async def generate_content(
@@ -128,5 +155,37 @@ async def stream_content(
         timeout=timeout,
     ) as res:
         res.raise_for_status()
-        async for chunk in res.aiter_bytes():
-            yield chunk
+
+        # Upstream emits SSE `data:` lines; accumulate chunk payloads so clients
+        # (including Swagger) can always see the progressively built full object.
+        accumulated_payload: dict = {}
+
+        async for line in res.aiter_lines():
+            if not line:
+                continue
+
+            if not line.startswith("data:"):
+                continue
+
+            data = line[5:].strip()
+
+            if not data:
+                continue
+
+            if data == "[DONE]":
+                yield b"data: [DONE]\n\n"
+                continue
+
+            try:
+                parsed = json.loads(data)
+            except json.JSONDecodeError:
+                yield f"data: {data}\n\n".encode("utf-8")
+                continue
+
+            if isinstance(parsed, dict):
+                merged = _merge_chunk_payload(accumulated_payload, parsed)
+                payload_text = json.dumps(merged, ensure_ascii=False)
+            else:
+                payload_text = json.dumps(parsed, ensure_ascii=False)
+
+            yield f"data: {payload_text}\n\n".encode("utf-8")
