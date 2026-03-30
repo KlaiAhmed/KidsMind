@@ -921,7 +921,7 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "KidsMind - Logging Overview",
+  "title": "KidsMind - API Request Logs",
   "uid": "kidsmind-logs-overview",
   "version": 1,
   "weekStart": ""

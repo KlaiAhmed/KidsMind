@@ -843,7 +843,7 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "KidsMind - Compose Services Logs",
+  "title": "KidsMind - Infrastructure Services Logs",
   "uid": "kidsmind-compose-services-logs",
   "version": 1,
   "weekStart": ""
