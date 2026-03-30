@@ -111,6 +111,11 @@ async def stt_controller(request: TranscriptionRequest, client: httpx.AsyncClien
             duration_seconds=round(duration, 3),
         )
 
-    except Exception as e:
-        logger.exception("STT Controller Error")
-        raise HTTPException(status_code=500, detail=f"STT Controller Error: {e}")
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception(
+            "STT controller error",
+            extra={"audio_url": request.audio_url[:50] + "***" if len(request.audio_url) > 50 else request.audio_url},
+        )
+        raise HTTPException(status_code=500, detail="STT Controller Error")

@@ -71,7 +71,7 @@ async def transcribe(request: TranscriptionRequest, models: tuple = Depends(get_
         raise HTTPException(status_code=422, detail="Audio decoding failed.")
 
     except TranscriptionError:
-        logger.error(
+        logger.exception(
             "Transcription failed",
             extra={
                 "audio_url": request.audio_url[:50] + "***" if len(request.audio_url) > 50 else request.audio_url,

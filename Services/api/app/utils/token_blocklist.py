@@ -41,9 +41,12 @@ async def blocklist_access_token_jti(jti: str, exp_claim: int | float | datetime
     redis_client = await get_cache_client()
     try:
         await redis_client.set(_build_blocklist_key(jti), "1", ex=ttl_seconds)
-    except Exception as exc:
-        logger.error(f"Failed to persist access-token blocklist entry for jti={jti}: {exc}")
-        raise HTTPException(status_code=503, detail="Authentication cache unavailable") from exc
+    except Exception:
+        logger.exception(
+            "Failed to persist access-token blocklist entry",
+            extra={"jti": jti[:8] + "***", "ttl_seconds": ttl_seconds},
+        )
+        raise HTTPException(status_code=503, detail="Authentication cache unavailable")
 
 
 async def is_access_token_blocklisted(jti: str) -> bool:
@@ -51,6 +54,9 @@ async def is_access_token_blocklisted(jti: str) -> bool:
     redis_client = await get_cache_client()
     try:
         return bool(await redis_client.exists(_build_blocklist_key(jti)))
-    except Exception as exc:
-        logger.error(f"Failed to read access-token blocklist entry for jti={jti}: {exc}")
-        raise HTTPException(status_code=503, detail="Authentication cache unavailable") from exc
+    except Exception:
+        logger.exception(
+            "Failed to read access-token blocklist entry",
+            extra={"jti": jti[:8] + "***"},
+        )
+        raise HTTPException(status_code=503, detail="Authentication cache unavailable")

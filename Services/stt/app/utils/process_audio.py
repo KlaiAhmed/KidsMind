@@ -151,9 +151,9 @@ def decode_audio(audio_bytes: bytes) -> bytes:
 
         return audio_file
 
-    except Exception as e:
+    except Exception:
         logger.exception(
             "Audio decoding failed",
             extra={"input_size_bytes": len(audio_bytes)},
         )
-        raise AudioDecodeError(f"Failed to decode audio: {e}")
+        raise AudioDecodeError("Failed to decode audio")

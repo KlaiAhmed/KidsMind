@@ -74,9 +74,12 @@ def ensure_super_admin_exists() -> None:
         db.add(super_admin)
         db.commit()
         logger.info("Bootstrap super admin created successfully")
-    except Exception as error:
+    except Exception:
         db.rollback()
-        logger.error(f"Failed to bootstrap super admin: {error}")
+        logger.exception(
+            "Failed to bootstrap super admin during startup",
+            extra={"email": email, "username": username},
+        )
         raise
     finally:
         db.close()
