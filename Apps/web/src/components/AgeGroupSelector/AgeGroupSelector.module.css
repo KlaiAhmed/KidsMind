@@ -2,6 +2,7 @@
   padding-block: var(--spacing-4xl);
   padding-inline: var(--spacing-lg);
   position: relative;
+  overflow-x: hidden;
 }
 
 .sectionInner {
@@ -28,9 +29,23 @@
   display: grid;
   grid-template-columns: 1fr;
   gap: var(--spacing-xl);
+  justify-items: center;
 }
 
-@media (min-width: 640px) {
+/* 640px-940px: 2 columns to prevent overflow */
+@media (min-width: 640px) and (max-width: 940px) {
+  .grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .card {
+    width: 100%;
+    max-width: 360px;
+  }
+}
+
+/* Above 940px: restore 3-column layout */
+@media (min-width: 941px) {
   .grid {
     grid-template-columns: repeat(3, 1fr);
   }
@@ -61,9 +76,19 @@
   text-align: center;
   transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1),
     box-shadow 0.4s cubic-bezier(0.22, 1, 0.36, 1);
-  min-width: 280px;
+  width: 90%;
+  max-width: 320px;
   overflow: hidden;
   border: 1px solid transparent;
+}
+
+/* Cards expand to full column width on larger screens */
+@media (min-width: 941px) {
+  .card {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+  }
 }
 
 /* Inner glow effect */
