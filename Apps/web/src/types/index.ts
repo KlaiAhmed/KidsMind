@@ -195,6 +195,103 @@ export interface TranslationMap {
   status_try_again: string;
   status_go_back: string;
 
+  // ─── Parent Dashboard ────────────────────────────────────────────────────────
+  dashboard_page_title: string;
+  dashboard_loading: string;
+  dashboard_no_child_title: string;
+  dashboard_no_child_description: string;
+  dashboard_add_child: string;
+  dashboard_child_stats_title: string;
+  dashboard_child_conversations: string;
+  dashboard_child_minutes: string;
+  dashboard_child_badges: string;
+  dashboard_child_activity_title: string;
+  dashboard_child_today: string;
+  dashboard_child_this_week: string;
+  dashboard_child_this_month: string;
+  dashboard_settings_title: string;
+  dashboard_settings_profile: string;
+  dashboard_settings_limits: string;
+  dashboard_settings_safety: string;
+  dashboard_settings_about: string;
+  dashboard_child_edit_profile: string;
+  dashboard_child_change_avatar: string;
+  dashboard_child_view_history: string;
+  dashboard_child_delete: string;
+  dashboard_delete_confirm_title: string;
+  dashboard_delete_confirm_description: string;
+  dashboard_delete_confirm_cancel: string;
+  dashboard_delete_confirm_delete: string;
+  dashboard_limits_daily_usage: string;
+  dashboard_limits_subjects: string;
+  dashboard_limits_access_days: string;
+  dashboard_limits_voice_enabled: string;
+  dashboard_limits_audio_history: string;
+  dashboard_limits_update_success: string;
+  dashboard_limits_update_error: string;
+  dashboard_conversation_title: string;
+  dashboard_conversation_empty: string;
+  dashboard_conversation_delete_confirm: string;
+  dashboard_conversation_deleted: string;
+  dashboard_badge_view_all: string;
+  dashboard_badge_earned_on: string;
+
+  // ─── Today's Overview ────────────────────────────────────────────────────────
+  today_title: string;
+  today_loading: string;
+  today_retry: string;
+  today_empty: string;
+
+  // ─── Chat Page ────────────────────────────────────────────────────────────────
+  chat_page_title: string;
+  chat_loading: string;
+  chat_placeholder: string;
+  chat_send: string;
+  chat_error: string;
+  chat_retry: string;
+  chat_voice_start: string;
+  chat_voice_stop: string;
+  chat_voice_error: string;
+
+  // ─── Badges Page ──────────────────────────────────────────────────────────────
+  badges_page_title: string;
+  badges_loading: string;
+  badges_empty: string;
+  badges_retry: string;
+
+  // ─── Story Reader ─────────────────────────────────────────────────────────────
+  story_read: string;
+  story_listen: string;
+  story_next: string;
+  story_previous: string;
+
+  // ─── Settings ─────────────────────────────────────────────────────────────────
+  settings_language: string;
+  settings_theme: string;
+  settings_notifications: string;
+  settings_privacy: string;
+
+  // ─── Profile ──────────────────────────────────────────────────────────────────
+  profile_edit: string;
+  profile_save: string;
+  profile_cancel: string;
+  profile_delete: string;
+
+  // ─── Generic UI Strings ───────────────────────────────────────────────────────
+  loading: string;
+  error: string;
+  success: string;
+  warning: string;
+  info: string;
+  confirm: string;
+  close: string;
+  skip: string;
+  done: string;
+  learn_more: string;
+  no_data: string;
+  connection_error: string;
+  try_again: string;
+
   // ─── Validation errors ────────────────────────────────────────────────────────
   error_email_required: string;
   error_email_invalid: string;
