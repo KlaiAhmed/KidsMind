@@ -1,6 +1,7 @@
 .section {
   padding-block: var(--spacing-3xl);
   padding-inline: var(--spacing-lg);
+  position: relative;
 }
 
 .reveal {
@@ -18,13 +19,48 @@
 .banner {
   max-width: var(--max-width);
   margin-inline: auto;
-  background: #1A1A3E;
+  background: linear-gradient(135deg, #1A1A3E 0%, #252550 50%, #1A1A3E 100%);
   color: #F0EBE3;
   border-radius: var(--radius-xl);
   padding: var(--spacing-3xl);
   display: flex;
   align-items: flex-start;
   gap: var(--spacing-xl);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Animated background glow */
+.banner::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 30% 50%, rgba(107, 99, 255, 0.15) 0%, transparent 50%),
+              radial-gradient(circle at 70% 70%, rgba(123, 216, 143, 0.1) 0%, transparent 40%);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .banner::before {
+    animation: breathe 6s ease-in-out infinite;
+  }
+}
+
+/* Subtle shimmer effect */
+.banner::after {
+  content: '';
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: -100%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.03), transparent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .banner::after {
+    animation: shimmerMove 8s ease-in-out infinite;
+  }
 }
 
 @media (max-width: 767px) {
@@ -42,17 +78,21 @@
   align-items: center;
   justify-content: center;
   color: #8B85FF;
+  position: relative;
+  z-index: 1;
 }
 
 @media (prefers-reduced-motion: no-preference) {
   .iconWrap {
-    animation: pulseGlow 3s ease-in-out infinite;
+    animation: gentleFloat 5s ease-in-out infinite;
     border-radius: 50%;
   }
 }
 
 .content {
   flex: 1;
+  position: relative;
+  z-index: 1;
 }
 
 .title {
@@ -80,14 +120,34 @@
   align-items: flex-start;
   gap: var(--spacing-md);
   font-size: var(--font-size-base);
-  line-height: 1.6;
+  line-height: 1.65;
   color: #D0CCDF;
+  transition: transform 0.25s ease, color 0.25s ease;
+}
+
+.point:hover {
+  color: #F0EBE3;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .point:hover {
+    transform: translateX(8px);
+  }
+
+  [data-dir="rtl"] .point:hover {
+    transform: translateX(-8px);
+  }
 }
 
 .pointIcon {
   flex-shrink: 0;
   color: #7BD88F;
   margin-block-start: 2px;
+  transition: transform 0.25s ease;
+}
+
+.point:hover .pointIcon {
+  transform: scale(1.15);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -96,7 +156,23 @@
     transform: none;
     transition: none;
   }
+
   .iconWrap {
     animation: none;
+  }
+
+  .banner::before,
+  .banner::after {
+    animation: none;
+  }
+
+  .point {
+    opacity: 1;
+    animation: none;
+  }
+
+  .point:hover,
+  .point:hover .pointIcon {
+    transform: none;
   }
 }

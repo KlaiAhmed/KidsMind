@@ -2,12 +2,26 @@
   padding-block: var(--spacing-4xl);
   padding-inline: var(--spacing-lg);
   background: var(--bg-surface-alt);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Subtle decorative background */
+.section::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 0%, var(--accent-fun) 0%, transparent 50%);
+  opacity: 0.03;
+  pointer-events: none;
 }
 
 .sectionInner {
   max-width: 700px;
   margin-inline: auto;
   text-align: center;
+  position: relative;
+  z-index: 1;
 }
 
 .sectionTitle {
@@ -39,7 +53,7 @@
 .carouselWrapper {
   position: relative;
   overflow: hidden;
-  min-height: 280px;
+  min-height: 300px;
 }
 
 .card {
@@ -51,21 +65,33 @@
   gap: var(--spacing-md);
   padding: var(--spacing-xl);
   opacity: 0;
-  transform: translateX(20px);
-  transition: opacity 0.5s ease, transform 0.5s ease;
+  transform: translateX(20px) scale(0.98);
+  transition: opacity 0.5s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
   pointer-events: none;
+  background: var(--bg-surface);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
 }
 
 .cardActive {
   opacity: 1;
-  transform: translateX(0);
+  transform: translateX(0) scale(1);
   pointer-events: auto;
   position: relative;
 }
 
+[data-dir="rtl"] .card {
+  transform: translateX(-20px) scale(0.98);
+}
+
+[data-dir="rtl"] .cardActive {
+  transform: translateX(0) scale(1);
+}
+
 .avatar {
-  width: 56px;
-  height: 56px;
+  width: 64px;
+  height: 64px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -74,6 +100,14 @@
   font-size: var(--font-size-xl);
   font-weight: 700;
   color: var(--text-on-accent);
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+              box-shadow 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .cardActive .avatar {
+    animation: popIn 0.5s ease forwards;
+  }
 }
 
 .stars {
@@ -83,12 +117,29 @@
 
 .starIcon {
   color: var(--accent-fun);
+  transition: transform 0.25s ease;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .cardActive .starIcon {
+    animation: playfulBounce 0.6s ease forwards;
+  }
+
+  .cardActive .starIcon:nth-child(1) { animation-delay: 0.1s; }
+  .cardActive .starIcon:nth-child(2) { animation-delay: 0.15s; }
+  .cardActive .starIcon:nth-child(3) { animation-delay: 0.2s; }
+  .cardActive .starIcon:nth-child(4) { animation-delay: 0.25s; }
+  .cardActive .starIcon:nth-child(5) { animation-delay: 0.3s; }
+}
+
+.starIcon:hover {
+  transform: scale(1.2) rotate(10deg);
 }
 
 .quote {
   font-size: var(--font-size-lg);
   color: var(--text-primary);
-  line-height: 1.7;
+  line-height: 1.75;
   font-style: italic;
   max-width: 520px;
 }
@@ -98,6 +149,11 @@
   font-size: var(--font-size-base);
   font-weight: 700;
   color: var(--text-primary);
+  transition: color 0.25s ease;
+}
+
+.cardActive:hover .authorName {
+  color: var(--accent-main);
 }
 
 .authorRole {
@@ -119,7 +175,9 @@
   border-radius: 50%;
   border: 2px solid var(--border-subtle);
   background: transparent;
-  transition: background 0.25s ease, border-color 0.25s ease;
+  transition: background 0.25s ease,
+              border-color 0.25s ease,
+              transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
   min-width: 44px;
   min-height: 44px;
   display: flex;
@@ -134,15 +192,25 @@
   height: 10px;
   border-radius: 50%;
   background: transparent;
-  transition: background 0.25s ease;
+  transition: background 0.25s ease,
+              transform 0.25s ease;
 }
 
 .dotActive::after {
   background: var(--accent-main);
 }
 
+.dot:hover {
+  border-color: var(--accent-main);
+}
+
 .dot:hover::after {
   background: var(--accent-main-hover);
+  transform: scale(1.1);
+}
+
+.dotActive {
+  border-color: var(--accent-main);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -151,7 +219,18 @@
     transform: none;
     transition: none;
   }
+
   .card {
     transition: none;
+  }
+
+  .cardActive .avatar,
+  .cardActive .starIcon {
+    animation: none;
+  }
+
+  .starIcon:hover,
+  .dot:hover::after {
+    transform: none;
   }
 }

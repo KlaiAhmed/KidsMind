@@ -12,7 +12,6 @@ const HeroIllustration = () => {
     >
       {/* Planet */}
       <ellipse cx="200" cy="320" rx="120" ry="30" fill="var(--accent-learn)" opacity="0.2" />
-      <circle cx="200" cy="300" r="60" fill="var(--accent-learn)" opacity="0.3" />
       <ellipse cx="200" cy="300" rx="80" ry="8" fill="var(--accent-learn)" opacity="0.15" />
 
       {/* Owl body */}
@@ -49,18 +48,18 @@ const HeroIllustration = () => {
         {/* Graduation cap */}
         <polygon points="160,145 200,125 240,145 200,155" fill="var(--text-primary)" />
         <rect x="197" y="120" width="6" height="15" fill="var(--text-primary)" />
-        <circle cx="200" cy="118" r="4" fill="var(--accent-fun)" />
+        <circle cx="200" cy="118" r="4" fill="var(--accent-fun)" style={{ animation: 'softPulse 2s ease-in-out infinite' }} />
       </g>
 
-      {/* Stars */}
+      {/* Stars with varied animations */}
       <circle cx="80" cy="80" r="3" fill="var(--accent-fun)" style={{ animation: 'starTwinkle 3s ease-in-out infinite alternate' }} />
-      <circle cx="320" cy="60" r="2.5" fill="var(--accent-fun)" style={{ animation: 'starTwinkle 4s ease-in-out infinite alternate' }} />
-      <circle cx="50" cy="200" r="2" fill="var(--accent-fun)" style={{ animation: 'starTwinkle 2.5s ease-in-out infinite alternate' }} />
-      <circle cx="350" cy="180" r="3" fill="var(--accent-fun)" style={{ animation: 'starTwinkle 3.5s ease-in-out infinite alternate' }} />
-      <circle cx="100" cy="320" r="2" fill="var(--accent-learn)" style={{ animation: 'starTwinkle 4.5s ease-in-out infinite alternate' }} />
-      <circle cx="310" cy="300" r="2.5" fill="var(--accent-learn)" style={{ animation: 'starTwinkle 2s ease-in-out infinite alternate' }} />
-      <circle cx="140" cy="50" r="2" fill="var(--accent-grow)" style={{ animation: 'starTwinkle 3.2s ease-in-out infinite alternate' }} />
-      <circle cx="280" cy="120" r="2" fill="var(--accent-grow)" style={{ animation: 'starTwinkle 2.8s ease-in-out infinite alternate' }} />
+      <circle cx="320" cy="60" r="2.5" fill="var(--accent-fun)" style={{ animation: 'starTwinkle 4s ease-in-out infinite alternate', animationDelay: '0.5s' }} />
+      <circle cx="50" cy="200" r="2" fill="var(--accent-fun)" style={{ animation: 'starTwinkle 2.5s ease-in-out infinite alternate', animationDelay: '0.3s' }} />
+      <circle cx="350" cy="180" r="3" fill="var(--accent-fun)" style={{ animation: 'starTwinkle 3.5s ease-in-out infinite alternate', animationDelay: '1s' }} />
+      <circle cx="100" cy="320" r="2" fill="var(--accent-learn)" style={{ animation: 'starTwinkle 4.5s ease-in-out infinite alternate', animationDelay: '0.7s' }} />
+      <circle cx="310" cy="300" r="2.5" fill="var(--accent-learn)" style={{ animation: 'starTwinkle 2s ease-in-out infinite alternate', animationDelay: '1.2s' }} />
+      <circle cx="140" cy="50" r="2" fill="var(--accent-grow)" style={{ animation: 'starTwinkle 3.2s ease-in-out infinite alternate', animationDelay: '0.2s' }} />
+      <circle cx="280" cy="120" r="2" fill="var(--accent-grow)" style={{ animation: 'starTwinkle 2.8s ease-in-out infinite alternate', animationDelay: '0.9s' }} />
 
       {/* Small orbiting star */}
       <circle cx="0" cy="0" r="4" fill="var(--accent-fun)" style={{ animation: 'orbit 10s linear infinite', transformOrigin: '200px 200px' }} />
@@ -70,10 +69,14 @@ const HeroIllustration = () => {
         <line x1="0" y1="-6" x2="0" y2="6" stroke="var(--accent-fun)" strokeWidth="2" strokeLinecap="round" />
         <line x1="-6" y1="0" x2="6" y2="0" stroke="var(--accent-fun)" strokeWidth="2" strokeLinecap="round" />
       </g>
-      <g transform="translate(340, 240)" style={{ animation: 'starTwinkle 4s ease-in-out infinite alternate' }}>
+      <g transform="translate(340, 240)" style={{ animation: 'starTwinkle 4s ease-in-out infinite alternate', animationDelay: '0.5s' }}>
         <line x1="0" y1="-5" x2="0" y2="5" stroke="var(--accent-learn)" strokeWidth="2" strokeLinecap="round" />
         <line x1="-5" y1="0" x2="5" y2="0" stroke="var(--accent-learn)" strokeWidth="2" strokeLinecap="round" />
       </g>
+
+      {/* Additional decorative elements */}
+      <circle cx="120" cy="250" r="5" fill="var(--accent-grow)" opacity="0.4" style={{ animation: 'gentleFloat 5s ease-in-out infinite' }} />
+      <circle cx="290" cy="150" r="4" fill="var(--accent-fun)" opacity="0.5" style={{ animation: 'gentleFloat 7s ease-in-out infinite reverse' }} />
     </svg>
   );
 };

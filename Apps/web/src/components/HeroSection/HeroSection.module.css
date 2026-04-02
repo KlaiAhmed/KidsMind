@@ -25,6 +25,8 @@
   gap: var(--spacing-3xl);
   max-width: var(--max-width);
   width: 100%;
+  position: relative;
+  z-index: 1;
 }
 
 @media (max-width: 767px) {
@@ -58,6 +60,11 @@
   .badge {
     animation: heroFadeUp 0.6s ease forwards;
     animation-delay: 0ms;
+  }
+
+  .badge span:first-child {
+    animation: wiggle 2s ease-in-out infinite;
+    display: inline-block;
   }
 }
 
@@ -172,23 +179,43 @@
   color: var(--text-on-accent);
   background: var(--accent-main);
   transition: background 0.25s ease, transform 0.25s ease, box-shadow 0.25s ease;
-  min-height: 48px;
+  min-height: 52px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Shimmer effect on CTA button */
+.ctaPrimary::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.2),
+    transparent
+  );
+  transform: translateX(-100%);
 }
 
 @media (prefers-reduced-motion: no-preference) {
   .ctaPrimary {
     animation: pulseGlow 3s ease-in-out infinite;
   }
+
+  .ctaPrimary:hover::before {
+    animation: shimmerMove 0.8s ease forwards;
+  }
 }
 
 .ctaPrimary:hover {
   background: var(--accent-main-hover);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-card);
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 0 8px 30px rgba(255, 107, 53, 0.4);
 }
 
 .ctaPrimary:active {
-  transform: translateY(0);
+  transform: translateY(-1px) scale(1);
 }
 
 .ctaSecondary {
@@ -202,14 +229,15 @@
   color: var(--text-primary);
   background: transparent;
   border: 2px solid var(--border-subtle);
-  transition: border-color 0.25s ease, transform 0.25s ease;
-  min-height: 48px;
+  transition: border-color 0.25s ease, transform 0.25s ease, background 0.25s ease;
+  min-height: 52px;
 }
 
 .ctaSecondary:hover {
   border-color: var(--accent-main);
   color: var(--accent-main);
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+  background: color-mix(in srgb, var(--accent-main) 5%, transparent);
 }
 
 .trustRow {
@@ -249,6 +277,28 @@
   font-size: var(--font-size-sm);
   color: var(--text-muted);
   font-weight: 500;
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .trustItem:nth-child(1) {
+    animation: badgePop 0.4s ease forwards;
+    animation-delay: 1000ms;
+  }
+  .trustItem:nth-child(2) {
+    animation: badgePop 0.4s ease forwards;
+    animation-delay: 1100ms;
+  }
+  .trustItem:nth-child(3) {
+    animation: badgePop 0.4s ease forwards;
+    animation-delay: 1200ms;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trustItem {
+    opacity: 1;
+  }
 }
 
 .trustDot {
@@ -256,6 +306,12 @@
   height: 8px;
   border-radius: 50%;
   background: var(--accent-grow);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .trustDot {
+    animation: softPulse 2s ease-in-out infinite;
+  }
 }
 
 .heroVisual {
@@ -281,6 +337,7 @@
 @media (max-width: 767px) {
   .heroVisual {
     order: -1;
+    max-width: 280px;
   }
 }
 

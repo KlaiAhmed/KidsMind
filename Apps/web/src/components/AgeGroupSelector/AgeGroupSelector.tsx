@@ -45,9 +45,6 @@ const AgeGroupSelector = ({ translations }: AgeGroupSelectorProps) => {
                 {translations[group.rangeKey]}
               </span>
               <p className={styles.cardDesc}>{translations[group.descKey]}</p>
-              <button className={styles.cardButton}>
-                {translations.hero_cta_primary} →
-              </button>
             </div>
           ))}
         </div>

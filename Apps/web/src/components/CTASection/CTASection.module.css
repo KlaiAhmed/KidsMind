@@ -1,6 +1,8 @@
 .section {
   padding-block: var(--spacing-4xl);
   padding-inline: var(--spacing-lg);
+  position: relative;
+  overflow: hidden;
 }
 
 .reveal {
@@ -24,11 +26,48 @@
   background: var(--gradient-cta);
   background-size: 200% 200%;
   color: var(--text-on-accent);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Animated glow effect */
+.banner::before {
+  content: '';
+  position: absolute;
+  inset-block-start: -50%;
+  inset-inline-start: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.15) 0%, transparent 50%);
+  pointer-events: none;
 }
 
 @media (prefers-reduced-motion: no-preference) {
   .banner {
     animation: gradientShift 8s ease infinite;
+  }
+
+  .banner::before {
+    animation: gentleFloat 10s ease-in-out infinite;
+  }
+}
+
+/* Decorative shapes */
+.banner::after {
+  content: '';
+  position: absolute;
+  width: 100px;
+  height: 100px;
+  inset-block-end: -30px;
+  inset-inline-end: -30px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .banner::after {
+    animation: breathe 4s ease-in-out infinite;
   }
 }
 
@@ -37,6 +76,8 @@
   font-size: var(--font-size-3xl);
   font-weight: 700;
   margin-block-end: var(--spacing-md);
+  position: relative;
+  z-index: 1;
 }
 
 @media (min-width: 768px) {
@@ -49,7 +90,9 @@
   font-size: var(--font-size-lg);
   margin-block-end: var(--spacing-xl);
   opacity: 0.9;
-  line-height: 1.6;
+  line-height: 1.65;
+  position: relative;
+  z-index: 1;
 }
 
 .button {
@@ -63,23 +106,45 @@
   color: var(--accent-main);
   background: var(--bg-surface);
   box-shadow: var(--shadow-card);
-  transition: transform 0.25s ease, box-shadow 0.25s ease;
-  min-height: 52px;
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+              box-shadow 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  min-height: 56px;
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+}
+
+/* Shine effect on button */
+.button::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, transparent 30%, rgba(255, 107, 53, 0.1) 50%, transparent 70%);
+  transform: translateX(-100%);
 }
 
 .button:hover {
-  transform: translateY(-3px);
-  box-shadow: var(--shadow-card-hover);
+  transform: translateY(-4px) scale(1.03);
+  box-shadow: var(--shadow-card-hover),
+              0 0 30px rgba(255, 107, 53, 0.2);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .button:hover::before {
+    animation: shimmerMove 0.6s ease forwards;
+  }
 }
 
 .button:active {
-  transform: translateY(0);
+  transform: translateY(-2px) scale(1.01);
 }
 
 .footnote {
   font-size: var(--font-size-sm);
-  opacity: 0.7;
+  opacity: 0.75;
   margin-block-start: var(--spacing-lg);
+  position: relative;
+  z-index: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -88,7 +153,14 @@
     transform: none;
     transition: none;
   }
-  .banner {
+
+  .banner,
+  .banner::before,
+  .banner::after {
     animation: none;
+  }
+
+  .button:hover {
+    transform: none;
   }
 }
