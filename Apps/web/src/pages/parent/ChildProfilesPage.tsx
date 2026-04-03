@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useChildrenQuery } from '../../hooks/api/useChildrenQuery';
 import type { ChildRecord } from '../../hooks/api/useChildrenQuery';
@@ -6,6 +6,7 @@ import { apiClient } from '../../lib/api';
 import { queryKeys } from '../../lib/queryKeys';
 import { useActiveChild } from '../../hooks/useActiveChild';
 import { AddChildModal } from '../../components/parent/AddChildModal';
+import ModernSwitch from '../../components/shared/ModernSwitch/ModernSwitch';
 import '../../styles/parent-portal.css';
 
 const COPY = {
@@ -33,17 +34,27 @@ const COPY = {
   allowedWeekdays: 'Allowed weekdays',
   voiceEnabled: 'Voice enabled',
   storeAudio: 'Store audio history',
-  parentPin: 'Parent PIN',
-  changePinHint: 'Change PIN (4 digits)',
   noActiveChild: 'Select a child profile to edit safety rules.',
   retry: 'Retry',
 } as const;
 
 const SUBJECT_OPTIONS = ['math', 'english', 'french', 'science', 'history', 'art'] as const;
-const WEEKDAY_OPTIONS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 const WEEKDAY_KEYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
+const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 const AVATAR_OPTIONS = ['🦁', '🐼', '🦊', '🐯', '🐬', '🦄', '🐻', '🐙', '🦉', '🦖', '🐢', '🐝'] as const;
 const LANGUAGE_OPTIONS = ['en', 'fr', 'es', 'it', 'ar', 'ch'] as const;
+const PRESET_MINUTES = [15, 30, 45, 60] as const;
+const SLIDER_MIN = 15;
+const SLIDER_MAX = 120;
+const SLIDER_STEP = 15;
+const SUBJECT_META: Record<string, { emoji: string; label: string }> = {
+  math:    { emoji: '\uD83D\uDD22', label: 'Math' },
+  french:  { emoji: '\uD83D\uDCD6', label: 'French' },
+  english: { emoji: '\uD83D\uDDE3\uFE0F', label: 'English' },
+  science: { emoji: '\uD83D\uDD2C', label: 'Science' },
+  history: { emoji: '\uD83C\uDFDB\uFE0F', label: 'History' },
+  art:     { emoji: '\uD83C\uDFA8', label: 'Art' },
+};
 
 type ChildProfilesTab = 'all' | 'safety';
 
@@ -74,7 +85,6 @@ interface SafetyFormState {
   allowedWeekdays: string[];
   enableVoice: boolean;
   storeAudioHistory: boolean;
-  parentPin: string;
 }
 
 const toAge = (birthDate?: string): number | null => {
@@ -107,7 +117,6 @@ const normalizeSafetyForm = (child: ChildRecord | null): SafetyFormState => {
     allowedWeekdays: [...(settings?.allowed_weekdays ?? settings?.allowedWeekdays ?? WEEKDAY_KEYS)],
     enableVoice: Boolean(settings?.enable_voice ?? settings?.enableVoice ?? true),
     storeAudioHistory: Boolean(settings?.store_audio_history ?? settings?.storeAudioHistory ?? false),
-    parentPin: '',
   };
 };
 
@@ -120,6 +129,7 @@ const ChildProfilesPage = () => {
   const [editForm, setEditForm] = useState<EditChildFormState | null>(null);
   const [removeCandidate, setRemoveCandidate] = useState<ChildRecord | null>(null);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [submitError, setSubmitError] = useState<string>('');
   const [safetyForm, setSafetyForm] = useState<SafetyFormState>(normalizeSafetyForm(activeChild));
   const [toastMessage, setToastMessage] = useState<string>('');
   const [isAddChildModalOpen, setIsAddChildModalOpen] = useState<boolean>(false);
@@ -219,6 +229,39 @@ const ChildProfilesPage = () => {
     }
   };
 
+  /* ─── Safety tab handlers ──────────────────────────────────────────────── */
+
+  const handlePresetClick = useCallback(
+    (minutes: number) => {
+      setSafetyForm((current) => ({ ...current, dailyLimitMinutes: minutes }));
+    },
+    []
+  );
+
+  const handleSubjectToggle = useCallback(
+    (subjectId: string) => {
+      setSafetyForm((current) => ({
+        ...current,
+        allowedSubjects: current.allowedSubjects.includes(subjectId)
+          ? current.allowedSubjects.filter((s) => s !== subjectId)
+          : [...current.allowedSubjects, subjectId],
+      }));
+    },
+    []
+  );
+
+  const handleWeekdayToggle = useCallback(
+    (weekday: string) => {
+      setSafetyForm((current) => ({
+        ...current,
+        allowedWeekdays: current.allowedWeekdays.includes(weekday)
+          ? current.allowedWeekdays.filter((d) => d !== weekday)
+          : [...current.allowedWeekdays, weekday],
+      }));
+    },
+    []
+  );
+
   const saveSafetySettings = async (): Promise<void> => {
     if (!selectedChild) {
       setToastMessage(COPY.noActiveChild);
@@ -226,6 +269,7 @@ const ChildProfilesPage = () => {
     }
 
     setIsSaving(true);
+    setSubmitError('');
 
     try {
       await apiClient.patch('/api/v1/safety-and-rules', {
@@ -237,14 +281,14 @@ const ChildProfilesPage = () => {
             enableVoice: safetyForm.enableVoice,
             storeAudioHistory: safetyForm.storeAudioHistory,
           },
-          parentPin: safetyForm.parentPin || undefined,
         },
       });
 
       await queryClient.invalidateQueries({ queryKey: queryKeys.children() });
       setToastMessage(COPY.saveSuccess);
-    } catch {
+    } catch (err) {
       setToastMessage(COPY.saveFailed);
+      setSubmitError(err instanceof Error ? err.message : 'Failed to save safety settings');
     } finally {
       setIsSaving(false);
     }
@@ -403,135 +447,140 @@ const ChildProfilesPage = () => {
           <p className="pp-empty" style={{ marginTop: '0.8rem' }}>{COPY.noActiveChild}</p>
         ) : (
           <form
-            className="pp-form-grid"
+            className="pp-safety-form"
             style={{ marginTop: '0.8rem' }}
             onSubmit={(event) => {
               event.preventDefault();
               void saveSafetySettings();
             }}
           >
-            <div className="pp-form-row">
-              <label htmlFor="daily-limit-slider">{COPY.dailyLimit}</label>
-              <input
-                id="daily-limit-slider"
-                type="range"
-                min={15}
-                max={120}
-                step={15}
-                aria-label={COPY.dailyLimit}
-                value={safetyForm.dailyLimitMinutes}
-                onChange={(event) => {
-                  setSafetyForm((current) => ({
-                    ...current,
-                    dailyLimitMinutes: Number(event.currentTarget.value),
-                  }));
-                }}
-              />
-              <p>{safetyForm.dailyLimitMinutes} min</p>
-            </div>
-
-            <fieldset className="pp-form-row">
-              <legend>{COPY.allowedSubjects}</legend>
-              <div className="pp-checkbox-grid">
-                {SUBJECT_OPTIONS.map((subject) => (
-                  <label key={subject} className="pp-button pp-touch pp-focusable">
-                    <input
-                      type="checkbox"
-                      checked={safetyForm.allowedSubjects.includes(subject)}
-                      aria-label={`Allow ${subject}`}
-                      onChange={() => {
-                        setSafetyForm((current) => ({
-                          ...current,
-                          allowedSubjects: toggleTagValue(current.allowedSubjects, subject),
-                        }));
-                      }}
-                    />
-                    <span style={{ marginLeft: '0.4rem' }}>{subject}</span>
-                  </label>
+            {/* Daily Limit Section */}
+            <div className="pp-safety-section">
+              <span className="pp-safety-section-label">{COPY.dailyLimit}</span>
+              <div className="pp-safety-slider" style={{ '--safety-slider-fill': `${((safetyForm.dailyLimitMinutes - SLIDER_MIN) / (SLIDER_MAX - SLIDER_MIN)) * 100}%` } as React.CSSProperties}>
+                <input
+                  id="daily-limit-slider"
+                  type="range"
+                  min={SLIDER_MIN}
+                  max={SLIDER_MAX}
+                  step={SLIDER_STEP}
+                  aria-label={COPY.dailyLimit}
+                  aria-valuetext={`${safetyForm.dailyLimitMinutes} min`}
+                  value={safetyForm.dailyLimitMinutes}
+                  onChange={(event) => {
+                    const value = Number(event.currentTarget.value);
+                    setSafetyForm((current) => ({
+                      ...current,
+                      dailyLimitMinutes: value,
+                    }));
+                  }}
+                />
+                <span className="pp-safety-slider-value">{safetyForm.dailyLimitMinutes} min</span>
+              </div>
+              <div className="pp-safety-presets">
+                {PRESET_MINUTES.map((minutes) => (
+                  <button
+                    key={minutes}
+                    type="button"
+                    className={`pp-safety-preset pp-touch pp-focusable ${safetyForm.dailyLimitMinutes === minutes ? 'pp-safety-preset-active' : ''}`}
+                    aria-pressed={safetyForm.dailyLimitMinutes === minutes}
+                    onClick={() => handlePresetClick(minutes)}
+                  >
+                    {minutes} min
+                  </button>
                 ))}
               </div>
-            </fieldset>
 
-            <fieldset className="pp-form-row">
-              <legend>{COPY.allowedWeekdays}</legend>
-              <div className="pp-tabs">
-                {WEEKDAY_OPTIONS.map((dayLabel, index) => {
+              <span className="pp-safety-section-label" style={{ marginTop: '0.75rem' }}>{COPY.allowedWeekdays}</span>
+              <div className="pp-safety-chips" role="group" aria-label={COPY.allowedWeekdays}>
+                {WEEKDAY_LABELS.map((dayLabel, index) => {
                   const weekdayKey = WEEKDAY_KEYS[index];
-                  const isSelected = safetyForm.allowedWeekdays.includes(weekdayKey);
-
+                  const isActive = safetyForm.allowedWeekdays.includes(weekdayKey);
                   return (
                     <button
                       key={weekdayKey}
                       type="button"
-                      className={`pp-tab pp-touch pp-focusable ${isSelected ? 'pp-tab-active' : ''}`}
-                      aria-label={`Toggle ${dayLabel}`}
-                      onClick={() => {
-                        setSafetyForm((current) => ({
-                          ...current,
-                          allowedWeekdays: toggleTagValue(current.allowedWeekdays, weekdayKey),
-                        }));
-                      }}
+                      className={`pp-safety-chip pp-touch pp-focusable ${isActive ? 'pp-safety-chip-active' : ''}`}
+                      aria-pressed={isActive}
+                      onClick={() => handleWeekdayToggle(weekdayKey)}
                     >
                       {dayLabel}
                     </button>
                   );
                 })}
               </div>
-            </fieldset>
-
-            <div className="pp-toggle-row">
-              <span>{COPY.voiceEnabled}</span>
-              <button
-                type="button"
-                className={`pp-switch pp-touch pp-focusable ${safetyForm.enableVoice ? 'pp-switch-on' : ''}`}
-                aria-label={COPY.voiceEnabled}
-                onClick={() => {
-                  setSafetyForm((current) => ({
-                    ...current,
-                    enableVoice: !current.enableVoice,
-                  }));
-                }}
-              />
             </div>
 
-            <div className="pp-toggle-row">
-              <span>{COPY.storeAudio}</span>
-              <button
-                type="button"
-                className={`pp-switch pp-touch pp-focusable ${safetyForm.storeAudioHistory ? 'pp-switch-on' : ''}`}
-                aria-label={COPY.storeAudio}
-                onClick={() => {
-                  setSafetyForm((current) => ({
-                    ...current,
-                    storeAudioHistory: !current.storeAudioHistory,
-                  }));
-                }}
-              />
+            <hr className="pp-safety-divider" />
+
+            {/* Subjects Section */}
+            <div className="pp-safety-section">
+              <span className="pp-safety-section-label">{COPY.allowedSubjects}</span>
+              <div className="pp-safety-chips" role="group" aria-label={COPY.allowedSubjects}>
+                {SUBJECT_OPTIONS.map((subjectId) => {
+                  const meta = SUBJECT_META[subjectId];
+                  const isActive = safetyForm.allowedSubjects.includes(subjectId);
+                  return (
+                    <button
+                      key={subjectId}
+                      type="button"
+                      className={`pp-safety-chip pp-touch pp-focusable ${isActive ? 'pp-safety-chip-active' : ''}`}
+                      aria-pressed={isActive}
+                      onClick={() => handleSubjectToggle(subjectId)}
+                    >
+                      <span aria-hidden="true">{meta?.emoji}</span>
+                      <span>{meta?.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
-            <div className="pp-form-row">
-              <label htmlFor="parent-pin-input">{COPY.parentPin}</label>
-              <input
-                id="parent-pin-input"
-                type="password"
-                maxLength={4}
-                inputMode="numeric"
-                pattern="[0-9]*"
-                placeholder={COPY.changePinHint}
-                aria-label={COPY.parentPin}
-                value={safetyForm.parentPin}
-                onChange={(event) => {
-                  setSafetyForm((current) => ({
-                    ...current,
-                    parentPin: event.currentTarget.value.replace(/\D/g, '').slice(0, 4),
-                  }));
-                }}
-              />
+            <hr className="pp-safety-divider" />
+
+            {/* Voice Section */}
+            <div className="pp-safety-section">
+              <div className="pp-safety-toggle">
+                <div className="pp-safety-toggle-label">
+                  <span className="pp-safety-toggle-text">{COPY.voiceEnabled}</span>
+                </div>
+                <ModernSwitch
+                  checked={safetyForm.enableVoice}
+                  onChange={() => {
+                    setSafetyForm((current) => {
+                      const next = !current.enableVoice;
+                      return { ...current, enableVoice: next, storeAudioHistory: next ? current.storeAudioHistory : false };
+                    });
+                  }}
+                  ariaLabel={COPY.voiceEnabled}
+                />
+              </div>
+
+              {safetyForm.enableVoice && (
+                <div className="pp-safety-toggle">
+                  <div className="pp-safety-toggle-label">
+                    <span className="pp-safety-toggle-text">{COPY.storeAudio}</span>
+                  </div>
+                  <ModernSwitch
+                    checked={safetyForm.storeAudioHistory}
+                    onChange={() => {
+                      setSafetyForm((current) => ({ ...current, storeAudioHistory: !current.storeAudioHistory }));
+                    }}
+                    ariaLabel={COPY.storeAudio}
+                  />
+                </div>
+              )}
             </div>
+
+            <hr className="pp-safety-divider" />
+
+            {submitError && (
+              <p className="pp-safety-error" role="alert">{submitError}</p>
+            )}
 
             <button
               type="submit"
-              className="pp-button pp-button-primary pp-touch pp-focusable"
+              className="pp-button pp-button-primary pp-touch pp-focusable pp-safety-save"
               aria-label={COPY.save}
               disabled={isSaving}
             >

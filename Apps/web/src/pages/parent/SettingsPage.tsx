@@ -159,6 +159,7 @@ const SettingsPage = () => {
   const [passwordValidationRequested, setPasswordValidationRequested] = useState<boolean>(false);
 
   const [securityPin, setSecurityPin] = useState<string>('');
+  const [pinValid, setPinValid] = useState<boolean>(false);
   const [mfaCode, setMfaCode] = useState<string>('');
   const [isMfaModalOpen, setIsMfaModalOpen] = useState<boolean>(false);
 
@@ -504,8 +505,14 @@ const SettingsPage = () => {
                   onChange={setSecurityPin}
                   showConfirmation
                   confirmationLabel="Confirm PIN"
+                  onValidityChange={setPinValid}
                 />
-                <button type="submit" className="pp-button pp-button-primary pp-touch pp-focusable" aria-label={COPY.updatePin}>
+                <button
+                  type="submit"
+                  className="pp-button pp-button-primary pp-touch pp-focusable"
+                  aria-label={COPY.updatePin}
+                  disabled={!pinValid}
+                >
                   {COPY.updatePin}
                 </button>
               </form>

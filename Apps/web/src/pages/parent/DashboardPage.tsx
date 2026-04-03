@@ -1,5 +1,5 @@
-import { Link } from 'react-router-dom';
 import { Sparkles } from 'lucide-react';
+import { useState, useCallback } from 'react';
 import { useChildAnalytics } from '../../hooks/api/useChildAnalytics';
 import TodayStrip from '../../components/parent/dashboard/TodayStrip';
 import AiInsightsCard from '../../components/parent/dashboard/AiInsightsCard';
@@ -7,6 +7,7 @@ import TimeArcCard from '../../components/parent/dashboard/TimeArcCard';
 import WeeklyBarChart from '../../components/parent/dashboard/WeeklyBarChart';
 import SubjectsGrid from '../../components/parent/dashboard/SubjectsGrid';
 import QuickActions from '../../components/parent/dashboard/QuickActions';
+import { AddChildModal } from '../../components/parent/AddChildModal';
 import { useChildrenQuery } from '../../hooks/api/useChildrenQuery';
 import { useActiveChild } from '../../hooks/useActiveChild';
 import { useLanguage } from '../../hooks/useLanguage';
@@ -17,6 +18,11 @@ const DashboardPage = () => {
   const { activeChild } = useActiveChild();
   const childrenQuery = useChildrenQuery();
   const analyticsQuery = useChildAnalytics(activeChild?.child_id ?? null, '7d');
+  const [isAddChildModalOpen, setIsAddChildModalOpen] = useState(false);
+
+  const handleChildCreated = useCallback(() => {
+    void childrenQuery.refetch();
+  }, [childrenQuery.refetch]);
 
   if (childrenQuery.isLoading && !activeChild) {
     return (
@@ -62,14 +68,16 @@ const DashboardPage = () => {
         <article className="pp-card pp-dashboard-empty" aria-labelledby="dashboard-empty-title">
           <h1 id="dashboard-empty-title" className="pp-title">{translations.dashboard_no_child_title}</h1>
           <p className="pp-empty">{translations.dashboard_no_child_description}</p>
-          <Link
-            to="/parent/children/new"
+          <button
+            type="button"
             className="pp-button pp-button-primary pp-touch pp-focusable"
             aria-label={translations.dashboard_add_child}
+            onClick={() => setIsAddChildModalOpen(true)}
           >
             {translations.dashboard_add_child}
-          </Link>
+          </button>
         </article>
+        <AddChildModal isOpen={isAddChildModalOpen} onClose={() => setIsAddChildModalOpen(false)} onSuccess={handleChildCreated} />
       </main>
     );
   }

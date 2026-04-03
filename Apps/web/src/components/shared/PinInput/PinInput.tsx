@@ -25,6 +25,8 @@ export interface PinInputProps {
   confirmationLabel?: string;
   /** Error when PINs don't match */
   mismatchError?: string;
+  /** Called when confirmation validity changes */
+  onValidityChange?: (valid: boolean) => void;
   /** Number of PIN digits */
   length?: number;
   /** Additional class name */
@@ -45,6 +47,7 @@ const PinInput = ({
   showConfirmation = false,
   confirmationLabel = 'Confirm PIN',
   mismatchError = 'PINs do not match',
+  onValidityChange,
   length = PIN_LENGTH,
   className,
 }: PinInputProps) => {
@@ -73,6 +76,7 @@ const PinInput = ({
   const triggerShake = useCallback(() => {
     setIsShaking(false);
     requestAnimationFrame(() => setIsShaking(true));
+    setTimeout(() => setIsShaking(false), 500);
   }, []);
 
   const updateValue = useCallback(
@@ -105,13 +109,22 @@ const PinInput = ({
         const confirmPin = newDigits.join('');
         const confirmComplete = newDigits.every((d) => /^\d$/.test(d));
 
-        if (confirmComplete && mainPin !== confirmPin) {
-          setConfirmationError(mismatchError);
-          triggerShake();
+        if (confirmComplete) {
+          const matches = mainPin === confirmPin;
+          if (!matches) {
+            setConfirmationError(mismatchError);
+            triggerShake();
+          } else {
+            setConfirmationError('');
+          }
+          onValidityChange?.(matches);
+        } else {
+          setConfirmationError('');
+          onValidityChange?.(false);
         }
       }
     },
-    [isControlled, onChange, onComplete, showConfirmation, currentDigits, mismatchError, triggerShake]
+    [isControlled, onChange, onComplete, showConfirmation, currentDigits, mismatchError, triggerShake, onValidityChange]
   );
 
   const handleDigitChange = useCallback(
