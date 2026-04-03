@@ -27,7 +27,7 @@
   --bg-surface: #1A1A2E;
   --bg-surface-alt: #1E1E35;
   --bg-surface-hover: #252540;
-  --nav-bg: #0F0F1A;
+  --nav-bg: linear-gradient(135deg, #0F0F1A 0%, #1A1A2E 50%, #0F1A2E 100%);
   --accent-main: #FF8C5A;
   --accent-main-hover: #FF6B35;
   --accent-learn: #5EDDD4;
