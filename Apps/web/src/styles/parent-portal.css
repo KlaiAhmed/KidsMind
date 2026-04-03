@@ -287,19 +287,6 @@
   color: var(--accent-main);
 }
 
-@media (max-width: 800px) {
-  .pp-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .pp-sidebar:not(.pp-sidebar-mobile) {
-    display: none;
-  }
-
-  .pp-mobile-topbar {
-    display: flex;
-  }
-}
 
 /* ─── Child Selector & Dropup ───────────────────────────────────────────── */
 
@@ -1698,9 +1685,10 @@
     grid-template-columns: 1fr;
   }
 
-  .pp-sidebar {
+  .pp-sidebar:not(.pp-sidebar-mobile) {
     display: none;
   }
+ .pp-mobile-topbar { display: flex; }
 
   .pp-sidebar-open {
     display: flex;
