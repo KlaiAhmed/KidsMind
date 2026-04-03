@@ -83,14 +83,6 @@ export const ParentRoutes = (
         )}
       />
       <Route
-        path="children/new"
-        element={(
-          <Suspense fallback={<LoadingFallback />}>
-            <ChildProfilesPage />
-          </Suspense>
-        )}
-      />
-      <Route
         path="insights"
         element={(
           <Suspense fallback={<LoadingFallback />}>
