@@ -17,6 +17,7 @@ const COPY = {
   tabSecurity: 'Security',
   tabPrivacy: 'Privacy',
   tabAccessibility: 'Accessibility',
+  tabSessions: 'Sessions',
   cancel: 'Cancel',
   save: 'Save changes',
   loading: 'Loading settings...',
@@ -91,7 +92,7 @@ const PASSWORD_RULES = [
   },
 ] as const;
 
-type SettingsTab = 'security' | 'privacy' | 'accessibility';
+type SettingsTab = 'security' | 'privacy' | 'accessibility' | 'sessions';
 type FontScaleOption = keyof typeof FONT_SCALE_MAP;
 
 interface PasswordFormState {
@@ -383,161 +384,173 @@ const SettingsPage = () => {
   return (
     <main className="pp-content" aria-labelledby="settings-page-title">
       <article className="pp-card">
-      <h1 id="settings-page-title" className="pp-title">{COPY.title}</h1>
+        <h1 id="settings-page-title" className="pp-title">{COPY.title}</h1>
 
-      <div className="pp-tabs" style={{ marginTop: '1rem' }}>
-        <button
-          type="button"
-          className={`pp-tab pp-touch pp-focusable ${activeTab === 'security' ? 'pp-tab-active' : ''}`}
-          aria-label={COPY.tabSecurity}
-          onClick={() => setActiveTab('security')}
-        >
-          {COPY.tabSecurity}
-        </button>
-        <button
-          type="button"
-          className={`pp-tab pp-touch pp-focusable ${activeTab === 'privacy' ? 'pp-tab-active' : ''}`}
-          aria-label={COPY.tabPrivacy}
-          onClick={() => setActiveTab('privacy')}
-        >
-          {COPY.tabPrivacy}
-        </button>
-        <button
-          type="button"
-          className={`pp-tab pp-touch pp-focusable ${activeTab === 'accessibility' ? 'pp-tab-active' : ''}`}
-          aria-label={COPY.tabAccessibility}
-          onClick={() => setActiveTab('accessibility')}
-        >
-          {COPY.tabAccessibility}
-        </button>
-      </div>
+        <div className="pp-tabs" style={{ marginTop: '1rem' }}>
+          <button
+            type="button"
+            className={`pp-tab pp-touch pp-focusable ${activeTab === 'security' ? 'pp-tab-active' : ''}`}
+            aria-label={COPY.tabSecurity}
+            onClick={() => setActiveTab('security')}
+          >
+            {COPY.tabSecurity}
+          </button>
+          <button
+            type="button"
+            className={`pp-tab pp-touch pp-focusable ${activeTab === 'sessions' ? 'pp-tab-active' : ''}`}
+            aria-label={COPY.tabSessions}
+            onClick={() => setActiveTab('sessions')}
+          >
+            {COPY.tabSessions}
+          </button>
+          <button
+            type="button"
+            className={`pp-tab pp-touch pp-focusable ${activeTab === 'privacy' ? 'pp-tab-active' : ''}`}
+            aria-label={COPY.tabPrivacy}
+            onClick={() => setActiveTab('privacy')}
+          >
+            {COPY.tabPrivacy}
+          </button>
+          <button
+            type="button"
+            className={`pp-tab pp-touch pp-focusable ${activeTab === 'accessibility' ? 'pp-tab-active' : ''}`}
+            aria-label={COPY.tabAccessibility}
+            onClick={() => setActiveTab('accessibility')}
+          >
+            {COPY.tabAccessibility}
+          </button>
+        </div>
 
-      {activeTab === 'security' && (
-        <section style={{ marginTop: '1.25rem', display: 'grid', gap: '1rem' }}>
-          <article className="pp-card">
-            <h2 className="pp-title">{COPY.changePassword}</h2>
-            <form
-              className="pp-form-grid"
-              style={{ marginTop: '0.75rem' }}
-              noValidate
-              onSubmit={(event) => {
-                event.preventDefault();
-                void submitPasswordChange();
-              }}
-            >
-              <PasswordField
-                id="current-password"
-                label="Current password"
-                placeholder="Enter current password"
-                value={passwordForm.currentPassword}
-                required
-                autoComplete="current-password"
-                error={currentPasswordError}
-                onChange={(value) => {
-                  setPasswordForm((current) => ({ ...current, currentPassword: value }));
-                }}
-                onBlur={() => setPasswordValidationRequested(true)}
-              />
-              <PasswordField
-                id="new-password"
-                label="New password"
-                placeholder="Enter new password"
-                value={passwordForm.newPassword}
-                hint={passwordRequirement || undefined}
-                hintTone="danger"
-                required
-                showStrengthMeter
-                autoComplete="new-password"
-                onChange={(value) => {
-                  setPasswordForm((current) => ({ ...current, newPassword: value }));
-                }}
-                onBlur={() => setPasswordValidationRequested(true)}
-              />
-              <PasswordField
-                id="confirm-password"
-                label="Confirm password"
-                placeholder="Confirm new password"
-                value={passwordForm.confirmPassword}
-                required
-                autoComplete="new-password"
-                error={confirmPasswordError}
-                onChange={(value) => {
-                  setPasswordForm((current) => ({ ...current, confirmPassword: value }));
-                }}
-                onBlur={() => setPasswordValidationRequested(true)}
-              />
-              <button
-                type="submit"
-                className="pp-button pp-button-primary pp-touch pp-focusable"
-                aria-label={COPY.changePassword}
-                disabled={!canSubmitPasswordChange}
-              >
-                {COPY.changePassword}
-              </button>
-            </form>
-          </article>
-
-          <article className="pp-card">
-            <h2 className="pp-title">2FA</h2>
-            {userQuery.user.mfa_enabled ? (
-              <p className="pill-green pp-pill">Enabled</p>
-            ) : (
-              <button
-                type="button"
-                className="pp-button pp-button-primary pp-touch pp-focusable"
-                aria-label={COPY.enableMfa}
-                onClick={() => {
-                  void submitMfaEnable();
+        {activeTab === 'security' && (
+          <section style={{ marginTop: '1.25rem', display: 'grid', gap: '1rem' }}>
+            <article className="pp-card">
+              <h2 className="pp-title">{COPY.changePassword}</h2>
+              <form
+                className="pp-form-grid"
+                style={{ marginTop: '0.75rem' }}
+                noValidate
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void submitPasswordChange();
                 }}
               >
-                {enableMfa.isPending ? `${COPY.enableMfa}...` : COPY.enableMfa}
-              </button>
-            )}
-          </article>
+                <PasswordField
+                  id="current-password"
+                  label="Current password"
+                  placeholder="Enter current password"
+                  value={passwordForm.currentPassword}
+                  required
+                  autoComplete="current-password"
+                  error={currentPasswordError}
+                  onChange={(value) => {
+                    setPasswordForm((current) => ({ ...current, currentPassword: value }));
+                  }}
+                  onBlur={() => setPasswordValidationRequested(true)}
+                />
+                <PasswordField
+                  id="new-password"
+                  label="New password"
+                  placeholder="Enter new password"
+                  value={passwordForm.newPassword}
+                  hint={passwordRequirement || undefined}
+                  hintTone="danger"
+                  required
+                  showStrengthMeter
+                  autoComplete="new-password"
+                  onChange={(value) => {
+                    setPasswordForm((current) => ({ ...current, newPassword: value }));
+                  }}
+                  onBlur={() => setPasswordValidationRequested(true)}
+                />
+                <PasswordField
+                  id="confirm-password"
+                  label="Confirm password"
+                  placeholder="Confirm new password"
+                  value={passwordForm.confirmPassword}
+                  required
+                  autoComplete="new-password"
+                  error={confirmPasswordError}
+                  onChange={(value) => {
+                    setPasswordForm((current) => ({ ...current, confirmPassword: value }));
+                  }}
+                  onBlur={() => setPasswordValidationRequested(true)}
+                />
+                <button
+                  type="submit"
+                  className="pp-button pp-button-primary pp-touch pp-focusable"
+                  aria-label={COPY.changePassword}
+                  disabled={!canSubmitPasswordChange}
+                >
+                  {COPY.changePassword}
+                </button>
+              </form>
+            </article>
 
-          <article className="pp-card">
-            <h2 className="pp-title">{COPY.parentPin}</h2>
-            <form
-              className="pp-form-grid"
-              style={{ marginTop: '0.75rem' }}
-              onSubmit={(event) => {
-                event.preventDefault();
-                void submitPinChange();
-              }}
-            >
-              <PinInput
-                label="Enter new PIN"
-                hint="4-digit numeric code"
-                value={securityPin}
-                onChange={setSecurityPin}
-                showConfirmation
-                confirmationLabel="Confirm PIN"
-              />
-              <button type="submit" className="pp-button pp-button-primary pp-touch pp-focusable" aria-label={COPY.updatePin}>
-                {COPY.updatePin}
-              </button>
-            </form>
-          </article>
+            <article className="pp-card">
+              <h2 className="pp-title">{COPY.parentPin}</h2>
+              <form
+                className="pp-form-grid"
+                style={{ marginTop: '0.75rem' }}
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void submitPinChange();
+                }}
+              >
+                <PinInput
+                  label="Enter new PIN"
+                  hint="4-digit numeric code"
+                  value={securityPin}
+                  onChange={setSecurityPin}
+                  showConfirmation
+                  confirmationLabel="Confirm PIN"
+                />
+                <button type="submit" className="pp-button pp-button-primary pp-touch pp-focusable" aria-label={COPY.updatePin}>
+                  {COPY.updatePin}
+                </button>
+              </form>
+            </article>
 
-          <article className="pp-card">
-            <h2 className="pp-title">{COPY.loginHistory}</h2>
-            {auditLog.isLoading ? (
-              <div className="pp-skeleton" style={{ height: 120, marginTop: '0.75rem' }} aria-label={COPY.loading} />
-            ) : auditLog.error ? (
-              <p className="pp-error">{auditLog.error.message}</p>
-            ) : (
-              <ul style={{ marginTop: '0.75rem', display: 'grid', gap: '0.5rem' }}>
-                {loginHistory.map((entry) => (
-                  <li key={entry.id} className="pp-card" style={{ padding: '0.75rem' }}>
-                    <p style={{ fontWeight: 600 }}>{nowDateTime(entry.created_at)}</p>
-                    <p style={{ color: 'var(--text-secondary)' }}>{entry.ip_address ?? 'Unknown IP'}</p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </article>
-        </section>
-      )}
+            <article className="pp-card">
+              <h2 className="pp-title">2FA</h2>
+              {userQuery.user.mfa_enabled ? (
+                <p className="pill-green pp-pill">Enabled</p>
+              ) : (
+                <button
+                  type="button"
+                  className="pp-button pp-button-primary pp-touch pp-focusable"
+                  aria-label={COPY.enableMfa}
+                  onClick={() => {
+                    void submitMfaEnable();
+                  }}
+                >
+                  {enableMfa.isPending ? `${COPY.enableMfa}...` : COPY.enableMfa}
+                </button>
+              )}
+            </article>
+          </section>
+        )}
+
+        {activeTab === 'sessions' && (
+          <section style={{ marginTop: '1.25rem', display: 'grid', gap: '1rem' }}>
+            <article className="pp-card">
+              <h2 className="pp-title">{COPY.loginHistory}</h2>
+              {auditLog.isLoading ? (
+                <div className="pp-skeleton" style={{ height: 120, marginTop: '0.75rem' }} aria-label={COPY.loading} />
+              ) : auditLog.error ? (
+                <p className="pp-error">{auditLog.error.message}</p>
+              ) : (
+                <ul style={{ marginTop: '0.75rem', display: 'grid', gap: '0.5rem' }}>
+                  {loginHistory.map((entry) => (
+                    <li key={entry.id} className="pp-card" style={{ padding: '0.75rem' }}>
+                      <p style={{ fontWeight: 600 }}>{nowDateTime(entry.created_at)}</p>
+                      <p style={{ color: 'var(--text-secondary)' }}>{entry.ip_address ?? 'Unknown IP'}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </article>
+          </section>
+        )}
 
         {activeTab === 'privacy' && (
           <section style={{ marginTop: '1.25rem', display: 'grid', gap: '1rem' }}>
