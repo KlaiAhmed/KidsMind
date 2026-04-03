@@ -115,25 +115,22 @@ const ParentLayout = () => {
     }
   }, [isLoggingOut]);
 
-  const renderNavSection = (items: NavItem[]): React.ReactNode => (
-    <section className="pp-nav-group">
-      {items.map((item) => (
-        <NavLink
-          key={item.to}
-          to={item.to}
-          className={({ isActive }) =>
-            `pp-nav-link pp-touch pp-focusable ${isActive ? 'pp-nav-link-active' : ''}`
-          }
-          aria-label={item.label}
-          title={item.label}
-          onClick={() => setIsMobileSidebarOpen(false)}
-        >
-          {item.icon}
-          {isSidebarExpanded && <span>{item.label}</span>}
-        </NavLink>
-      ))}
-    </section>
-  );
+  const renderNavItems = (items: NavItem[]): React.ReactNode =>
+    items.map((item) => (
+      <NavLink
+        key={item.to}
+        to={item.to}
+        className={({ isActive }) =>
+          `pp-nav-link pp-touch pp-focusable ${isActive ? 'pp-nav-link-active' : ''}`
+        }
+        aria-label={item.label}
+        title={item.label}
+        onClick={() => setIsMobileSidebarOpen(false)}
+      >
+        {item.icon}
+        {isSidebarExpanded && <span>{item.label}</span>}
+      </NavLink>
+    ));
 
   // Child selector dropup
   const renderChildSelector = () => {
@@ -324,26 +321,22 @@ const ParentLayout = () => {
 
           {/* Navigation */}
           <nav className="pp-sidebar-nav">
-            {renderNavSection(mainNav)}
-          </nav>
-
-          {/* Child Selector */}
-          <div className="pp-sidebar-child-selector">{renderChildSelector()}</div>
-
-          {/* Logout Button */}
-          <div className="pp-sidebar-footer">
+            {renderNavItems(mainNav)}
             <button
               type="button"
-              className="pp-logout-button pp-touch pp-focusable"
+              className="pp-nav-link pp-nav-link-logout pp-touch pp-focusable"
               onClick={handleLogout}
               disabled={isLoggingOut}
               aria-label={translations.nav_logout}
               title={translations.nav_logout}
             >
-              <LogOut size={18} />
+              <LogOut size={20} strokeWidth={2} />
               {isSidebarExpanded && <span>{translations.nav_logout}</span>}
             </button>
-          </div>
+          </nav>
+
+          {/* Child Selector */}
+          <div className="pp-sidebar-child-selector">{renderChildSelector()}</div>
         </aside>
 
         {/* Mobile Sidebar Overlay */}
@@ -373,24 +366,21 @@ const ParentLayout = () => {
           </div>
 
           <nav className="pp-sidebar-nav">
-            {renderNavSection(mainNav)}
-          </nav>
-
-          <div className="pp-sidebar-child-selector">{renderChildSelector()}</div>
-
-          {/* Mobile Logout Button */}
-          <div className="pp-sidebar-footer">
+            {renderNavItems(mainNav)}
             <button
               type="button"
-              className="pp-logout-button pp-touch pp-focusable"
+              className="pp-nav-link pp-nav-link-logout pp-touch pp-focusable"
               onClick={handleLogout}
               disabled={isLoggingOut}
               aria-label={translations.nav_logout}
+              title={translations.nav_logout}
             >
-              <LogOut size={18} />
+              <LogOut size={20} strokeWidth={2} />
               <span>{translations.nav_logout}</span>
             </button>
-          </div>
+          </nav>
+
+          <div className="pp-sidebar-child-selector">{renderChildSelector()}</div>
         </aside>
 
         {/* Main Content */}
