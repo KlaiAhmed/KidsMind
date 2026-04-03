@@ -19,7 +19,11 @@ from slowapi.errors import RateLimitExceeded
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from core.config import settings
-from core.error_handlers import http_exception_handler, request_validation_exception_handler
+from core.error_handlers import (
+    http_exception_handler,
+    request_validation_exception_handler,
+    unhandled_exception_handler,
+)
 from core.database import init_db
 from core.logging_setup import setup_logging, RequestTracingMiddleware
 from core.cache_client import get_cache_client, close_cache_client
@@ -138,6 +142,7 @@ def create_app() -> FastAPI:
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     app.add_exception_handler(RequestValidationError, request_validation_exception_handler)
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)
+    app.add_exception_handler(Exception, unhandled_exception_handler)
 
     # Mount routers
     app.include_router(health_router, prefix="", tags=["Health"])

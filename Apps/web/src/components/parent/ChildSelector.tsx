@@ -21,21 +21,27 @@ const ChildSelector = () => {
   }
 
   if (error) {
+    const isAuthError = Boolean(error.isAuthError);
+
     return (
       <section className="pp-card" aria-labelledby="child-selector-title">
         <h3 id="child-selector-title" className="pp-title">{headingLabel}</h3>
-        <p className="pp-error" role="alert">{translations.error}: {error.message}</p>
-        <button
-          type="button"
-          className="pp-button pp-touch pp-focusable"
-          aria-label={translations.try_again}
-          disabled={isFetching}
-          onClick={() => {
-            void refetch();
-          }}
-        >
-          {isFetching ? translations.loading : translations.try_again}
-        </button>
+        <p className="pp-error" role="alert">
+          {isAuthError && error.status === 403 ? 'Access denied.' : `${translations.error}: ${error.message}`}
+        </p>
+        {!isAuthError && (
+          <button
+            type="button"
+            className="pp-button pp-touch pp-focusable"
+            aria-label={translations.try_again}
+            disabled={isFetching}
+            onClick={() => {
+              void refetch();
+            }}
+          >
+            {isFetching ? translations.loading : translations.try_again}
+          </button>
+        )}
       </section>
     );
   }

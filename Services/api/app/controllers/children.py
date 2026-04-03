@@ -7,11 +7,13 @@ Domain: Children
 """
 
 from fastapi import HTTPException
+from pydantic import ValidationError
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from models.child_profile import ChildProfile
 from models.user import User
-from schemas.child_profile_schema import ChildProfileCreate, ChildProfileUpdate
+from schemas.child_profile_schema import ChildProfileCreate, ChildProfileResponse, ChildProfileUpdate
 from services.child_profile_service import ChildProfileService
 from utils.logger import logger
 
@@ -50,7 +52,7 @@ async def create_child_controller(
 async def list_children_controller(
     current_user: User,
     db: Session,
-) -> list[ChildProfile]:
+) -> list[ChildProfileResponse]:
     """List all child profiles owned by the authenticated parent user.
 
     Args:
@@ -65,7 +67,14 @@ async def list_children_controller(
     """
     try:
         child_service = ChildProfileService(db)
-        return child_service.get_children_for_parent(current_user)
+        children = child_service.get_children_for_parent(current_user)
+        return [ChildProfileResponse.model_validate(child) for child in children]
+    except (SQLAlchemyError, ValidationError):
+        logger.exception(
+            "Child profile query or serialization failed",
+            extra={"parent_id": current_user.id},
+        )
+        raise HTTPException(status_code=500, detail="Failed to load child profiles")
     except HTTPException:
         raise
     except Exception as e:

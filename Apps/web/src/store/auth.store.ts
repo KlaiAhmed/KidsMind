@@ -47,6 +47,10 @@ const subscribeAuth = (listener: AuthListener): (() => void) => {
 };
 
 const setAuthenticated = (isAuthenticated: boolean): void => {
+  if (authState.isAuthenticated === isAuthenticated) {
+    return;
+  }
+
   setAuthState({
     ...authState,
     isAuthenticated,

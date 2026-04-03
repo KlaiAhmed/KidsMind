@@ -17,10 +17,17 @@ from services.auth_service import verify_token
 from utils.token_blocklist import is_access_token_blocklisted
 
 
-STRICT_NON_PROD_AUTH_PATHS = {
+STRICT_NON_PROD_AUTH_PATH_PREFIXES = (
     "/api/v1/users/me",
-    "/api/v1/users/me/summary",
-}
+    "/api/v1/children",
+)
+
+
+def _is_strict_non_prod_auth_path(path: str) -> bool:
+    return any(
+        path == prefix or path.startswith(f"{prefix}/")
+        for prefix in STRICT_NON_PROD_AUTH_PATH_PREFIXES
+    )
 
 
 def get_client_type(
@@ -70,7 +77,7 @@ async def get_current_user(
     else:
         token = bearer_token or cookie_token
 
-    if not settings.IS_PROD and request.url.path not in STRICT_NON_PROD_AUTH_PATHS and not token:
+    if not settings.IS_PROD and not _is_strict_non_prod_auth_path(request.url.path) and not token:
         if settings.DEV_USER_ID is None:
             raise HTTPException(status_code=401, detail="DEV_USER_ID must be configured for non-prod auth bypass")
 

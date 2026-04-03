@@ -41,6 +41,7 @@ const COPY = {
   notificationsEmail: 'Email notifications',
   notificationsPush: 'Push notifications',
   optOutAiTraining: 'Opt out of AI model training',
+  retry: 'Retry',
 } as const;
 
 const FONT_SCALE_MAP = {
@@ -279,11 +280,30 @@ const SettingsPage = () => {
   }
 
   if (userQuery.error || !userQuery.data) {
+    const isAuthError = Boolean(userQuery.error?.isAuthError);
+
     return (
       <main className="pp-content">
         <article className="pp-card">
           <h1 className="pp-title">{COPY.title}</h1>
-          <p className="pp-error" role="alert">{userQuery.error?.message ?? COPY.saveFailed}</p>
+          <p className="pp-error" role="alert">
+            {isAuthError && userQuery.error?.status === 403
+              ? 'Access denied.'
+              : userQuery.error?.message ?? COPY.saveFailed}
+          </p>
+          {!isAuthError && (
+            <button
+              type="button"
+              className="pp-button pp-touch pp-focusable"
+              aria-label={COPY.retry}
+              disabled={userQuery.isFetching}
+              onClick={() => {
+                void userQuery.refetch();
+              }}
+            >
+              {userQuery.isFetching ? COPY.loading : COPY.retry}
+            </button>
+          )}
         </article>
       </main>
     );

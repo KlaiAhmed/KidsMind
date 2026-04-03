@@ -33,6 +33,7 @@ const COPY = {
   categoryMastery: 'Mastery',
   categoryExploration: 'Exploration',
   notEarned: 'Not yet earned',
+  retry: 'Retry',
 } as const;
 
 const trendIconMap: Record<'up' | 'down' | 'stable', string> = {
@@ -199,6 +200,36 @@ const InsightsPage = () => {
         <article className="pp-card">
           <h1 className="pp-title">{COPY.title}</h1>
           <p className="pp-empty">{COPY.noChild}</p>
+        </article>
+      </main>
+    );
+  }
+
+  if (userQuery.error) {
+    const isAuthError = Boolean(userQuery.error.isAuthError);
+
+    return (
+      <main className="pp-content">
+        <article className="pp-card" role="alert">
+          <h1 className="pp-title">{COPY.title}</h1>
+          <p className="pp-error">
+            {isAuthError && userQuery.error.status === 403
+              ? 'Access denied.'
+              : userQuery.error.message}
+          </p>
+          {!isAuthError && (
+            <button
+              type="button"
+              className="pp-button pp-touch pp-focusable"
+              aria-label={COPY.retry}
+              disabled={userQuery.isFetching}
+              onClick={() => {
+                void userQuery.refetch();
+              }}
+            >
+              {userQuery.isFetching ? COPY.loading : COPY.retry}
+            </button>
+          )}
         </article>
       </main>
     );

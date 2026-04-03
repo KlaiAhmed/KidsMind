@@ -53,6 +53,9 @@ export const useCurrentUser = (): UseCurrentUserResult => {
           email: user.email,
         });
         authStore.setAuthenticated(true);
+      } else {
+        authStore.setUser(null);
+        authStore.setAuthenticated(false);
       }
 
       return {

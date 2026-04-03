@@ -99,6 +99,28 @@ const extractErrorMessage = async (response: Response): Promise<string> => {
   return COPY.genericError;
 };
 
+const parseJsonPayload = async <TData>(response: Response): Promise<TData> => {
+  const rawPayload = await response.text();
+
+  if (!rawPayload.trim()) {
+    const error: ApiError = {
+      message: COPY.genericError,
+      status: response.status || 500,
+    };
+    throw error;
+  }
+
+  try {
+    return JSON.parse(rawPayload) as TData;
+  } catch {
+    const error: ApiError = {
+      message: COPY.genericError,
+      status: response.status || 500,
+    };
+    throw error;
+  }
+};
+
 const request = async <TData>(
   method: HttpMethod,
   path: string,
@@ -148,7 +170,7 @@ const request = async <TData>(
   const contentType = response.headers.get('content-type') ?? '';
 
   if (contentType.includes('application/json')) {
-    const data = (await response.json()) as TData;
+    const data = await parseJsonPayload<TData>(response);
     return {
       data,
       headers: response.headers,

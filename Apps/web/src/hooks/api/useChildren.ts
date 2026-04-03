@@ -5,13 +5,18 @@ import type { ChildRecord } from '../../store/child.store';
 import { useApiQuery, type UseApiQueryResult } from './core';
 
 export interface ChildrenResponse {
-  children?: ChildRecord[];
-  items?: ChildRecord[];
+  children?: RawChildRecord[];
+  items?: RawChildRecord[];
+}
+
+interface RawChildRecord extends Omit<ChildRecord, 'child_id'> {
+  child_id?: number;
+  id?: number;
 }
 
 export type UseChildrenResult = UseApiQueryResult<ChildRecord[]>;
 
-const normalizeChildren = (payload: ChildrenResponse | ChildRecord[]): ChildRecord[] => {
+const normalizeChildren = (payload: ChildrenResponse | RawChildRecord[]): RawChildRecord[] => {
   if (Array.isArray(payload)) {
     return payload;
   }
@@ -27,16 +32,32 @@ const normalizeChildren = (payload: ChildrenResponse | ChildRecord[]): ChildReco
   return [];
 };
 
+const normalizeChild = (rawChild: RawChildRecord): ChildRecord | null => {
+  const normalizedChildId = Number(rawChild.child_id ?? rawChild.id);
+  if (!Number.isFinite(normalizedChildId)) {
+    return null;
+  }
+
+  return {
+    ...rawChild,
+    child_id: normalizedChildId,
+  };
+};
+
 export const useChildren = (): UseChildrenResult => {
   const query = useApiQuery<ChildRecord[]>({
     queryKey: 'children:list',
     staleTime: 5 * 60 * 1000,
     queryFn: async (signal) => {
-      const response = await apiClient.get<ChildrenResponse | ChildRecord[]>('/api/v1/children', { signal });
+      const response = await apiClient.get<ChildrenResponse | RawChildRecord[]>('/api/v1/children', { signal });
+
+      const normalizedChildren = normalizeChildren(response.data)
+        .map((child) => normalizeChild(child))
+        .filter((child): child is ChildRecord => child !== null);
 
       return {
         ...response,
-        data: normalizeChildren(response.data),
+        data: normalizedChildren,
       };
     },
   });

@@ -27,11 +27,30 @@ const DashboardPage = () => {
   }
 
   if (childrenQuery.error && !activeChild) {
+    const isAuthError = Boolean(childrenQuery.error.isAuthError);
+
     return (
       <main className="pp-content pp-dashboard">
         <article className="pp-card pp-dashboard-empty" role="alert">
           <h1 className="pp-title">{translations.dashboard_page_title}</h1>
-          <p className="pp-error">{childrenQuery.error.message}</p>
+          <p className="pp-error">
+            {isAuthError && childrenQuery.error.status === 403
+              ? 'Access denied.'
+              : childrenQuery.error.message}
+          </p>
+          {!isAuthError && (
+            <button
+              type="button"
+              className="pp-button pp-touch pp-focusable"
+              aria-label={translations.try_again}
+              disabled={childrenQuery.isFetching}
+              onClick={() => {
+                void childrenQuery.refetch();
+              }}
+            >
+              {childrenQuery.isFetching ? translations.loading : translations.try_again}
+            </button>
+          )}
         </article>
       </main>
     );

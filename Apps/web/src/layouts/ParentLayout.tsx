@@ -143,9 +143,28 @@ const ParentLayout = () => {
     }
 
     if (childrenQuery.error) {
+      const isAuthError = Boolean(childrenQuery.error.isAuthError);
+
       return (
         <div className="pp-child-selector-error">
-          <p className="pp-muted" style={{ fontSize: '0.75rem' }}>{translations.error}</p>
+          <p className="pp-muted" style={{ fontSize: '0.75rem' }}>
+            {isAuthError && childrenQuery.error.status === 403
+              ? 'Access denied.'
+              : childrenQuery.error.message}
+          </p>
+          {!isAuthError && (
+            <button
+              type="button"
+              className="pp-button pp-button-ghost"
+              onClick={() => {
+                void childrenQuery.refetch();
+              }}
+              disabled={childrenQuery.isFetching}
+              style={{ marginTop: '0.5rem', fontSize: '0.75rem', padding: '0.375rem 0.5rem' }}
+            >
+              {childrenQuery.isFetching ? translations.loading : translations.try_again}
+            </button>
+          )}
         </div>
       );
     }

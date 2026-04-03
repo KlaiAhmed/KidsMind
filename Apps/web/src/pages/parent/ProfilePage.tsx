@@ -17,6 +17,7 @@ const COPY = {
   countrySearchPlaceholder: 'Search country...',
   countrySearchHint: 'Type to search, then select from the list',
   defaultLanguage: 'Default language',
+  retry: 'Retry',
 } as const;
 
 interface ProfileFormState {
@@ -185,11 +186,30 @@ const ProfilePage = () => {
   }
 
   if (userQuery.error || !userQuery.data) {
+    const isAuthError = Boolean(userQuery.error?.isAuthError);
+
     return (
       <main className="pp-content">
         <article className="pp-card">
           <h1 className="pp-title">{COPY.title}</h1>
-          <p className="pp-error" role="alert">{userQuery.error?.message ?? COPY.saveFailed}</p>
+          <p className="pp-error" role="alert">
+            {isAuthError && userQuery.error?.status === 403
+              ? 'Access denied.'
+              : userQuery.error?.message ?? COPY.saveFailed}
+          </p>
+          {!isAuthError && (
+            <button
+              type="button"
+              className="pp-button pp-touch pp-focusable"
+              aria-label={COPY.retry}
+              disabled={userQuery.isFetching}
+              onClick={() => {
+                void userQuery.refetch();
+              }}
+            >
+              {userQuery.isFetching ? COPY.loading : COPY.retry}
+            </button>
+          )}
         </article>
       </main>
     );

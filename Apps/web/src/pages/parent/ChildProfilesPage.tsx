@@ -34,6 +34,7 @@ const COPY = {
   parentPin: 'Parent PIN',
   changePinHint: 'Change PIN (4 digits)',
   noActiveChild: 'Select a child profile to edit safety rules.',
+  retry: 'Retry',
 } as const;
 
 const SUBJECT_OPTIONS = ['math', 'english', 'french', 'science', 'history', 'art'] as const;
@@ -280,7 +281,26 @@ const ChildProfilesPage = () => {
         {childrenQuery.isLoading ? (
           <div className="pp-skeleton" style={{ marginTop: '0.8rem', height: 220 }} aria-label={COPY.loading} />
         ) : childrenQuery.error ? (
-          <p className="pp-error" role="alert" style={{ marginTop: '0.8rem' }}>{childrenQuery.error.message}</p>
+          <div role="alert" style={{ marginTop: '0.8rem' }}>
+            <p className="pp-error">
+              {childrenQuery.error.isAuthError && childrenQuery.error.status === 403
+                ? 'Access denied.'
+                : childrenQuery.error.message}
+            </p>
+            {!childrenQuery.error.isAuthError && (
+              <button
+                type="button"
+                className="pp-button pp-touch pp-focusable"
+                aria-label={COPY.retry}
+                disabled={childrenQuery.isFetching}
+                onClick={() => {
+                  void childrenQuery.refetch();
+                }}
+              >
+                {childrenQuery.isFetching ? `${COPY.retry}...` : COPY.retry}
+              </button>
+            )}
+          </div>
         ) : activeTab === 'all' ? (
           <div className="pp-grid-two" style={{ marginTop: '0.8rem' }}>
             {children.length === 0 ? (

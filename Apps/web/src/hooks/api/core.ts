@@ -5,14 +5,23 @@ const COPY = {
   genericError: 'Unable to complete this request right now.',
 } as const;
 
+const QUERY_ABORT_GRACE_MS = 200;
+
 export interface UiError {
   message: string;
+  status?: number;
+  isAuthError?: boolean;
 }
 
 interface QueryCacheEntry<TData> {
   data: TData;
   headers: Headers;
   cachedAt: number;
+}
+
+interface InflightQueryEntry<TData> {
+  controller: AbortController;
+  promise: Promise<ApiResponse<TData>>;
 }
 
 interface UseApiQueryOptions<TData> {
@@ -40,6 +49,9 @@ export interface UseApiMutationResult<TData, TVariables> {
 }
 
 const queryCache = new Map<string, QueryCacheEntry<unknown>>();
+const inflightQueryMap = new Map<string, InflightQueryEntry<unknown>>();
+const queryObserverCountMap = new Map<string, number>();
+const queryAbortTimerMap = new Map<string, ReturnType<typeof setTimeout>>();
 
 const isAbortError = (requestError: unknown): boolean => {
   return typeof DOMException !== 'undefined'
@@ -47,18 +59,137 @@ const isAbortError = (requestError: unknown): boolean => {
     && requestError.name === 'AbortError';
 };
 
+const isAuthErrorStatus = (status?: number): boolean => status === 401 || status === 403;
+
+const clearQueryAbortTimer = (queryKey: string): void => {
+  const timer = queryAbortTimerMap.get(queryKey);
+  if (!timer) {
+    return;
+  }
+
+  clearTimeout(timer);
+  queryAbortTimerMap.delete(queryKey);
+};
+
+const getQueryObserverCount = (queryKey: string): number => {
+  return queryObserverCountMap.get(queryKey) ?? 0;
+};
+
+const scheduleAbortInflightQuery = (queryKey: string): void => {
+  if (queryAbortTimerMap.has(queryKey)) {
+    return;
+  }
+
+  const timer = setTimeout(() => {
+    queryAbortTimerMap.delete(queryKey);
+
+    if (getQueryObserverCount(queryKey) > 0) {
+      return;
+    }
+
+    const inflightEntry = inflightQueryMap.get(queryKey);
+    if (!inflightEntry) {
+      return;
+    }
+
+    inflightEntry.controller.abort();
+    inflightQueryMap.delete(queryKey);
+  }, QUERY_ABORT_GRACE_MS);
+
+  queryAbortTimerMap.set(queryKey, timer);
+};
+
+const trackQueryObserver = (queryKey: string): void => {
+  clearQueryAbortTimer(queryKey);
+
+  const currentCount = getQueryObserverCount(queryKey);
+  queryObserverCountMap.set(queryKey, currentCount + 1);
+};
+
+const untrackQueryObserver = (queryKey: string): void => {
+  const currentCount = getQueryObserverCount(queryKey);
+
+  if (currentCount <= 1) {
+    queryObserverCountMap.delete(queryKey);
+
+    if (inflightQueryMap.has(queryKey)) {
+      scheduleAbortInflightQuery(queryKey);
+    }
+
+    return;
+  }
+
+  queryObserverCountMap.set(queryKey, currentCount - 1);
+};
+
+const cancelInflightQuery = (queryKey: string): void => {
+  clearQueryAbortTimer(queryKey);
+
+  const inflightEntry = inflightQueryMap.get(queryKey);
+  if (!inflightEntry) {
+    return;
+  }
+
+  inflightEntry.controller.abort();
+  inflightQueryMap.delete(queryKey);
+};
+
+const getOrCreateInflightQuery = <TData>(
+  queryKey: string,
+  queryFn: (signal: AbortSignal) => Promise<ApiResponse<TData>>
+): Promise<ApiResponse<TData>> => {
+  const existingEntry = inflightQueryMap.get(queryKey) as InflightQueryEntry<TData> | undefined;
+  if (existingEntry) {
+    return existingEntry.promise;
+  }
+
+  const controller = new AbortController();
+
+  const promise = queryFn(controller.signal)
+    .finally(() => {
+      const activeEntry = inflightQueryMap.get(queryKey);
+      if (activeEntry?.controller === controller) {
+        inflightQueryMap.delete(queryKey);
+      }
+
+      if (getQueryObserverCount(queryKey) === 0) {
+        clearQueryAbortTimer(queryKey);
+      }
+    });
+
+  inflightQueryMap.set(queryKey, {
+    controller,
+    promise,
+  });
+
+  return promise;
+};
+
 export const toUiError = (error: unknown): UiError => {
   const typedError = error as ApiError;
+  const status = typeof typedError?.status === 'number' ? typedError.status : undefined;
 
   if (typeof typedError?.message === 'string' && typedError.message.trim()) {
-    return { message: typedError.message };
+    return {
+      message: typedError.message,
+      status,
+      isAuthError: isAuthErrorStatus(status),
+    };
   }
 
   if (error instanceof Error && error.message.trim()) {
-    return { message: error.message };
+    return {
+      message: error.message,
+      status,
+      isAuthError: isAuthErrorStatus(status),
+    };
   }
 
-  return { message: COPY.genericError };
+  return {
+    message: COPY.genericError,
+    status,
+    isAuthError: isAuthErrorStatus(status),
+  };
 };
 
 const getCachedResult = <TData>(queryKey: string, staleTime: number): QueryCacheEntry<TData> | null => {
@@ -98,8 +229,8 @@ export const useApiQuery = <TData>(options: UseApiQueryOptions<TData>): UseApiQu
   const [isFetching, setIsFetching] = useState<boolean>(false);
   const hasDataRef = useRef<boolean>(Boolean(initialCached));
   const queryFnRef = useRef(queryFn);
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const requestPromiseRef = useRef<Promise<void> | null>(null);
+  const requestSequenceRef = useRef<number>(0);
+  const isActiveRef = useRef<boolean>(true);
 
   useEffect(() => {
     queryFnRef.current = queryFn;
@@ -111,12 +242,19 @@ export const useApiQuery = <TData>(options: UseApiQueryOptions<TData>): UseApiQu
         return;
       }
 
-      if (requestPromiseRef.current) {
-        return requestPromiseRef.current;
-      }
+      const requestSequence = requestSequenceRef.current + 1;
+      requestSequenceRef.current = requestSequence;
+
+      const isRequestStale = (): boolean => {
+        return !isActiveRef.current || requestSequence !== requestSequenceRef.current;
+      };
 
       const cached = force ? null : getCachedResult<TData>(queryKey, staleTime);
       if (cached) {
+        if (isRequestStale()) {
+          return;
+        }
+
         setData(cached.data);
         setHeaders(cached.headers);
         setError(null);
@@ -126,82 +264,86 @@ export const useApiQuery = <TData>(options: UseApiQueryOptions<TData>): UseApiQu
         return;
       }
 
-      const abortController = new AbortController();
-      abortControllerRef.current = abortController;
+      if (force) {
+        cancelInflightQuery(queryKey);
+      }
 
-      const requestPromise = (async (): Promise<void> => {
-        setIsFetching(true);
-        setIsLoading((current) => (hasDataRef.current ? current : true));
+      setIsFetching(true);
+      setIsLoading((current) => (hasDataRef.current ? current : true));
 
-        try {
-          const response = await queryFnRef.current(abortController.signal);
+      try {
+        const response = await getOrCreateInflightQuery<TData>(queryKey, queryFnRef.current);
 
-          if (abortController.signal.aborted) {
-            return;
-          }
-
-          queryCache.set(queryKey, {
-            data: response.data,
-            headers: response.headers,
-            cachedAt: Date.now(),
-          });
-
-          setData(response.data);
-          setHeaders(response.headers);
-          setError(null);
-          hasDataRef.current = true;
-        } catch (requestError) {
-          if (abortController.signal.aborted || isAbortError(requestError)) {
-            return;
-          }
-
-          setError(toUiError(requestError));
-        } finally {
-          if (abortControllerRef.current === abortController) {
-            abortControllerRef.current = null;
-            requestPromiseRef.current = null;
-          }
-
-          if (!abortController.signal.aborted) {
-            setIsFetching(false);
-            setIsLoading(false);
-          }
+        if (isRequestStale()) {
+          return;
         }
-      })();
 
-      requestPromiseRef.current = requestPromise;
-      return requestPromise;
+        queryCache.set(queryKey, {
+          data: response.data,
+          headers: response.headers,
+          cachedAt: Date.now(),
+        });
+
+        setData(response.data);
+        setHeaders(response.headers);
+        setError(null);
+        hasDataRef.current = true;
+      } catch (requestError) {
+        if (isAbortError(requestError) || isRequestStale()) {
+          return;
+        }
+
+        setError(toUiError(requestError));
+      } finally {
+        if (isRequestStale()) {
+          return;
+        }
+
+        setIsFetching(false);
+        setIsLoading(false);
+      }
     },
     [enabled, queryKey, staleTime]
   );
 
   useEffect(() => {
+    isActiveRef.current = true;
+
     if (!enabled) {
-      abortControllerRef.current?.abort();
-      requestPromiseRef.current = null;
+      requestSequenceRef.current += 1;
       hasDataRef.current = false;
       setData(null);
       setHeaders(null);
       setError(null);
       setIsLoading(false);
       setIsFetching(false);
-      return;
+
+      return () => {
+        isActiveRef.current = false;
+      };
     }
+
+    trackQueryObserver(queryKey);
+
+    const cleanup = () => {
+      isActiveRef.current = false;
+      requestSequenceRef.current += 1;
+      untrackQueryObserver(queryKey);
+    };
 
     const cached = getCachedResult<TData>(queryKey, staleTime);
     if (cached) {
       hasDataRef.current = true;
-      requestPromiseRef.current = null;
       setData(cached.data);
       setHeaders(cached.headers);
       setError(null);
       setIsLoading(false);
       setIsFetching(false);
-      return;
+
+      return cleanup;
     }
 
-    abortControllerRef.current?.abort();
-    requestPromiseRef.current = null;
+    requestSequenceRef.current += 1;
     hasDataRef.current = false;
     setData(null);
     setHeaders(null);
@@ -210,9 +352,7 @@ export const useApiQuery = <TData>(options: UseApiQueryOptions<TData>): UseApiQu
 
     void runQuery(false);
 
-    return () => {
-      abortControllerRef.current?.abort();
-    };
+    return cleanup;
   }, [enabled, queryKey, runQuery, staleTime]);
 
   const refetch = useCallback(async () => {
