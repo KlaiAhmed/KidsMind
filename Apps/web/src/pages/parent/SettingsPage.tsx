@@ -485,7 +485,7 @@ const SettingsPage = () => {
             </button>
           </form>
 
-          <h2 className="pp-title" style={{ marginTop: '1.5rem' }}>{COPY.parentPin}</h2>
+          <h2 className="pp-title">{COPY.parentPin}</h2>
           <form
             className="pp-form-grid"
             onSubmit={(event) => {
@@ -604,25 +604,27 @@ const SettingsPage = () => {
             </button>
           )}
 
-          <button
-            type="button"
-            className="pp-button pp-touch pp-focusable"
-            aria-label={COPY.requestData}
-            onClick={requestDataExport}
-          >
-            {COPY.requestData}
-          </button>
+          <div className="pp-privacy-actions">
+            <button
+              type="button"
+              className="pp-button pp-touch pp-focusable"
+              aria-label={COPY.requestData}
+              onClick={requestDataExport}
+            >
+              {COPY.requestData}
+            </button>
 
-          <button
-            type="button"
-            className="pp-button pp-touch pp-focusable"
-            aria-label={COPY.deleteAccount}
-            onClick={() => {
-              setIsDeleteDialogOpen(true);
-            }}
-          >
-            {COPY.deleteAccount}
-          </button>
+            <button
+              type="button"
+              className="pp-button pp-touch pp-focusable"
+              aria-label={COPY.deleteAccount}
+              onClick={() => {
+                setIsDeleteDialogOpen(true);
+              }}
+            >
+              {COPY.deleteAccount}
+            </button>
+          </div>
         </>
       )}
 
