@@ -242,7 +242,10 @@ const ProfilePage = () => {
             label="Username"
             placeholder="Enter username"
             value={profileForm.username}
-            onChange={(event) => updateProfileForm((current) => ({ ...current, username: event.currentTarget.value }))}
+            onChange={(event) => {
+              const username = event.currentTarget.value;
+              updateProfileForm((current) => ({ ...current, username }));
+            }}
             success={profileForm.username.length > 0}
           />
 
@@ -325,7 +328,10 @@ const ProfilePage = () => {
               id="settings-default-language"
               label={COPY.defaultLanguage}
               value={profileForm.defaultLanguage}
-              onChange={(event) => updateProfileForm((current) => ({ ...current, defaultLanguage: event.currentTarget.value }))}
+              onChange={(event) => {
+                const defaultLanguage = event.currentTarget.value;
+                updateProfileForm((current) => ({ ...current, defaultLanguage }));
+              }}
               options={LANGUAGE_OPTIONS}
             />
           </div>

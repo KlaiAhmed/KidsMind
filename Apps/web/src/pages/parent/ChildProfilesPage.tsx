@@ -607,9 +607,10 @@ const ChildProfilesPage = () => {
                   value={editForm.nickname}
                   aria-label="Nickname"
                   onChange={(event) => {
+                    const nickname = event.currentTarget.value;
                     setEditForm((current) => current ? {
                       ...current,
-                      nickname: event.currentTarget.value,
+                      nickname,
                     } : current);
                   }}
                 />
@@ -623,9 +624,10 @@ const ChildProfilesPage = () => {
                   value={editForm.birthDate}
                   aria-label="Birth date"
                   onChange={(event) => {
+                    const birthDate = event.currentTarget.value;
                     setEditForm((current) => current ? {
                       ...current,
-                      birthDate: event.currentTarget.value,
+                      birthDate,
                     } : current);
                   }}
                 />
@@ -638,9 +640,10 @@ const ChildProfilesPage = () => {
                   value={editForm.educationStage}
                   aria-label="Education stage"
                   onChange={(event) => {
+                    const educationStage = event.currentTarget.value;
                     setEditForm((current) => current ? {
                       ...current,
-                      educationStage: event.currentTarget.value,
+                      educationStage,
                     } : current);
                   }}
                 >

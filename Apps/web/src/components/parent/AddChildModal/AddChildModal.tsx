@@ -14,7 +14,6 @@ import { validateChildProfileStep } from '../../../utils/validators';
 import {
   MIN_CHILD_AGE,
   MAX_CHILD_AGE,
-  calculateAgeFromBirthDate,
   deriveEducationStageFromBirthDate,
 } from '../../../utils/childProfileRules';
 import type {
@@ -658,7 +657,10 @@ const AddChildModal = ({ isOpen, onClose, onSuccess }: AddChildModalProps) => {
                       max={SLIDER_MAX}
                       step={SLIDER_STEP}
                       value={preferencesForm.dailyLimitMinutes}
-                      onChange={(e) => setPreferencesForm((prev) => ({ ...prev, dailyLimitMinutes: Number(e.target.value) }))}
+                      onChange={(event) => {
+                        const dailyLimitMinutes = Number(event.target.value);
+                        setPreferencesForm((prev) => ({ ...prev, dailyLimitMinutes }));
+                      }}
                     />
                     <span className={styles.sliderValue}>{preferencesForm.dailyLimitMinutes} min</span>
                   </div>

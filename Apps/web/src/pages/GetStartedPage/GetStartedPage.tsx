@@ -42,7 +42,7 @@ interface ChildSettingsPayload {
 
 interface SafetyAndRulesPatchPayload {
   childSettings: ChildSettingsPayload;
-  parentPin: string;
+  parentPin?: string;
 }
 
 const toSafeDailyLimitMinutes = (value: number): number => {
