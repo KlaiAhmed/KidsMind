@@ -1,0 +1,185 @@
+.wrapper {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.label {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.01em;
+}
+
+.trigger {
+  min-height: 48px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 1.5px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  text-align: left;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  transition:
+    border-color 180ms ease,
+    box-shadow 220ms ease,
+    background 180ms ease,
+    color 180ms ease;
+}
+
+.trigger:hover:not(:disabled) {
+  background: var(--bg-surface-hover);
+  border-color: color-mix(in srgb, var(--border-subtle) 70%, var(--text-muted) 30%);
+}
+
+.triggerOpen {
+  border-color: var(--accent-main);
+  box-shadow: 0 0 0 3px rgba(255, 107, 53, 0.1);
+}
+
+.triggerDisabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.trigger:focus-visible {
+  outline: 3px solid var(--accent-main);
+  outline-offset: 3px;
+}
+
+.triggerValue {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.triggerIcon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform 180ms ease, color 180ms ease;
+}
+
+.triggerIconOpen {
+  transform: rotate(180deg);
+  color: var(--accent-main);
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 0.45rem);
+  left: 0;
+  right: 0;
+  z-index: 60;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-card-hover);
+  padding: 0.375rem;
+  display: grid;
+  gap: 0.25rem;
+  max-height: 15rem;
+  overflow-y: auto;
+}
+
+.option {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid transparent;
+  border-radius: calc(var(--radius-md) - 4px);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.625rem;
+  padding: 0.6rem 0.7rem;
+  cursor: pointer;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.option:hover:not(:disabled),
+.optionActive {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-subtle);
+}
+
+.optionSelected {
+  color: var(--accent-main);
+  font-weight: 700;
+  background: rgba(255, 107, 53, 0.08);
+}
+
+.optionDisabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.option:focus-visible {
+  outline: 3px solid var(--accent-main);
+  outline-offset: 2px;
+}
+
+.checkIcon {
+  flex-shrink: 0;
+  color: var(--accent-main);
+}
+
+[data-theme='dark'] .trigger {
+  background: var(--bg-surface-alt);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme='dark'] .trigger:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+[data-theme='dark'] .triggerOpen {
+  box-shadow: 0 0 0 3px rgba(255, 140, 90, 0.14);
+}
+
+[data-theme='dark'] .menu {
+  background: var(--bg-surface-alt);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+[data-theme='dark'] .option:hover:not(:disabled),
+[data-theme='dark'] .optionActive {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+[data-theme='dark'] .optionSelected {
+  background: rgba(255, 140, 90, 0.15);
+}
+
+html[data-high-contrast='true'] .trigger,
+html[data-high-contrast='true'] .menu,
+html[data-high-contrast='true'] .option {
+  border-width: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trigger,
+  .triggerIcon,
+  .option {
+    transition: none;
+  }
+}

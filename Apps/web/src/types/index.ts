@@ -2,6 +2,8 @@
 
 export type ThemeMode = 'light' | 'dark';
 
+export type AccessibilityFontSize = 'small' | 'medium' | 'large';
+
 export type LanguageCode = 'en' | 'fr' | 'es' | 'it' | 'ar' | 'ch';
 
 export interface Language {
