@@ -258,7 +258,7 @@
   width: 70%; min-width: 180px;
   background: var(--bg-surface); border: var(--pp-card-border);
   border-radius: 14px; box-shadow: 0 -4px 20px rgba(0,0,0,.08);
-  overflow: hidden; z-index: 10;
+  overflow: hidden; z-index: 1000;
   animation: ppDropupIn var(--pp-dur-slow) var(--pp-ease-out-expo);
   will-change: transform, opacity;
 }

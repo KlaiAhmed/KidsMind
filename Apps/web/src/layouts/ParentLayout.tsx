@@ -74,14 +74,18 @@ const ParentLayout = () => {
   }, [location.pathname, translations]);
 
   // Close dropdowns on outside click
+  // Using `pointerdown` instead of `mousedown` so the handler fires before
+  // the option button's `click` event, avoiding the race condition where the
+  // dropdown unmounts during the mousedown → click sequence.
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (childSelectorRef.current && !childSelectorRef.current.contains(event.target as Node)) {
+    const handlePointerDownOutside = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (childSelectorRef.current && !childSelectorRef.current.contains(target)) {
         setIsChildDropUpOpen(false);
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('pointerdown', handlePointerDownOutside);
+    return () => document.removeEventListener('pointerdown', handlePointerDownOutside);
   }, []);
 
   // Close menus on Escape
@@ -271,7 +275,7 @@ const ParentLayout = () => {
                   className={`pp-child-option pp-touch pp-focusable ${isActive ? 'pp-child-option-active' : ''}`}
                   role="option"
                   aria-selected={isActive}
-                  onClick={() => {
+                  onPointerDown={() => {
                     setActiveChildId(child.child_id);
                     setIsChildDropUpOpen(false);
                   }}
@@ -286,7 +290,7 @@ const ParentLayout = () => {
               <button
                 type="button"
                 className="pp-child-option pp-child-option-add pp-touch pp-focusable"
-                onClick={() => {
+                onPointerDown={() => {
                   setIsChildDropUpOpen(false);
                   navigate('/parent/children/new');
                 }}
