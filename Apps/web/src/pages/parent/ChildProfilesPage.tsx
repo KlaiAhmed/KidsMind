@@ -299,30 +299,30 @@ const ChildProfilesPage = () => {
       <article className="pp-card">
         <h1 id="child-profiles-title" className="pp-title">{COPY.title}</h1>
 
-      <div className="pp-tabs">
-        <button
-          type="button"
-          className={`pp-tab pp-touch pp-focusable ${activeTab === 'all' ? 'pp-tab-active' : ''}`}
-          aria-label={COPY.tabAll}
-          onClick={() => {
-            setActiveTab('all');
-          }}
-        >
-          {COPY.tabAll}
-        </button>
-        <button
-          type="button"
-          className={`pp-tab pp-touch pp-focusable ${activeTab === 'safety' ? 'pp-tab-active' : ''}`}
-          aria-label={COPY.tabSafety}
-          onClick={() => {
-            setActiveTab('safety');
-          }}
-        >
-          {COPY.tabSafety}
-        </button>
-      </div>
+        <div className="pp-tabs">
+          <button
+            type="button"
+            className={`pp-tab pp-touch pp-focusable ${activeTab === 'all' ? 'pp-tab-active' : ''}`}
+            aria-label={COPY.tabAll}
+            onClick={() => {
+              setActiveTab('all');
+            }}
+          >
+            {COPY.tabAll}
+          </button>
+          <button
+            type="button"
+            className={`pp-tab pp-touch pp-focusable ${activeTab === 'safety' ? 'pp-tab-active' : ''}`}
+            aria-label={COPY.tabSafety}
+            onClick={() => {
+              setActiveTab('safety');
+            }}
+          >
+            {COPY.tabSafety}
+          </button>
+        </div>
 
-      {childrenQuery.isLoading ? (
+        {childrenQuery.isLoading ? (
         <div className="pp-skeleton" style={{ marginTop: '0.8rem', height: 220 }} aria-label={COPY.loading} />
       ) : childrenQuery.error ? (
         <div role="alert" style={{ marginTop: '0.8rem' }}>

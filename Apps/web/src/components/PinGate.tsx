@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useReducedMotionPreference } from '../hooks/useReducedMotionPreference';
 import { apiClient } from '../lib/api';
 import { cn } from '../utils/cn';
 import '../styles/parent-portal.css';
@@ -86,6 +87,7 @@ const PinGate = ({ children }: PinGateProps) => {
   const [lockUntil, setLockUntil] = useState<number | null>(null);
   const [remainingSeconds, setRemainingSeconds] = useState<number>(0);
   const failedAttemptsRef = useRef<number>(0);
+  const isReducedMotion = useReducedMotionPreference();
 
   const isMobile = useMemo(isMobileAgent, []);
 
@@ -104,9 +106,11 @@ const PinGate = ({ children }: PinGateProps) => {
     (message: string) => {
       setErrorMessage(message);
       setIsShaking(false);
-      window.requestAnimationFrame(() => {
-        setIsShaking(true);
-      });
+      if (!isReducedMotion) {
+        window.requestAnimationFrame(() => {
+          setIsShaking(true);
+        });
+      }
       clearDigits();
 
       failedAttemptsRef.current += 1;
@@ -118,7 +122,7 @@ const PinGate = ({ children }: PinGateProps) => {
         failedAttemptsRef.current = 0;
       }
     },
-    [clearDigits]
+    [clearDigits, isReducedMotion]
   );
 
   const submitPin = useCallback(async () => {

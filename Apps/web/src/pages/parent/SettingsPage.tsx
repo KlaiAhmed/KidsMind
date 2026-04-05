@@ -11,6 +11,10 @@ import { ModernInput, ModernSelect } from '../../components/shared/ModernInput';
 import { ModernSwitch } from '../../components/shared/ModernSwitch';
 import PasswordField from '../../components/shared/PasswordField/PasswordField';
 import { PinInput } from '../../components/shared/PinInput';
+import {
+  readStoredReduceAnimationsPreference,
+  setStoredReduceAnimationsPreference,
+} from '../../utils/motionPreferences';
 import '../../styles/parent-portal.css';
 
 const COPY = {
@@ -65,7 +69,6 @@ const FONT_SCALE_MAP = {
 } as const;
 
 const LOCAL_STORAGE_KEYS = {
-  reduceMotion: 'kidsmind_reduce_motion',
   highContrast: 'kidsmind_high_contrast',
   fontScale: 'kidsmind_font_scale',
 } as const;
@@ -169,7 +172,7 @@ const SettingsPage = () => {
   const [isAnalyticsDialogOpen, setIsAnalyticsDialogOpen] = useState<boolean>(false);
 
   const [accessibility, setAccessibility] = useState<AccessibilityState>({
-    reduceMotion: readBoolean(LOCAL_STORAGE_KEYS.reduceMotion, false),
+    reduceMotion: readStoredReduceAnimationsPreference(),
     highContrast: readBoolean(LOCAL_STORAGE_KEYS.highContrast, false),
     fontScale: (typeof window !== 'undefined' && (window.localStorage.getItem(LOCAL_STORAGE_KEYS.fontScale) as FontScaleOption | null)) || 'medium',
   });
@@ -227,14 +230,12 @@ const SettingsPage = () => {
   useEffect(() => {
     const root = document.documentElement;
 
-    root.classList.toggle('reduce-motion', accessibility.reduceMotion);
     root.classList.toggle('high-contrast', accessibility.highContrast);
     root.style.setProperty('--font-scale', FONT_SCALE_MAP[accessibility.fontScale]);
 
-    window.localStorage.setItem(LOCAL_STORAGE_KEYS.reduceMotion, String(accessibility.reduceMotion));
     window.localStorage.setItem(LOCAL_STORAGE_KEYS.highContrast, String(accessibility.highContrast));
     window.localStorage.setItem(LOCAL_STORAGE_KEYS.fontScale, accessibility.fontScale);
-  }, [accessibility]);
+  }, [accessibility.fontScale, accessibility.highContrast]);
 
   const submitPasswordChange = async (): Promise<void> => {
     setPasswordValidationRequested(true);
@@ -389,39 +390,39 @@ const SettingsPage = () => {
         <h1 id="settings-page-title" className="pp-title">{COPY.title}</h1>
 
         <div className="pp-tabs">
-        <button
-          type="button"
-          className={`pp-tab pp-touch pp-focusable ${activeTab === 'security' ? 'pp-tab-active' : ''}`}
-          aria-label={COPY.tabSecurity}
-          onClick={() => setActiveTab('security')}
-        >
-          {COPY.tabSecurity}
-        </button>
-        <button
-          type="button"
-          className={`pp-tab pp-touch pp-focusable ${activeTab === 'sessions' ? 'pp-tab-active' : ''}`}
-          aria-label={COPY.tabSessions}
-          onClick={() => setActiveTab('sessions')}
-        >
-          {COPY.tabSessions}
-        </button>
-        <button
-          type="button"
-          className={`pp-tab pp-touch pp-focusable ${activeTab === 'privacy' ? 'pp-tab-active' : ''}`}
-          aria-label={COPY.tabPrivacy}
-          onClick={() => setActiveTab('privacy')}
-        >
-          {COPY.tabPrivacy}
-        </button>
-        <button
-          type="button"
-          className={`pp-tab pp-touch pp-focusable ${activeTab === 'accessibility' ? 'pp-tab-active' : ''}`}
-          aria-label={COPY.tabAccessibility}
-          onClick={() => setActiveTab('accessibility')}
-        >
-          {COPY.tabAccessibility}
-        </button>
-      </div>
+          <button
+            type="button"
+            className={`pp-tab pp-touch pp-focusable ${activeTab === 'security' ? 'pp-tab-active' : ''}`}
+            aria-label={COPY.tabSecurity}
+            onClick={() => setActiveTab('security')}
+          >
+            {COPY.tabSecurity}
+          </button>
+          <button
+            type="button"
+            className={`pp-tab pp-touch pp-focusable ${activeTab === 'sessions' ? 'pp-tab-active' : ''}`}
+            aria-label={COPY.tabSessions}
+            onClick={() => setActiveTab('sessions')}
+          >
+            {COPY.tabSessions}
+          </button>
+          <button
+            type="button"
+            className={`pp-tab pp-touch pp-focusable ${activeTab === 'privacy' ? 'pp-tab-active' : ''}`}
+            aria-label={COPY.tabPrivacy}
+            onClick={() => setActiveTab('privacy')}
+          >
+            {COPY.tabPrivacy}
+          </button>
+          <button
+            type="button"
+            className={`pp-tab pp-touch pp-focusable ${activeTab === 'accessibility' ? 'pp-tab-active' : ''}`}
+            aria-label={COPY.tabAccessibility}
+            onClick={() => setActiveTab('accessibility')}
+          >
+            {COPY.tabAccessibility}
+          </button>
+        </div>
 
       {activeTab === 'security' && (
         <>
@@ -636,6 +637,7 @@ const SettingsPage = () => {
               checked={accessibility.reduceMotion}
               ariaLabel={COPY.reduceMotion}
               onChange={(checked) => {
+                setStoredReduceAnimationsPreference(checked);
                 setAccessibility((current) => ({
                   ...current,
                   reduceMotion: checked,
@@ -658,25 +660,23 @@ const SettingsPage = () => {
             />
           </div>
 
-          <div>
-            <ModernSelect
-              id="font-scale"
-              label={COPY.fontSize}
-              value={accessibility.fontScale}
-              onChange={(event) => {
-                const fontScale = event.currentTarget.value as FontScaleOption;
-                setAccessibility((current) => ({
-                  ...current,
-                  fontScale,
-                }));
-              }}
-              options={[
-                { value: 'small', label: COPY.small },
-                { value: 'medium', label: COPY.medium },
-                { value: 'large', label: COPY.large },
-              ]}
-            />
-          </div>
+          <ModernSelect
+            id="font-scale"
+            label={COPY.fontSize}
+            value={accessibility.fontScale}
+            onChange={(event) => {
+              const fontScale = event.currentTarget.value as FontScaleOption;
+              setAccessibility((current) => ({
+                ...current,
+                fontScale,
+              }));
+            }}
+            options={[
+              { value: 'small', label: COPY.small },
+              { value: 'medium', label: COPY.medium },
+              { value: 'large', label: COPY.large },
+            ]}
+          />
         </>
       )}
 

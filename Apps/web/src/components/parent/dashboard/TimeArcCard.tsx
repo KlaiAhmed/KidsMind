@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Clock3 } from 'lucide-react';
 import type { UseChildAnalyticsResult } from '../../../hooks/api/useChildAnalytics';
 import { useLanguage } from '../../../hooks/useLanguage';
+import { useReducedMotionPreference } from '../../../hooks/useReducedMotionPreference';
 
 const ARC_RADIUS = 70;
 const ARC_CIRCUMFERENCE = 2 * Math.PI * ARC_RADIUS;
@@ -18,6 +19,7 @@ const clamp = (value: number, min: number, max: number): number => {
 
 const TimeArcCard = ({ dailyLimitMinutes, analytics, embedded = false }: TimeArcCardProps) => {
   const { translations } = useLanguage();
+  const isReducedMotion = useReducedMotionPreference();
   const [displayRatio, setDisplayRatio] = useState(0);
   const rootClassName = `${embedded ? 'pp-dashboard-panel' : 'pp-card'} pp-col-span-1`;
 
@@ -38,6 +40,11 @@ const TimeArcCard = ({ dailyLimitMinutes, analytics, embedded = false }: TimeArc
     : 'var(--accent-grow)';
 
   useEffect(() => {
+    if (isReducedMotion) {
+      setDisplayRatio(clampedRatio);
+      return;
+    }
+
     const frame = window.requestAnimationFrame(() => {
       setDisplayRatio(clampedRatio);
     });
@@ -45,7 +52,7 @@ const TimeArcCard = ({ dailyLimitMinutes, analytics, embedded = false }: TimeArc
     return () => {
       window.cancelAnimationFrame(frame);
     };
-  }, [clampedRatio]);
+  }, [clampedRatio, isReducedMotion]);
 
   if (analytics.isLoading) {
     return (
@@ -122,7 +129,7 @@ const TimeArcCard = ({ dailyLimitMinutes, analytics, embedded = false }: TimeArc
             strokeDasharray={ARC_CIRCUMFERENCE}
             strokeDashoffset={strokeOffset}
             transform="rotate(-90 90 90)"
-            style={{ transition: 'stroke-dashoffset 1s ease-out' }}
+            style={{ transition: isReducedMotion ? 'none' : 'stroke-dashoffset 1s ease-out' }}
           />
           <text x="90" y="88" textAnchor="middle" fontSize="28" fontWeight="700" fill="var(--text-primary)" style={{ fontFamily: 'var(--font-display)' }}>
             {todayUsage}

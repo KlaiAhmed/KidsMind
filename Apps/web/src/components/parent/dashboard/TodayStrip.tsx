@@ -56,7 +56,7 @@ const TodayStrip = ({ childName, childAvatar, analytics, embedded = false }: Tod
 
   if (analytics.error) {
     return (
-      <section className={`${embedded ? 'pp-dashboard-panel' : 'pp-card'} pp-col-span-3`.trim()} role="alert" aria-live="assertive">
+      <section className={rootClassName} role="alert" aria-live="assertive">
         <h2 className="pp-title">{translations.today_title}</h2>
         <p className="pp-error">{analytics.error.message}</p>
         <button

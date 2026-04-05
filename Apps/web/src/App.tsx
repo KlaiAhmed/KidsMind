@@ -2,6 +2,7 @@ import React, { Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import HomePage from './pages/HomePage/HomePage';
 import { useMeSummaryQuery } from './hooks/api/useMeSummaryQuery';
+import { useReducedMotionPreference } from './hooks/useReducedMotionPreference';
 import AppErrorBoundary from './components/shared/AppErrorBoundary/AppErrorBoundary';
 import ErrorPage from './pages/ErrorPage/ErrorPage';
 import { ParentRoutes } from './router/parent.routes';
@@ -13,6 +14,7 @@ const NotFoundPage = React.lazy(() => import('./pages/NotFoundPage/NotFoundPage'
 
 const App = () => {
   const { isAuthenticated, isLoading } = useMeSummaryQuery();
+  const isReducedMotion = useReducedMotionPreference();
 
   return (
     <BrowserRouter>
@@ -38,7 +40,7 @@ const App = () => {
                   border: '3px solid var(--border-subtle)',
                   borderTopColor: 'var(--accent-main)',
                   borderRadius: '50%',
-                  animation: 'spinRing 0.8s linear infinite',
+                  animation: isReducedMotion ? 'none' : 'spinRing 0.8s linear infinite',
                 }}
               />
             </div>

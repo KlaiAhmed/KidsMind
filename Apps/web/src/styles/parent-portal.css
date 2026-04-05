@@ -439,7 +439,7 @@
 
 /* Content */
 .pp-content {
-  position: relative; padding: 2rem var(--pp-content-px);
+  position: relative; padding: var(--pp-content-py) var(--pp-content-px);
   min-width: 0;
 }
 

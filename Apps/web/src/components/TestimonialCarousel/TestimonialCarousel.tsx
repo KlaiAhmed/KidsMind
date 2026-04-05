@@ -5,6 +5,7 @@ import { TESTIMONIALS } from '../../utils/constants';
 import { TIMING } from '../../utils/constants';
 import { useScrollReveal } from '../../hooks/useScrollReveal';
 import { useInterval } from '../../hooks/useInterval';
+import { useReducedMotionPreference } from '../../hooks/useReducedMotionPreference';
 import styles from './TestimonialCarousel.module.css';
 
 interface TestimonialCarouselProps {
@@ -28,6 +29,7 @@ const StarIcon = () => {
 
 const TestimonialCarousel = ({ translations }: TestimonialCarouselProps) => {
   const { ref, isVisible } = useScrollReveal();
+  const isReducedMotion = useReducedMotionPreference();
   const [activeTestimonialIndex, setActiveTestimonialIndex] = useState(0);
   const [isCarouselHovered, setIsCarouselHovered] = useState(false);
 
@@ -35,7 +37,10 @@ const TestimonialCarousel = ({ translations }: TestimonialCarouselProps) => {
     setActiveTestimonialIndex((prev) => (prev + 1) % TESTIMONIALS.length);
   }, []);
 
-  useInterval(advanceToNextTestimonial, isCarouselHovered ? null : TIMING.carouselInterval);
+  useInterval(
+    advanceToNextTestimonial,
+    isCarouselHovered || isReducedMotion ? null : TIMING.carouselInterval
+  );
 
   return (
     <section

@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
+import { useReducedMotionPreference } from '../../../hooks/useReducedMotionPreference';
 import { cn } from '../../../utils/cn';
 import styles from './PinInput.module.css';
 
@@ -51,6 +52,7 @@ const PinInput = ({
   length = PIN_LENGTH,
   className,
 }: PinInputProps) => {
+  const isReducedMotion = useReducedMotionPreference();
   const [internalValue, setInternalValue] = useState<string[]>(() =>
     Array(length).fill('')
   );
@@ -74,10 +76,15 @@ const PinInput = ({
   }, [isControlled, value, length, internalValue]);
 
   const triggerShake = useCallback(() => {
+    if (isReducedMotion) {
+      setIsShaking(false);
+      return;
+    }
+
     setIsShaking(false);
-    requestAnimationFrame(() => setIsShaking(true));
-    setTimeout(() => setIsShaking(false), 500);
-  }, []);
+    window.requestAnimationFrame(() => setIsShaking(true));
+    window.setTimeout(() => setIsShaking(false), 500);
+  }, [isReducedMotion]);
 
   const updateValue = useCallback(
     (newDigits: string[], isConfirmation = false) => {

@@ -334,6 +334,20 @@
   }
 }
 
+:global(html[data-reduce-motion="true"]) .badge,
+:global(html[data-reduce-motion="true"]) .titleWord,
+:global(html[data-reduce-motion="true"]) .subtitle,
+:global(html[data-reduce-motion="true"]) .ctaRow,
+:global(html[data-reduce-motion="true"]) .trustRow,
+:global(html[data-reduce-motion="true"]) .heroVisual {
+  opacity: 1;
+  transform: none;
+}
+
+:global(html[data-reduce-motion="true"]) .trustItem {
+  opacity: 1;
+}
+
 @media (max-width: 767px) {
   .heroVisual {
     order: -1;

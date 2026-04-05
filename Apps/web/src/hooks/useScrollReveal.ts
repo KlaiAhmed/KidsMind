@@ -2,6 +2,7 @@
 
 import { useRef, useState, useEffect } from 'react';
 import type { ScrollRevealOptions } from '../types';
+import { useReducedMotionPreference } from './useReducedMotionPreference';
 
 /**
  * useScrollReveal — Attaches an IntersectionObserver to a ref and exposes
@@ -17,12 +18,18 @@ const useScrollReveal = (options?: ScrollRevealOptions): {
 } => {
   const ref = useRef<HTMLElement | null>(null);
   const [isVisible, setIsVisible] = useState(false);
+  const isReducedMotion = useReducedMotionPreference();
 
   const threshold = options?.threshold ?? 0.15;
   const rootMargin = options?.rootMargin ?? '0px 0px -60px 0px';
   const once = options?.once ?? true;
 
   useEffect(() => {
+    if (isReducedMotion) {
+      setIsVisible(true);
+      return;
+    }
+
     const element = ref.current;
     if (!element) return;
 
@@ -45,7 +52,7 @@ const useScrollReveal = (options?: ScrollRevealOptions): {
     return () => {
       observer.disconnect();
     };
-  }, [threshold, rootMargin, once]);
+  }, [isReducedMotion, threshold, rootMargin, once]);
 
   return { ref, isVisible };
 };

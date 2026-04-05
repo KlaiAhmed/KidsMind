@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Sun, Moon, ArrowLeft, Languages } from 'lucide-react';
 import type { AuthLayoutProps, LanguageCode } from '../../../types';
+import { useReducedMotionPreference } from '../../../hooks/useReducedMotionPreference';
 import { LANGUAGES } from '../../../utils/constants';
 import styles from './AuthLayout.module.css';
 
@@ -16,6 +17,7 @@ const AuthLayout = ({
 }: AuthLayoutProps) => {
   const [isLanguageDropdownOpen, setIsLanguageDropdownOpen] = useState(false);
   const languageDropdownRef = useRef<HTMLDivElement>(null);
+  const isReducedMotion = useReducedMotionPreference();
 
   // Close language dropdown when clicking outside
   useEffect(() => {
@@ -68,9 +70,9 @@ const AuthLayout = ({
 
           <div className={styles.illustrationContainer}>
             {illustrationVariant === 'login' ? (
-              <LoginIllustration />
+              <LoginIllustration isReducedMotion={isReducedMotion} />
             ) : (
-              <RegisterIllustration />
+              <RegisterIllustration isReducedMotion={isReducedMotion} />
             )}
           </div>
 
@@ -165,7 +167,7 @@ const RocketIcon = ({ size = 24 }: { size?: number }) => {
 };
 
 /** Login illustration — parent and child looking at a glowing screen */
-const LoginIllustration = () => {
+const LoginIllustration = ({ isReducedMotion }: { isReducedMotion: boolean }) => {
   return (
     <svg viewBox="0 0 300 280" fill="none" xmlns="http://www.w3.org/2000/svg">
       {/* Glowing screen */}
@@ -187,33 +189,37 @@ const LoginIllustration = () => {
       <path d="M170 240 Q185 228 200 240" fill="rgba(255,255,255,0.2)" />
       {/* Stars */}
       <circle cx="60" cy="60" r="3" fill="rgba(255,255,255,0.6)">
-        <animate attributeName="opacity" values="1;0.3;1" dur="2s" repeatCount="indefinite" />
+        {!isReducedMotion && <animate attributeName="opacity" values="1;0.3;1" dur="2s" repeatCount="indefinite" />}
       </circle>
       <circle cx="240" cy="50" r="2" fill="rgba(255,255,255,0.5)">
-        <animate attributeName="opacity" values="0.5;1;0.5" dur="2.5s" repeatCount="indefinite" />
+        {!isReducedMotion && <animate attributeName="opacity" values="0.5;1;0.5" dur="2.5s" repeatCount="indefinite" />}
       </circle>
       <circle cx="250" cy="180" r="2.5" fill="rgba(255,255,255,0.4)">
-        <animate attributeName="opacity" values="1;0.4;1" dur="3s" repeatCount="indefinite" />
+        {!isReducedMotion && <animate attributeName="opacity" values="1;0.4;1" dur="3s" repeatCount="indefinite" />}
       </circle>
       <circle cx="50" cy="160" r="2" fill="rgba(255,255,255,0.5)">
-        <animate attributeName="opacity" values="0.6;1;0.6" dur="2.2s" repeatCount="indefinite" />
+        {!isReducedMotion && <animate attributeName="opacity" values="0.6;1;0.6" dur="2.2s" repeatCount="indefinite" />}
       </circle>
     </svg>
   );
 };
 
 /** Register illustration — rocket launching through stars */
-const RegisterIllustration = () => {
+const RegisterIllustration = ({ isReducedMotion }: { isReducedMotion: boolean }) => {
   return (
     <svg viewBox="0 0 300 280" fill="none" xmlns="http://www.w3.org/2000/svg">
       {/* Orbiting star - placed first so it's behind the rocket */}
       <circle r="4" fill="rgba(255,230,109,0.8)">
-        <animateMotion path="M150,140 m-70,0 a70,70 0 1,1 140,0 a70,70 0 1,1 -140,0" dur="6s" repeatCount="indefinite" />
+        {!isReducedMotion && (
+          <animateMotion path="M150,140 m-70,0 a70,70 0 1,1 140,0 a70,70 0 1,1 -140,0" dur="6s" repeatCount="indefinite" />
+        )}
       </circle>
       {/* Rocket body */}
       <g transform="translate(150, 140)">
         <g>
-          <animateTransform attributeName="transform" type="translate" values="0,5;0,-5;0,5" dur="3s" repeatCount="indefinite" />
+          {!isReducedMotion && (
+            <animateTransform attributeName="transform" type="translate" values="0,5;0,-5;0,5" dur="3s" repeatCount="indefinite" />
+          )}
           {/* Rocket body */}
           <path d="M0-60 C-15-40 -18 10 -12 35 L12 35 C18 10 15-40 0-60Z" fill="rgba(255,255,255,0.9)" />
           {/* Rocket window */}
@@ -223,31 +229,35 @@ const RegisterIllustration = () => {
           <path d="M12 25 L25 45 L12 35Z" fill="rgba(255,107,53,0.8)" />
           {/* Flame */}
           <path d="M-8 35 Q0 65 8 35" fill="rgba(255,230,109,0.8)">
-            <animate attributeName="d" values="M-8 35 Q0 65 8 35;M-8 35 Q0 55 8 35;M-8 35 Q0 65 8 35" dur="0.5s" repeatCount="indefinite" />
+            {!isReducedMotion && (
+              <animate attributeName="d" values="M-8 35 Q0 65 8 35;M-8 35 Q0 55 8 35;M-8 35 Q0 65 8 35" dur="0.5s" repeatCount="indefinite" />
+            )}
           </path>
           <path d="M-5 35 Q0 55 5 35" fill="rgba(255,107,53,0.9)">
-            <animate attributeName="d" values="M-5 35 Q0 55 5 35;M-5 35 Q0 45 5 35;M-5 35 Q0 55 5 35" dur="0.4s" repeatCount="indefinite" />
+            {!isReducedMotion && (
+              <animate attributeName="d" values="M-5 35 Q0 55 5 35;M-5 35 Q0 45 5 35;M-5 35 Q0 55 5 35" dur="0.4s" repeatCount="indefinite" />
+            )}
           </path>
         </g>
       </g>
       {/* Stars scattered around */}
       <circle cx="40" cy="40" r="3" fill="rgba(255,255,255,0.7)">
-        <animate attributeName="opacity" values="1;0.3;1" dur="2s" repeatCount="indefinite" />
+        {!isReducedMotion && <animate attributeName="opacity" values="1;0.3;1" dur="2s" repeatCount="indefinite" />}
       </circle>
       <circle cx="260" cy="60" r="2.5" fill="rgba(255,255,255,0.5)">
-        <animate attributeName="opacity" values="0.4;1;0.4" dur="2.5s" repeatCount="indefinite" />
+        {!isReducedMotion && <animate attributeName="opacity" values="0.4;1;0.4" dur="2.5s" repeatCount="indefinite" />}
       </circle>
       <circle cx="280" cy="200" r="2" fill="rgba(255,255,255,0.6)">
-        <animate attributeName="opacity" values="1;0.5;1" dur="1.8s" repeatCount="indefinite" />
+        {!isReducedMotion && <animate attributeName="opacity" values="1;0.5;1" dur="1.8s" repeatCount="indefinite" />}
       </circle>
       <circle cx="30" cy="220" r="3" fill="rgba(255,255,255,0.4)">
-        <animate attributeName="opacity" values="0.6;1;0.6" dur="2.2s" repeatCount="indefinite" />
+        {!isReducedMotion && <animate attributeName="opacity" values="0.6;1;0.6" dur="2.2s" repeatCount="indefinite" />}
       </circle>
       <circle cx="70" cy="130" r="1.5" fill="rgba(255,255,255,0.5)">
-        <animate attributeName="opacity" values="1;0.4;1" dur="3s" repeatCount="indefinite" />
+        {!isReducedMotion && <animate attributeName="opacity" values="1;0.4;1" dur="3s" repeatCount="indefinite" />}
       </circle>
       <circle cx="230" cy="140" r="2" fill="rgba(255,255,255,0.6)">
-        <animate attributeName="opacity" values="0.5;1;0.5" dur="2.8s" repeatCount="indefinite" />
+        {!isReducedMotion && <animate attributeName="opacity" values="0.5;1;0.5" dur="2.8s" repeatCount="indefinite" />}
       </circle>
       {/* Planet */}
       <circle cx="250" cy="230" r="18" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.2)" strokeWidth="1" />

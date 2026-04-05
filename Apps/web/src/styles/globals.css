@@ -117,8 +117,18 @@ h1, h2, h3, h4, h5, h6 {
   *,
   *::before,
   *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    animation: none !important;
+    transition: none !important;
   }
+}
+
+html[data-reduce-motion="true"] {
+  scroll-behavior: auto;
+}
+
+html[data-reduce-motion="true"] *,
+html[data-reduce-motion="true"] *::before,
+html[data-reduce-motion="true"] *::after {
+  animation: none !important;
+  transition: none !important;
 }

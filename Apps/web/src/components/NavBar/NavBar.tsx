@@ -12,6 +12,7 @@ import { Sun, Moon, Menu, X, Languages, User, ChevronLeft, ChevronRight } from '
 import type { ThemeMode, LanguageCode, TranslationMap } from '../../types';
 import { LANGUAGES } from '../../utils/constants';
 import { useScrollPosition } from '../../hooks/useScrollPosition';
+import { useReducedMotionPreference } from '../../hooks/useReducedMotionPreference';
 import { useVerifyParentPinMutation } from '../../hooks/api/useVerifyParentPinMutation';
 import type { UiError } from '../../hooks/api/error';
 import { logout } from '../../lib/logout';
@@ -76,6 +77,7 @@ const NavBar = ({
   const [pinDigits, setPinDigits] = useState<string[]>(Array(PIN_LENGTH).fill(''));
   const [pinError, setPinError] = useState('');
   const [isPinErrorShaking, setIsPinErrorShaking] = useState(false);
+  const isReducedMotion = useReducedMotionPreference();
   const languageDropdownRef = useRef<HTMLDivElement>(null);
   const pinInputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const lastSubmittedPinRef = useRef<string | null>(null);
@@ -137,10 +139,12 @@ const NavBar = ({
   const triggerPinError = useCallback((message: string) => {
     setPinError(message);
     setIsPinErrorShaking(false);
-    window.requestAnimationFrame(() => {
-      setIsPinErrorShaking(true);
-    });
-  }, []);
+    if (!isReducedMotion) {
+      window.requestAnimationFrame(() => {
+        setIsPinErrorShaking(true);
+      });
+    }
+  }, [isReducedMotion]);
 
   const handleParentProfileClick = useCallback(() => {
     closeAllDropdownMenus();

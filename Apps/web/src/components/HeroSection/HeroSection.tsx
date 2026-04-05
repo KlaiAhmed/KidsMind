@@ -1,5 +1,6 @@
 /** HeroSection — Hero banner with animated title, CTA buttons, trust badges, and owl illustration. */
 import type { TranslationMap, LanguageCode } from '../../types';
+import { useReducedMotionPreference } from '../../hooks/useReducedMotionPreference';
 import HeroIllustration from './HeroIllustration';
 import styles from './HeroSection.module.css';
 
@@ -9,6 +10,7 @@ interface HeroSectionProps {
 }
 
 const HeroSection = ({ translations }: HeroSectionProps) => {
+  const isReducedMotion = useReducedMotionPreference();
   const animatedTitleWords = translations.hero_title.split(' ');
 
   return (
@@ -25,7 +27,7 @@ const HeroSection = ({ translations }: HeroSectionProps) => {
               <span
                 key={i}
                 className={styles.titleWord}
-                style={{ animationDelay: `${80 + i * 80}ms` }}
+                style={isReducedMotion ? undefined : { animationDelay: `${80 + i * 80}ms` }}
               >
                 {word}{' '}
               </span>
