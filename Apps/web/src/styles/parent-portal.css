@@ -335,7 +335,8 @@
 
 /* Collapsed Child Avatars */
 .pp-child-avatars-collapsed {
-  display: flex; flex-wrap: wrap; gap: .375rem; justify-content: center;
+  display: flex; flex-direction: column; align-items: center;
+  gap: .375rem; justify-content: center;
   padding: .5rem;
 }
 .pp-child-avatar-btn {
@@ -349,6 +350,24 @@
 .pp-child-avatar-btn:hover { transform: scale(1.1); border-color: var(--accent-main); }
 .pp-child-avatar-active { border-color: var(--accent-main); background: var(--bg-surface); }
 .pp-child-avatar-small { line-height: 1; }
+.pp-child-nav-button {
+  width: 32px; height: 32px; border-radius: 10px;
+  background: transparent; border: var(--pp-card-border);
+  color: var(--text-secondary); display: flex;
+  align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: background var(--pp-dur-fast) var(--pp-ease-smooth),
+              color var(--pp-dur-fast) var(--pp-ease-smooth),
+              transform var(--pp-dur-fast) var(--pp-ease-spring);
+}
+.pp-child-nav-button:hover {
+  background: var(--bg-surface-hover); color: var(--accent-main);
+}
+.pp-child-nav-button:active { transform: scale(.92); }
+.pp-child-nav-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.pp-child-nav-icon-mobile { display: none; }
 .pp-child-count {
   width: 32px; height: 32px; border-radius: 50%;
   background: var(--bg-surface-alt); border: 1px solid var(--border-subtle);
@@ -382,6 +401,15 @@
   background: var(--bg-surface-hover); border-style: solid;
   border-color: var(--accent-main); transform: scale(1.1);
 }
+
+.pp-sidebar-mobile .pp-child-avatars-collapsed {
+  width: 100%;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  justify-content: center;
+}
+.pp-sidebar-mobile .pp-child-nav-icon-desktop { display: none; }
+.pp-sidebar-mobile .pp-child-nav-icon-mobile { display: inline-flex; }
 
 /* Topbar */
 .pp-topbar {

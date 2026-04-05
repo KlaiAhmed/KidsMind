@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   ChevronsUpDown,
   ClipboardList,
   Home,
@@ -31,6 +33,8 @@ interface NavItem {
   icon: React.ReactNode;
 }
 
+const WINDOW_SIZE = 3;
+
 const ParentLayout = () => {
   const { translations } = useLanguage();
   const { theme, toggleTheme } = useTheme();
@@ -46,12 +50,16 @@ const ParentLayout = () => {
   const [sidebarState, setSidebarState] = useState<'expanded' | 'collapsed'>('expanded');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [collapsedAvatarOffset, setCollapsedAvatarOffset] = useState(0);
+  const previousSidebarStateRef = useRef<'expanded' | 'collapsed'>(sidebarState);
 
   // Child selector dropup state
   const [isChildDropUpOpen, setIsChildDropUpOpen] = useState(false);
   const childSelectorRef = useRef<HTMLDivElement>(null);
 
   const isSidebarExpanded = sidebarState === 'expanded';
+  const children = childrenQuery.data ?? [];
+  const displayChild = activeChild ?? children[0];
 
   const mainNav: NavItem[] = [
     { label: translations.nav_profile, to: '/parent/profile', icon: <UserCircle size={20} strokeWidth={2} /> },
@@ -99,6 +107,46 @@ const ParentLayout = () => {
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
   }, []);
+
+  useEffect(() => {
+    if (previousSidebarStateRef.current === 'collapsed' && sidebarState === 'expanded') {
+      setCollapsedAvatarOffset(0);
+    }
+    previousSidebarStateRef.current = sidebarState;
+  }, [sidebarState]);
+
+  useEffect(() => {
+    setCollapsedAvatarOffset((currentOffset) => {
+      const maxOffset = Math.max(children.length - WINDOW_SIZE, 0);
+      return Math.min(currentOffset, maxOffset);
+    });
+  }, [children.length]);
+
+  useEffect(() => {
+    if (!displayChild) {
+      return;
+    }
+
+    const activeChildIndex = children.findIndex((child) => child.child_id === displayChild.child_id);
+    if (activeChildIndex < 0) {
+      return;
+    }
+
+    setCollapsedAvatarOffset((currentOffset) => {
+      const maxOffset = Math.max(children.length - WINDOW_SIZE, 0);
+      const normalizedOffset = Math.min(currentOffset, maxOffset);
+
+      if (activeChildIndex < normalizedOffset) {
+        return activeChildIndex;
+      }
+
+      if (activeChildIndex >= normalizedOffset + WINDOW_SIZE) {
+        return Math.min(activeChildIndex - WINDOW_SIZE + 1, maxOffset);
+      }
+
+      return normalizedOffset;
+    });
+  }, [children, displayChild?.child_id]);
 
   const handleToggleSidebar = useCallback(() => {
     setSidebarState((current) => (current === 'expanded' ? 'collapsed' : 'expanded'));
@@ -172,8 +220,6 @@ const ParentLayout = () => {
       );
     }
 
-    const children = childrenQuery.data ?? [];
-
     // When sidebar is collapsed and no children exist, show only a + button
     if (children.length === 0) {
       if (!isSidebarExpanded) {
@@ -206,13 +252,46 @@ const ParentLayout = () => {
       );
     }
 
-    const displayChild = activeChild ?? children[0];
+    if (!displayChild) {
+      return null;
+    }
 
     // When sidebar is collapsed, show only child avatars
     if (!isSidebarExpanded) {
+      const totalChildren = children.length;
+      const maxOffset = Math.max(totalChildren - WINDOW_SIZE, 0);
+      const currentOffset = Math.min(collapsedAvatarOffset, maxOffset);
+      const visibleChildren = children.slice(currentOffset, currentOffset + WINDOW_SIZE);
+      const overflowBefore = currentOffset;
+      const overflowAfter = Math.max(totalChildren - (currentOffset + WINDOW_SIZE), 0);
+      const canGoUp = currentOffset > 0;
+      const canGoDown = currentOffset + WINDOW_SIZE < totalChildren;
+      const hasOverflow = totalChildren > WINDOW_SIZE;
+
       return (
         <div className="pp-child-avatars-collapsed">
-          {children.slice(0, 3).map((child) => {
+          {hasOverflow && canGoUp && (
+            <button
+              type="button"
+              className="pp-child-nav-button pp-touch pp-focusable"
+              onClick={() => setCollapsedAvatarOffset((current) => Math.max(current - 1, 0))}
+              aria-label="Show previous children"
+              title="Show previous children"
+            >
+              <span className="pp-child-nav-icon pp-child-nav-icon-desktop" aria-hidden="true">
+                <ChevronUp size={16} />
+              </span>
+              <span className="pp-child-nav-icon pp-child-nav-icon-mobile" aria-hidden="true">
+                <ChevronLeft size={16} />
+              </span>
+            </button>
+          )}
+
+          {hasOverflow && overflowBefore > 0 && (
+            <span className="pp-child-count">+{overflowBefore}</span>
+          )}
+
+          {visibleChildren.map((child) => {
             const isActive = child.child_id === displayChild.child_id;
             return (
               <button
@@ -227,10 +306,29 @@ const ParentLayout = () => {
               </button>
             );
           })}
-          {children.length > 3 && (
-            <span className="pp-child-count">+{children.length - 3}</span>
+
+          {hasOverflow && overflowAfter > 0 && (
+            <span className="pp-child-count">+{overflowAfter}</span>
           )}
-          {children.length < 5 && (
+
+          {hasOverflow && canGoDown && (
+            <button
+              type="button"
+              className="pp-child-nav-button pp-touch pp-focusable"
+              onClick={() => setCollapsedAvatarOffset((current) => Math.min(current + 1, maxOffset))}
+              aria-label="Show next children"
+              title="Show next children"
+            >
+              <span className="pp-child-nav-icon pp-child-nav-icon-desktop" aria-hidden="true">
+                <ChevronDown size={16} />
+              </span>
+              <span className="pp-child-nav-icon pp-child-nav-icon-mobile" aria-hidden="true">
+                <ChevronRight size={16} />
+              </span>
+            </button>
+          )}
+
+          {totalChildren < 5 && (
             <button
               type="button"
               className="pp-child-add-avatar pp-touch pp-focusable"
