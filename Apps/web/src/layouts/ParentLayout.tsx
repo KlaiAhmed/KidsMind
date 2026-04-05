@@ -335,10 +335,14 @@ const ParentLayout = () => {
             {isSidebarExpanded ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
           </button>
 
-          {/* Dynamic Title - always rendered, CSS controls visibility */}
+          {/* Dynamic Title - container always rendered, text conditionally rendered */}
           <div className="pp-sidebar-header">
-            <h1 className="pp-title pp-sidebar-header-title">{pageTitle}</h1>
-            <p className="pp-muted pp-sidebar-header-subtitle">{translations.nav_parent_profile}</p>
+            {isSidebarExpanded && (
+              <>
+                <h1 className="pp-title pp-sidebar-header-title">{pageTitle}</h1>
+                <p className="pp-muted pp-sidebar-header-subtitle">{translations.nav_parent_profile}</p>
+              </>
+            )}
           </div>
 
           {/* Navigation */}

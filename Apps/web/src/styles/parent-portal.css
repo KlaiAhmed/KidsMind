@@ -179,13 +179,13 @@
   background: var(--bg-surface-hover); color: var(--accent-main);
   transform: rotate(180deg);
 }
-.pp-sidebar-header { padding-right: 2.5rem; margin-bottom: .5rem; min-height: 60px; }
+.pp-sidebar-header { padding-right: 2.5rem; margin-bottom: .625rem; min-height: 64px; }
 .pp-sidebar-header-title, .pp-sidebar-header-subtitle {
   white-space: nowrap; overflow: hidden; text-overflow: clip;
   transition: opacity var(--pp-dur-fast) var(--pp-ease-smooth); opacity: 1; margin: 0;
 }
-.pp-sidebar-header-title { font-size: 1.125rem; line-height: 1.3; }
-.pp-sidebar-header-subtitle { font-size: .75rem; margin-top: .25rem; }
+.pp-sidebar-header-title { font-size: 1.35rem; line-height: 1.3; }
+.pp-sidebar-header-subtitle { font-size: .875rem; margin-top: .3rem; }
 .pp-sidebar-collapsed .pp-sidebar-header { padding-right: 0; text-align: center; }
 .pp-sidebar-collapsed .pp-sidebar-header-title,
 .pp-sidebar-collapsed .pp-sidebar-header-subtitle { opacity: 0; }

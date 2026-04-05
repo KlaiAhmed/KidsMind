@@ -452,7 +452,7 @@ const SettingsPage = () => {
               label="New password"
               placeholder="Enter new password"
               value={passwordForm.newPassword}
-              hint={passwordRequirement || undefined}
+              hint={passwordForm.newPassword.length > 0 ? passwordRequirement || undefined : undefined}
               hintTone="danger"
               required
               showStrengthMeter
