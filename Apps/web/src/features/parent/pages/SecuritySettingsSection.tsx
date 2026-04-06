@@ -1,5 +1,6 @@
 import PasswordField from '../../../components/ui/PasswordField/PasswordField';
 import { PinInput } from '../../../components/ui/PinInput';
+import type { TranslationMap } from '../../../locales/types';
 
 interface PasswordFormState {
   currentPassword: string;
@@ -8,12 +9,7 @@ interface PasswordFormState {
 }
 
 interface SecuritySettingsSectionProps {
-  copy: {
-    changePassword: string;
-    parentPin: string;
-    updatePin: string;
-    enableMfa: string;
-  };
+  translations: TranslationMap;
   passwordForm: PasswordFormState;
   currentPasswordError?: string;
   confirmPasswordError?: string;
@@ -33,7 +29,7 @@ interface SecuritySettingsSectionProps {
 }
 
 const SecuritySettingsSection = ({
-  copy,
+  translations,
   passwordForm,
   currentPasswordError,
   confirmPasswordError,
@@ -53,7 +49,7 @@ const SecuritySettingsSection = ({
 }: SecuritySettingsSectionProps) => {
   return (
     <>
-      <h2 className="pp-title">{copy.changePassword}</h2>
+      <h2 className="pp-title">{translations.settings_change_password}</h2>
       <form
         className="pp-form-grid"
         noValidate
@@ -106,14 +102,14 @@ const SecuritySettingsSection = ({
         <button
           type="submit"
           className="pp-button pp-button-primary pp-touch pp-focusable"
-          aria-label={copy.changePassword}
+          aria-label={translations.settings_change_password}
           disabled={!canSubmitPasswordChange}
         >
-          {copy.changePassword}
+          {translations.settings_change_password}
         </button>
       </form>
 
-      <h2 className="pp-title">{copy.parentPin}</h2>
+      <h2 className="pp-title">{translations.settings_parent_pin}</h2>
       <form
         className="pp-form-grid"
         onSubmit={(event) => {
@@ -133,10 +129,10 @@ const SecuritySettingsSection = ({
         <button
           type="submit"
           className="pp-button pp-button-primary pp-touch pp-focusable"
-          aria-label={copy.updatePin}
+          aria-label={translations.settings_update_pin}
           disabled={!pinValid}
         >
-          {copy.updatePin}
+          {translations.settings_update_pin}
         </button>
       </form>
 
@@ -147,10 +143,10 @@ const SecuritySettingsSection = ({
         <button
           type="button"
           className="pp-button pp-button-primary pp-touch pp-focusable"
-          aria-label={copy.enableMfa}
+          aria-label={translations.settings_enable_mfa}
           onClick={onEnableMfa}
         >
-          {enableMfaPending ? `${copy.enableMfa}...` : copy.enableMfa}
+          {enableMfaPending ? `${translations.settings_enable_mfa}...` : translations.settings_enable_mfa}
         </button>
       )}
     </>

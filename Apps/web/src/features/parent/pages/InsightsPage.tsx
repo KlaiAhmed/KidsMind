@@ -11,7 +11,8 @@ import { WeeklyBarChartContainer } from '../components';
 import { useActiveChild } from '../hooks';
 import { useMeSummaryQuery } from '../../auth';
 import { apiClient } from '../../../lib/api';
-import { COPY, trendIconMap, tabFromParam, formatDate, type InsightsTab } from './insightsPageData';
+import { useLanguage } from '../../../hooks/useLanguage';
+import { trendIconMap, tabFromParam, formatDate, type InsightsTab } from './insightsPageData';
 import '../../../styles/parent-portal.css';
 
 interface ConversationMessage {
@@ -28,6 +29,7 @@ interface ChatHistoryPayload {
 const InsightsPage = () => {
   const { activeChild } = useActiveChild();
   const userQuery = useMeSummaryQuery();
+  const { translations } = useLanguage();
 
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = tabFromParam(searchParams.get('tab'));
@@ -106,7 +108,7 @@ const InsightsPage = () => {
         [sessionId]: normalizedMessages,
       }));
     } catch {
-      setMessageError(COPY.messageLoadError);
+      setMessageError(translations.insights_messageLoadError);
     } finally {
       setIsMessagesLoading(false);
     }
@@ -133,7 +135,7 @@ const InsightsPage = () => {
         return next;
       });
     } catch {
-      setMessageError(COPY.clearFailed);
+      setMessageError(translations.insights_clearFailed);
     }
   };
 
@@ -153,8 +155,8 @@ const InsightsPage = () => {
     return (
       <main className="pp-content">
         <article className="pp-card">
-          <h1 className="pp-title">{COPY.title}</h1>
-          <p className="pp-empty">{COPY.noChild}</p>
+          <h1 className="pp-title">{translations.insights_title}</h1>
+          <p className="pp-empty">{translations.insights_noChild}</p>
         </article>
       </main>
     );
@@ -166,7 +168,7 @@ const InsightsPage = () => {
     return (
       <main className="pp-content">
         <article className="pp-card" role="alert">
-          <h1 className="pp-title">{COPY.title}</h1>
+          <h1 className="pp-title">{translations.insights_title}</h1>
           <p className="pp-error">
             {isAuthError && userQuery.error.status === 403
               ? 'Access denied.'
@@ -176,13 +178,13 @@ const InsightsPage = () => {
             <button
               type="button"
               className="pp-button pp-touch pp-focusable"
-              aria-label={COPY.retry}
+              aria-label={translations.insights_retry}
               disabled={userQuery.isFetching}
               onClick={() => {
                 void userQuery.refetch();
               }}
             >
-              {userQuery.isFetching ? COPY.loading : COPY.retry}
+              {userQuery.isFetching ? translations.insights_loading : translations.insights_retry}
             </button>
           )}
         </article>
@@ -193,38 +195,38 @@ const InsightsPage = () => {
   return (
     <main className="pp-content" aria-labelledby="insights-page-title">
       <article className="pp-card">
-        <h1 id="insights-page-title" className="pp-title">{COPY.title}</h1>
+        <h1 id="insights-page-title" className="pp-title">{translations.insights_title}</h1>
 
         <div className="pp-tabs">
           <button
             type="button"
             className={`pp-tab pp-touch pp-focusable ${activeTab === 'progress' ? 'pp-tab-active' : ''}`}
-            aria-label={COPY.tabProgress}
+            aria-label={translations.insights_tabProgress}
             onClick={() => {
               setTab('progress');
             }}
           >
-            {COPY.tabProgress}
+            {translations.insights_tabProgress}
           </button>
           <button
             type="button"
             className={`pp-tab pp-touch pp-focusable ${activeTab === 'conversation-log' ? 'pp-tab-active' : ''}`}
-            aria-label={COPY.tabConversation}
+            aria-label={translations.insights_tabConversation}
             onClick={() => {
               setTab('conversation-log');
             }}
           >
-            {COPY.tabConversation}
+            {translations.insights_tabConversation}
           </button>
           <button
             type="button"
             className={`pp-tab pp-touch pp-focusable ${activeTab === 'badges' ? 'pp-tab-active' : ''}`}
-            aria-label={COPY.tabBadges}
+            aria-label={translations.insights_tabBadges}
             onClick={() => {
               setTab('badges');
             }}
           >
-            {COPY.tabBadges}
+            {translations.insights_tabBadges}
           </button>
         </div>
 
@@ -234,12 +236,12 @@ const InsightsPage = () => {
               <button
                 type="button"
                 className={`pp-tab pp-touch pp-focusable ${selectedSubject === 'all' ? 'pp-tab-active' : ''}`}
-                aria-label={COPY.allSubjects}
+                aria-label={translations.insights_allSubjects}
                 onClick={() => {
                   setSubjectFilter('all');
                 }}
               >
-                {COPY.allSubjects}
+                {translations.insights_allSubjects}
               </button>
 
               {progressSubjects.map((subject) => (
@@ -258,11 +260,11 @@ const InsightsPage = () => {
             </div>
 
             {progressQuery.isLoading ? (
-              <div className="pp-skeleton" style={{ height: 180 }} aria-label={COPY.loading} />
+              <div className="pp-skeleton" style={{ height: 180 }} aria-label={translations.insights_loading} />
             ) : progressQuery.error ? (
               <p className="pp-error" role="alert">{progressQuery.error.message}</p>
             ) : filteredProgressSubjects.length === 0 ? (
-              <p className="pp-empty">{COPY.noProgress}</p>
+              <p className="pp-empty">{translations.insights_noProgress}</p>
             ) : (
               <div style={{ display: 'grid', gap: '0.6rem' }}>
                 {filteredProgressSubjects.map((subject) => {
@@ -301,14 +303,14 @@ const InsightsPage = () => {
         {activeTab === 'conversation-log' && (
           <div style={{ display: 'grid', gap: '0.7rem' }}>
             {sessionsQuery.isLoading ? (
-              <div className="pp-skeleton" style={{ height: 220 }} aria-label={COPY.loading} />
+              <div className="pp-skeleton" style={{ height: 220 }} aria-label={translations.insights_loading} />
             ) : sessionsQuery.error ? (
               <p className="pp-error" role="alert">{sessionsQuery.error.message}</p>
             ) : (sessionsQuery.data?.sessions.length ?? 0) === 0 ? (
-              <p className="pp-empty">{COPY.noSessions}</p>
+              <p className="pp-empty">{translations.insights_noSessions}</p>
             ) : (
               <div className="pp-table-wrap">
-                <table className="pp-table" aria-label={COPY.tabConversation}>
+                <table className="pp-table" aria-label={translations.insights_tabConversation}>
                   <thead>
                     <tr>
                       <th>Date</th>
@@ -333,23 +335,23 @@ const InsightsPage = () => {
                               <button
                                 type="button"
                                 className="pp-button pp-touch pp-focusable"
-                                aria-label={expandedSessionId === session.session_id ? COPY.collapse : COPY.expand}
+                                aria-label={expandedSessionId === session.session_id ? translations.insights_collapse : translations.insights_expand}
                                 onClick={() => {
                                   void openSession(session.session_id);
                                 }}
                               >
-                                {expandedSessionId === session.session_id ? COPY.collapse : COPY.expand}
+                                {expandedSessionId === session.session_id ? translations.insights_collapse : translations.insights_expand}
                               </button>
 
                               <button
                                 type="button"
                                 className="pp-button pp-touch pp-focusable"
-                                aria-label={COPY.clearSession}
+                                aria-label={translations.insights_clearSession}
                                 onClick={() => {
                                   void clearSessionHistory(session.session_id);
                                 }}
                               >
-                                {COPY.clearSession}
+                                {translations.insights_clearSession}
                               </button>
                             </div>
                           </td>
@@ -359,7 +361,7 @@ const InsightsPage = () => {
                           <tr key={`${session.session_id}-expanded`}>
                             <td colSpan={6}>
                               {isMessagesLoading && !messageMap[session.session_id] ? (
-                                <p>{COPY.loadingMessages}</p>
+                                <p>{translations.insights_loadingMessages}</p>
                               ) : messageError ? (
                                 <p className="pp-error">{messageError}</p>
                               ) : (
@@ -388,23 +390,23 @@ const InsightsPage = () => {
               <button
                 type="button"
                 className="pp-button pp-touch pp-focusable"
-                aria-label={COPY.pagePrev}
+                aria-label={translations.insights_pagePrev}
                 disabled={sessionsPage <= 1}
                 onClick={() => {
                   setSessionsPage((current) => Math.max(1, current - 1));
                 }}
               >
-                {COPY.pagePrev}
+                {translations.insights_pagePrev}
               </button>
               <button
                 type="button"
                 className="pp-button pp-touch pp-focusable"
-                aria-label={COPY.pageNext}
+                aria-label={translations.insights_pageNext}
                 onClick={() => {
                   setSessionsPage((current) => current + 1);
                 }}
               >
-                {COPY.pageNext}
+                {translations.insights_pageNext}
               </button>
             </div>
           </div>
@@ -416,51 +418,51 @@ const InsightsPage = () => {
               <button
                 type="button"
                 className={`pp-tab pp-touch pp-focusable ${badgeCategoryFilter === 'all' ? 'pp-tab-active' : ''}`}
-                aria-label={COPY.categoryAll}
+                aria-label={translations.insights_categoryAll}
                 onClick={() => {
                   setBadgeCategoryFilter('all');
                 }}
               >
-                {COPY.categoryAll}
+                {translations.insights_categoryAll}
               </button>
               <button
                 type="button"
                 className={`pp-tab pp-touch pp-focusable ${badgeCategoryFilter === 'streak' ? 'pp-tab-active' : ''}`}
-                aria-label={COPY.categoryStreak}
+                aria-label={translations.insights_categoryStreak}
                 onClick={() => {
                   setBadgeCategoryFilter('streak');
                 }}
               >
-                {COPY.categoryStreak}
+                {translations.insights_categoryStreak}
               </button>
               <button
                 type="button"
                 className={`pp-tab pp-touch pp-focusable ${badgeCategoryFilter === 'mastery' ? 'pp-tab-active' : ''}`}
-                aria-label={COPY.categoryMastery}
+                aria-label={translations.insights_categoryMastery}
                 onClick={() => {
                   setBadgeCategoryFilter('mastery');
                 }}
               >
-                {COPY.categoryMastery}
+                {translations.insights_categoryMastery}
               </button>
               <button
                 type="button"
                 className={`pp-tab pp-touch pp-focusable ${badgeCategoryFilter === 'exploration' ? 'pp-tab-active' : ''}`}
-                aria-label={COPY.categoryExploration}
+                aria-label={translations.insights_categoryExploration}
                 onClick={() => {
                   setBadgeCategoryFilter('exploration');
                 }}
               >
-                {COPY.categoryExploration}
+                {translations.insights_categoryExploration}
               </button>
             </div>
 
             {badgesQuery.isLoading ? (
-              <div className="pp-skeleton" style={{ height: 220 }} aria-label={COPY.loading} />
+              <div className="pp-skeleton" style={{ height: 220 }} aria-label={translations.insights_loading} />
             ) : badgesQuery.error ? (
               <p className="pp-error" role="alert">{badgesQuery.error.message}</p>
             ) : filteredBadges.length === 0 ? (
-              <p className="pp-empty">{COPY.noBadges}</p>
+              <p className="pp-empty">{translations.insights_noBadges}</p>
             ) : (
               <div className="pp-badge-grid">
                 {filteredBadges.map((badge) => {
@@ -471,7 +473,7 @@ const InsightsPage = () => {
                       <p style={{ fontSize: '1.4rem' }} aria-hidden="true">{badge.icon}</p>
                       <p style={{ fontWeight: 700 }}>{badge.name}</p>
                       <p style={{ color: 'var(--pp-muted)' }}>{badge.description}</p>
-                      <p>{earned ? formatDate(badge.earned_at) : COPY.notEarned}</p>
+                      <p>{earned ? formatDate(badge.earned_at) : translations.insights_notEarned}</p>
                     </article>
                   );
                 })}

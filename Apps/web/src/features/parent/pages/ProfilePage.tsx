@@ -1,25 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMeSummaryQuery } from '../../auth';
 import { usePatchSettings } from '../api';
+import { useLanguage } from '../../../hooks/useLanguage';
 import { getCountryOptions } from '../../../utils/countries';
 import { ModernInput, ModernSelect } from '../../../components/ui/ModernInput';
 import '../../../styles/parent-portal.css';
-
-const COPY = {
-  title: 'Profile',
-  cancel: 'Cancel',
-  save: 'Save changes',
-  loading: 'Loading profile...',
-  saved: 'Profile updated',
-  saveFailed: 'Could not update profile.',
-  changeEmail: 'Change email',
-  profileUnsaved: 'You have unsaved profile changes.',
-  countryLabel: 'Country',
-  countrySearchPlaceholder: 'Search country...',
-  countrySearchHint: 'Type to search, then select from the list',
-  defaultLanguage: 'Default language',
-  retry: 'Retry',
-} as const;
 
 const LANGUAGE_OPTIONS = [
   { value: 'en', label: 'English' },
@@ -38,6 +23,7 @@ interface ProfileFormState {
 }
 
 const ProfilePage = () => {
+  const { translations } = useLanguage();
   const userQuery = useMeSummaryQuery();
   const patchSettings = usePatchSettings();
 
@@ -122,7 +108,7 @@ const ProfilePage = () => {
       }
 
       event.preventDefault();
-      event.returnValue = COPY.profileUnsaved;
+      event.returnValue = translations.profile_page_unsaved;
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);
@@ -141,9 +127,9 @@ const ProfilePage = () => {
       });
 
       setProfileDraft(null);
-      setToastMessage(COPY.saved);
+      setToastMessage(translations.profile_page_saved);
     } catch {
-      setToastMessage(patchSettings.error?.message ?? COPY.saveFailed);
+      setToastMessage(patchSettings.error?.message ?? translations.profile_page_save_failed);
     }
   };
 
@@ -186,7 +172,7 @@ const ProfilePage = () => {
 
   if (userQuery.isLoading) {
     return (
-      <main className="pp-content" aria-label={COPY.loading}>
+      <main className="pp-content" aria-label={translations.profile_page_loading}>
         <article className="pp-card">
           <div className="pp-skeleton" style={{ height: 220 }} />
         </article>
@@ -200,23 +186,23 @@ const ProfilePage = () => {
     return (
       <main className="pp-content">
         <article className="pp-card">
-          <h1 className="pp-title">{COPY.title}</h1>
+          <h1 className="pp-title">{translations.profile_page_title}</h1>
           <p className="pp-error" role="alert">
             {isAuthError && userQuery.error?.status === 403
               ? 'Access denied.'
-              : userQuery.error?.message ?? COPY.saveFailed}
+              : userQuery.error?.message ?? translations.profile_page_save_failed}
           </p>
           {!isAuthError && (
             <button
               type="button"
               className="pp-button pp-touch pp-focusable"
-              aria-label={COPY.retry}
+              aria-label={translations.profile_page_retry}
               disabled={userQuery.isFetching}
               onClick={() => {
                 void userQuery.refetch();
               }}
             >
-              {userQuery.isFetching ? COPY.loading : COPY.retry}
+              {userQuery.isFetching ? translations.profile_page_loading : translations.profile_page_retry}
             </button>
           )}
         </article>
@@ -227,7 +213,7 @@ const ProfilePage = () => {
   return (
     <main className="pp-content" aria-labelledby="profile-page-title">
       <article className="pp-card">
-        <h1 id="profile-page-title" className="pp-title">{COPY.title}</h1>
+        <h1 id="profile-page-title" className="pp-title">{translations.profile_page_title}</h1>
 
         <form
           className="pp-form-grid"
@@ -263,9 +249,9 @@ const ProfilePage = () => {
             <div ref={countrySelectorRef} style={{ position: 'relative' }}>
               <ModernInput
                 id="settings-country"
-                label={COPY.countryLabel}
-                placeholder={COPY.countrySearchPlaceholder}
-                hint={COPY.countrySearchHint}
+                label={translations.profile_page_country}
+                placeholder={translations.profile_page_country_search}
+                hint={translations.profile_page_country_hint}
                 value={countryInputValue}
                 onChange={(event) => handleCountrySearchChange(event.currentTarget.value)}
                 onFocus={handleCountryInputFocus}
@@ -275,7 +261,7 @@ const ProfilePage = () => {
                 <div
                   className="pp-country-dropdown"
                   role="listbox"
-                  aria-label={COPY.countryLabel}
+                  aria-label={translations.profile_page_country}
                   style={{
                     position: 'absolute',
                     top: '100%',
@@ -326,7 +312,7 @@ const ProfilePage = () => {
 
             <ModernSelect
               id="settings-default-language"
-              label={COPY.defaultLanguage}
+              label={translations.profile_page_default_language}
               value={profileForm.defaultLanguage}
               onChange={(event) => {
                 const defaultLanguage = event.currentTarget.value;
@@ -336,15 +322,15 @@ const ProfilePage = () => {
             />
           </div>
 
-          {isProfileDirty && <p className="pill-amber pp-pill">{COPY.profileUnsaved}</p>}
+          {isProfileDirty && <p className="pill-amber pp-pill">{translations.profile_page_unsaved}</p>}
 
           <button
             type="submit"
             className="pp-button pp-button-primary pp-touch pp-focusable"
-            aria-label={COPY.save}
+            aria-label={translations.profile_page_save}
             disabled={patchSettings.isPending}
           >
-            {patchSettings.isPending ? `${COPY.save}...` : COPY.save}
+            {patchSettings.isPending ? `${translations.profile_page_save}...` : translations.profile_page_save}
           </button>
         </form>
       </article>

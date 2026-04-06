@@ -3,15 +3,28 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useChildrenQuery, type ChildRecord } from '../api';
 import { AddChildModal } from '../components';
 import { useActiveChild } from '../hooks';
+import { useLanguage } from '../../../hooks/useLanguage';
 import { apiClient } from '../../../lib/api';
 import { queryKeys } from '../../../lib/queryKeys';
 import ModernSwitch from '../../../components/ui/ModernSwitch/ModernSwitch';
 import ChildProfileEditSheet from './ChildProfileEditSheet';
 import RemoveChildDialog from './RemoveChildDialog';
-import { COPY, SUBJECT_OPTIONS, WEEKDAY_KEYS, WEEKDAY_LABELS, AVATAR_OPTIONS, LANGUAGE_OPTIONS, PRESET_MINUTES, SLIDER_MIN, SLIDER_MAX, SLIDER_STEP, SUBJECT_META, type ChildProfilesTab, type ChildPatchPayload, type EditChildFormState, type SafetyFormState, toAge, normalizeSafetyForm } from './childProfilesData';
+import { SUBJECT_OPTIONS, WEEKDAY_KEYS, AVATAR_OPTIONS, LANGUAGE_OPTIONS, PRESET_MINUTES, SLIDER_MIN, SLIDER_MAX, SLIDER_STEP, SUBJECT_META, type ChildProfilesTab, type ChildPatchPayload, type EditChildFormState, type SafetyFormState, toAge, normalizeSafetyForm } from './childProfilesData';
 import '../../../styles/parent-portal.css';
+
+const getWeekdayLabels = (translations: any) => [
+  translations.monday || 'Mon',
+  translations.tuesday || 'Tue',
+  translations.wednesday || 'Wed',
+  translations.thursday || 'Thu',
+  translations.friday || 'Fri',
+  translations.saturday || 'Sat',
+  translations.sunday || 'Sun',
+];
+
 const ChildProfilesPage = () => {
   const queryClient = useQueryClient();
+  const { translations } = useLanguage();
   const childrenQuery = useChildrenQuery();
   const { activeChild, setActiveChildId } = useActiveChild();
   const [activeTab, setActiveTab] = useState<ChildProfilesTab>('all');
@@ -73,9 +86,9 @@ const ChildProfilesPage = () => {
       });
       await queryClient.invalidateQueries({ queryKey: queryKeys.children() });
       setEditForm(null);
-      setToastMessage(COPY.saveSuccess);
+      setToastMessage(translations.child_profiles_save_success);
     } catch {
-      setToastMessage(COPY.saveFailed);
+      setToastMessage(translations.child_profiles_save_failed);
     } finally {
       setIsSaving(false);
     }
@@ -89,9 +102,9 @@ const ChildProfilesPage = () => {
       await apiClient.delete(`/api/v1/children/${removeCandidate.child_id}`);
       await queryClient.invalidateQueries({ queryKey: queryKeys.children() });
       setRemoveCandidate(null);
-      setToastMessage(COPY.saveSuccess);
+      setToastMessage(translations.child_profiles_save_success);
     } catch {
-      setToastMessage(COPY.deleteFailed);
+      setToastMessage(translations.child_profiles_delete_failed);
     } finally {
       setIsSaving(false);
     }
@@ -127,7 +140,7 @@ const ChildProfilesPage = () => {
   );
   const saveSafetySettings = async (): Promise<void> => {
     if (!selectedChild) {
-      setToastMessage(COPY.noActiveChild);
+      setToastMessage(translations.child_profiles_no_active);
       return;
     }
     setIsSaving(true);
@@ -145,9 +158,9 @@ const ChildProfilesPage = () => {
         },
       });
       await queryClient.invalidateQueries({ queryKey: queryKeys.children() });
-      setToastMessage(COPY.saveSuccess);
+      setToastMessage(translations.child_profiles_save_success);
     } catch (err) {
-      setToastMessage(COPY.saveFailed);
+      setToastMessage(translations.child_profiles_save_failed);
       setSubmitError(err instanceof Error ? err.message : 'Failed to save safety settings');
     } finally {
       setIsSaving(false);
@@ -156,31 +169,31 @@ const ChildProfilesPage = () => {
   return (
     <main className="pp-content" aria-labelledby="child-profiles-title">
       <article className="pp-card">
-        <h1 id="child-profiles-title" className="pp-title">{COPY.title}</h1>
+        <h1 id="child-profiles-title" className="pp-title">{translations.child_profiles_title}</h1>
         <div className="pp-tabs">
           <button
             type="button"
             className={`pp-tab pp-touch pp-focusable ${activeTab === 'all' ? 'pp-tab-active' : ''}`}
-            aria-label={COPY.tabAll}
+            aria-label={translations.child_profiles_tab_all}
             onClick={() => {
               setActiveTab('all');
             }}
           >
-            {COPY.tabAll}
+            {translations.child_profiles_tab_all}
           </button>
           <button
             type="button"
             className={`pp-tab pp-touch pp-focusable ${activeTab === 'safety' ? 'pp-tab-active' : ''}`}
-            aria-label={COPY.tabSafety}
+            aria-label={translations.child_profiles_tab_safety}
             onClick={() => {
               setActiveTab('safety');
             }}
           >
-            {COPY.tabSafety}
+            {translations.child_profiles_tab_safety}
           </button>
         </div>
         {childrenQuery.isLoading ? (
-        <div className="pp-skeleton" style={{ marginTop: '0.8rem', height: 220 }} aria-label={COPY.loading} />
+        <div className="pp-skeleton" style={{ marginTop: '0.8rem', height: 220 }} aria-label={translations.child_profiles_loading} />
       ) : childrenQuery.error ? (
         <div role="alert" style={{ marginTop: '0.8rem' }}>
           <p className="pp-error">
@@ -192,20 +205,20 @@ const ChildProfilesPage = () => {
             <button
               type="button"
               className="pp-button pp-touch pp-focusable"
-              aria-label={COPY.retry}
+              aria-label={translations.child_profiles_retry}
               disabled={childrenQuery.isFetching}
               onClick={() => {
                 void childrenQuery.refetch();
               }}
             >
-              {childrenQuery.isFetching ? `${COPY.retry}...` : COPY.retry}
+              {childrenQuery.isFetching ? `${translations.child_profiles_retry}...` : translations.child_profiles_retry}
             </button>
           )}
         </div>
       ) : activeTab === 'all' ? (
         <div className="pp-grid-two">
           {children.length === 0 ? (
-            <article className="pp-empty">{COPY.noChildren}</article>
+            <article className="pp-empty">{translations.child_profiles_none}</article>
           ) : (
             children.map((child) => {
               const childAge = child.age ?? toAge(child.birth_date);
@@ -225,79 +238,79 @@ const ChildProfilesPage = () => {
                       </div>
                     </div>
                     <span className={`pp-pill ${child.is_active ? 'pill-green' : 'pill-gray'}`}>
-                      {child.is_active ? 'Active' : 'Inactive'}
+                      {child.is_active ? translations.child_profiles_active : translations.child_profiles_inactive}
                     </span>
                   </header>
                   <div className="pp-limit-pills">
-                    <span className="pp-pill pill-gray">{dailyLimit} min/day</span>
-                    <span className="pp-pill pill-gray">Voice {voiceEnabled ? 'On' : 'Off'}</span>
-                    <span className="pp-pill pill-gray">{subjectCount} subjects</span>
+                    <span className="pp-pill pill-gray">{dailyLimit} {translations.child_profiles_min_per_day}</span>
+                    <span className="pp-pill pill-gray">{translations.child_profiles_voice} {voiceEnabled ? translations.child_profiles_on : translations.child_profiles_off}</span>
+                    <span className="pp-pill pill-gray">{subjectCount} {translations.child_profiles_subjects_count}</span>
                   </div>
                   <div className="pp-profile-actions">
                     <button
                       type="button"
                       className="pp-button pp-touch pp-focusable"
-                      aria-label={`${COPY.edit} ${child.nickname}`}
+                      aria-label={`${translations.child_profiles_edit} ${child.nickname}`}
                       onClick={() => {
                         handleEditOpen(child);
                       }}
                     >
-                      {COPY.edit}
+                      {translations.child_profiles_edit}
                     </button>
                     <button
                       type="button"
                       className="pp-button pp-touch pp-focusable"
-                      aria-label={`${COPY.setLimits} ${child.nickname}`}
+                      aria-label={`${translations.child_profiles_set_limits} ${child.nickname}`}
                       onClick={() => {
                         setActiveChildId(child.child_id);
                         setActiveTab('safety');
                       }}
                     >
-                      {COPY.setLimits}
+                      {translations.child_profiles_set_limits}
                     </button>
                     <button
                       type="button"
                       className="pp-button pp-touch pp-focusable"
-                      aria-label={`${COPY.remove} ${child.nickname}`}
+                      aria-label={`${translations.child_profiles_remove} ${child.nickname}`}
                       onClick={() => {
                         setRemoveCandidate(child);
                       }}
                     >
-                      {COPY.remove}
+                      {translations.child_profiles_remove}
                     </button>
                   </div>
                 </div>
               );
             })
           )}
-          <div className="pp-card pp-profile-card" title={maxProfilesReached ? COPY.maxReached : COPY.addChild}>
-            <h2 className="pp-title">{COPY.addChild}</h2>
+          <div className="pp-card pp-profile-card" title={maxProfilesReached ? translations.child_profiles_max_reached : translations.child_profiles_add}>
+            <h2 className="pp-title">{translations.child_profiles_add}</h2>
             <p style={{ color: 'var(--pp-muted)' }}>
-              {maxProfilesReached ? COPY.maxReached : COPY.addFirstChild}
+              {maxProfilesReached ? translations.child_profiles_max_reached : translations.child_profiles_add_first}
             </p>
             {maxProfilesReached ? (
               <button
                 type="button"
                 className="pp-button pp-touch"
                 disabled
-                aria-label={COPY.maxReached}
+                aria-label={translations.child_profiles_max_reached}
               >
-                {COPY.maxReached}
+                {translations.child_profiles_max_reached}
               </button>
             ) : (
               <button
                 type="button"
                 className="pp-button pp-button-primary pp-touch pp-focusable"
-                aria-label={COPY.addChild}
+                aria-label={translations.child_profiles_add}
                 onClick={() => setIsAddChildModalOpen(true)}
               >
-                {COPY.addChild}
+                {translations.child_profiles_add}
               </button>
             )}
           </div>
         </div>
       ) : !selectedChild ? (
-        <p className="pp-empty">{COPY.noActiveChild}</p>
+        <p className="pp-empty">{translations.child_profiles_no_active}</p>
       ) : (
         <form
           className="pp-safety-form"
@@ -308,7 +321,7 @@ const ChildProfilesPage = () => {
         >
           {/* Daily Limit Section */}
           <div className="pp-safety-section">
-            <span className="pp-safety-section-label">{COPY.dailyLimit}</span>
+            <span className="pp-safety-section-label">{translations.child_profiles_daily_limit}</span>
             <div className="pp-safety-slider" style={{ '--safety-slider-fill': `${((safetyForm.dailyLimitMinutes - SLIDER_MIN) / (SLIDER_MAX - SLIDER_MIN)) * 100}%` } as React.CSSProperties}>
               <input
                 id="daily-limit-slider"
@@ -316,7 +329,7 @@ const ChildProfilesPage = () => {
                 min={SLIDER_MIN}
                 max={SLIDER_MAX}
                 step={SLIDER_STEP}
-                aria-label={COPY.dailyLimit}
+                aria-label={translations.child_profiles_daily_limit}
                 aria-valuetext={`${safetyForm.dailyLimitMinutes} min`}
                 value={safetyForm.dailyLimitMinutes}
                 onChange={(event) => {
@@ -342,9 +355,9 @@ const ChildProfilesPage = () => {
                 </button>
               ))}
             </div>
-            <span className="pp-safety-section-label" style={{ marginTop: '0.75rem' }}>{COPY.allowedWeekdays}</span>
-            <div className="pp-safety-chips" role="group" aria-label={COPY.allowedWeekdays}>
-              {WEEKDAY_LABELS.map((dayLabel, index) => {
+            <span className="pp-safety-section-label" style={{ marginTop: '0.75rem' }}>{translations.child_profiles_allowed_weekdays}</span>
+            <div className="pp-safety-chips" role="group" aria-label={translations.child_profiles_allowed_weekdays}>
+              {getWeekdayLabels(translations).map((dayLabel, index) => {
                 const weekdayKey = WEEKDAY_KEYS[index];
                 const isActive = safetyForm.allowedWeekdays.includes(weekdayKey);
                 return (
@@ -364,8 +377,8 @@ const ChildProfilesPage = () => {
           <hr className="pp-safety-divider" />
           {/* Subjects Section */}
           <div className="pp-safety-section">
-            <span className="pp-safety-section-label">{COPY.allowedSubjects}</span>
-            <div className="pp-safety-chips" role="group" aria-label={COPY.allowedSubjects}>
+            <span className="pp-safety-section-label">{translations.child_profiles_allowed_subjects}</span>
+            <div className="pp-safety-chips" role="group" aria-label={translations.child_profiles_allowed_subjects}>
               {SUBJECT_OPTIONS.map((subjectId) => {
                 const meta = SUBJECT_META[subjectId];
                 const isActive = safetyForm.allowedSubjects.includes(subjectId);
@@ -389,7 +402,7 @@ const ChildProfilesPage = () => {
           <div className="pp-safety-section">
             <div className="pp-safety-toggle">
               <div className="pp-safety-toggle-label">
-                <span className="pp-safety-toggle-text">{COPY.voiceEnabled}</span>
+                <span className="pp-safety-toggle-text">{translations.child_profiles_voice_enabled}</span>
               </div>
               <ModernSwitch
                 checked={safetyForm.enableVoice}
@@ -399,20 +412,20 @@ const ChildProfilesPage = () => {
                     return { ...current, enableVoice: next, storeAudioHistory: next ? current.storeAudioHistory : false };
                   });
                 }}
-                ariaLabel={COPY.voiceEnabled}
+                ariaLabel={translations.child_profiles_voice_enabled}
               />
             </div>
             {safetyForm.enableVoice && (
               <div className="pp-safety-toggle">
                 <div className="pp-safety-toggle-label">
-                  <span className="pp-safety-toggle-text">{COPY.storeAudio}</span>
+                  <span className="pp-safety-toggle-text">{translations.child_profiles_store_audio}</span>
                 </div>
                 <ModernSwitch
                   checked={safetyForm.storeAudioHistory}
                   onChange={() => {
                     setSafetyForm((current) => ({ ...current, storeAudioHistory: !current.storeAudioHistory }));
                   }}
-                  ariaLabel={COPY.storeAudio}
+                  ariaLabel={translations.child_profiles_store_audio}
                 />
               </div>
             )}
@@ -424,10 +437,10 @@ const ChildProfilesPage = () => {
           <button
             type="submit"
             className="pp-button pp-button-primary pp-touch pp-focusable pp-safety-save"
-            aria-label={COPY.save}
+            aria-label={translations.child_profiles_save}
             disabled={isSaving}
           >
-            {isSaving ? `${COPY.save}...` : COPY.save}
+            {isSaving ? `${translations.child_profiles_save}...` : translations.child_profiles_save}
           </button>
         </form>
       )}
@@ -437,9 +450,9 @@ const ChildProfilesPage = () => {
           languageOptions={LANGUAGE_OPTIONS}
           avatarOptions={AVATAR_OPTIONS}
           isSaving={isSaving}
-          saveLabel={COPY.save}
-          cancelLabel={COPY.cancel}
-          editLabel={COPY.edit}
+          saveLabel={translations.child_profiles_save}
+          cancelLabel={translations.child_profiles_cancel}
+          editLabel={translations.child_profiles_edit}
           onClose={() => {
             setEditForm(null);
           }}
@@ -458,11 +471,11 @@ const ChildProfilesPage = () => {
       )}
       {removeCandidate && (
         <RemoveChildDialog
-          title={COPY.deleteTitle}
-          description={COPY.deleteDescription}
+          title={translations.child_profiles_delete_title}
+          description={translations.child_profiles_delete_desc}
           candidateName={removeCandidate.nickname}
-          cancelLabel={COPY.cancel}
-          confirmLabel={COPY.deleteConfirm}
+          cancelLabel={translations.child_profiles_cancel}
+          confirmLabel={translations.child_profiles_delete_confirm}
           isSaving={isSaving}
           onCancel={() => {
             setRemoveCandidate(null);

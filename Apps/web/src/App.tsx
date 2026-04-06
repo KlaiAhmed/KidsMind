@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import { BrowserRouter } from 'react-router-dom';
 import { useMeSummaryQuery } from './features/auth';
 import { useReducedMotionPreference } from './hooks/useReducedMotionPreference';
+import { LanguageProvider } from './contexts/LanguageContext';
 import AppErrorBoundary from './components/layout/AppErrorBoundary/AppErrorBoundary';
 import { AppRoutes } from './routes';
 
@@ -11,8 +12,9 @@ const App = () => {
 
   return (
     <BrowserRouter>
-      <AppErrorBoundary>
-        <Suspense
+      <LanguageProvider>
+        <AppErrorBoundary>
+          <Suspense
           fallback={
             <div
               style={{
@@ -42,7 +44,8 @@ const App = () => {
           <AppRoutes isAuthenticated={isAuthenticated} isLoading={isLoading} />
         </Suspense>
       </AppErrorBoundary>
-    </BrowserRouter>
+    </LanguageProvider>
+  </BrowserRouter>
   );
 };
 
