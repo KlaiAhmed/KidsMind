@@ -1,11 +1,10 @@
 import { useEffect } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Text } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { Colors, Gradients, Sizing, Spacing, Typography } from '@/constants/theme';
-import { Text } from 'react-native';
 
 export default function SplashScreen() {
   const router = useRouter();

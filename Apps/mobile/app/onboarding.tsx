@@ -12,7 +12,7 @@ import {
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Colors, Spacing, Radii, Sizing, Typography, Shadows } from '@/constants/theme';
+import { Colors, Spacing, Sizing, Typography, Shadows } from '@/constants/theme';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -143,7 +143,7 @@ export default function OnboardingScreen() {
       {/* Footer pills */}
       <View style={styles.footer}>
         <Text style={styles.footerText}>
-          Secure{'  '}\u2022{'  '}Educational{'  '}\u2022{'  '}AI-Powered
+          Secure{'  '}•{'  '}Educational{'  '}•{'  '}AI-Powered
         </Text>
       </View>
     </SafeAreaView>
@@ -187,6 +187,7 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: Colors.surface,
+    paddingTop: Spacing.md,
   },
   skipButton: {
     position: 'absolute',
