@@ -3,10 +3,12 @@ import {
   useContext,
   useState,
   useCallback,
+  useEffect,
   type ReactNode,
 } from 'react';
 import { Colors } from '@/constants/theme';
 import type {
+  AgeGroup,
   AvatarOption,
   ChildProfile,
   RecentActivity,
@@ -43,9 +45,19 @@ interface SaveChildProfileInput {
   streakDays: number;
   dailyGoalMinutes: number;
   dailyCompletedMinutes: number;
+  gradeLevel?: string;
+  languages?: string[];
+  settingsJson?: Record<string, unknown>;
+  xp?: number;
+  level?: number;
+  xpToNextLevel?: number;
+  totalSubjectsExplored?: number;
+  totalExercisesCompleted?: number;
+  totalBadgesEarned?: number;
 }
 
 interface AuthState {
+  authResolved: boolean;
   user: User | null;
   loading: boolean;
   error: string | null;
@@ -80,6 +92,72 @@ function minutesAgo(minutes: number): string {
 
 function hoursAgo(hours: number): string {
   return new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+}
+
+function getAgeGroup(age: number): AgeGroup {
+  if (age <= 6) {
+    return '3-6';
+  }
+
+  if (age <= 11) {
+    return '7-11';
+  }
+
+  return '12-15';
+}
+
+function getGradeLevel(age: number): string {
+  if (age <= 5) {
+    return 'Kindergarten';
+  }
+
+  if (age <= 6) {
+    return 'Grade 1';
+  }
+
+  if (age <= 7) {
+    return 'Grade 2';
+  }
+
+  if (age <= 8) {
+    return 'Grade 3';
+  }
+
+  if (age <= 9) {
+    return 'Grade 4';
+  }
+
+  if (age <= 10) {
+    return 'Grade 5';
+  }
+
+  if (age <= 11) {
+    return 'Grade 6';
+  }
+
+  if (age <= 12) {
+    return 'Grade 7';
+  }
+
+  if (age <= 13) {
+    return 'Grade 8';
+  }
+
+  if (age <= 14) {
+    return 'Grade 9';
+  }
+
+  return 'Grade 10';
+}
+
+function buildLevelProgress(xp: number): { level: number; xpToNextLevel: number } {
+  const normalizedXp = Math.max(0, Math.floor(xp));
+  const level = Math.floor(normalizedXp / 100) + 1;
+
+  return {
+    level,
+    xpToNextLevel: level * 100,
+  };
 }
 
 const AVATAR_OPTIONS: AvatarOption[] = [
@@ -281,6 +359,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const seededSubjects = buildSubjects(seededTopics);
 
   const [state, setState] = useState<AuthState>({
+    authResolved: false,
     user: null,
     loading: false,
     error: null,
@@ -292,6 +371,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     avatars: AVATAR_OPTIONS,
     recentActivity: buildRecentActivity(seededTopics),
   });
+
+  useEffect(() => {
+    let active = true;
+
+    async function bootstrapAuthState() {
+      try {
+        // Reserved for persisted session/profile hydration.
+        await Promise.resolve();
+      } finally {
+        if (active) {
+          setState((current) => ({
+            ...current,
+            authResolved: true,
+          }));
+        }
+      }
+    }
+
+    void bootstrapAuthState();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const login = useCallback(async (values: LoginFormValues) => {
     setState((s) => ({ ...s, loading: true, error: null }));
@@ -347,8 +450,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState((prev) => ({
       ...prev,
       user: null,
+      childProfile: null,
       loading: false,
       error: null,
+      childDataError: null,
     }));
   }, []);
 
@@ -358,15 +463,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const saveChildProfile = useCallback((profile: SaveChildProfileInput) => {
     setState((current) => {
+      const completedTopicCount = current.topics.filter((topic) => topic.isCompleted).length;
+      const totalXp = profile.xp ?? current.childProfile?.xp ?? completedTopicCount * 25;
+      const progression = buildLevelProgress(totalXp);
+      const totalExercisesCompleted = profile.totalExercisesCompleted ?? completedTopicCount;
+
       const nextProfile: ChildProfile = {
         id: profile.id ?? current.childProfile?.id ?? 'child-1',
         name: profile.name,
+        nickname: profile.name,
         age: profile.age,
+        ageGroup: getAgeGroup(profile.age),
+        gradeLevel: profile.gradeLevel ?? getGradeLevel(profile.age),
+        languages: profile.languages ?? current.childProfile?.languages ?? ['en'],
+        settingsJson:
+          profile.settingsJson ?? current.childProfile?.settingsJson ?? { daily_limit_minutes: 20 },
         avatarId: profile.avatarId,
         subjectIds: profile.subjectIds,
+        xp: totalXp,
+        level: profile.level ?? progression.level,
+        xpToNextLevel: profile.xpToNextLevel ?? progression.xpToNextLevel,
         streakDays: profile.streakDays,
         dailyGoalMinutes: profile.dailyGoalMinutes,
         dailyCompletedMinutes: profile.dailyCompletedMinutes,
+        totalSubjectsExplored: profile.totalSubjectsExplored ?? profile.subjectIds.length,
+        totalExercisesCompleted,
+        totalBadgesEarned:
+          profile.totalBadgesEarned ??
+          current.childProfile?.totalBadgesEarned ??
+          Math.floor(totalExercisesCompleted / 2),
       };
 
       return {
@@ -474,6 +599,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             ...current.childProfile,
             dailyCompletedMinutes:
               current.childProfile.dailyCompletedMinutes + targetTopic.duration,
+            xp: current.childProfile.xp + 25,
+            ...buildLevelProgress(current.childProfile.xp + 25),
+            totalExercisesCompleted: current.childProfile.totalExercisesCompleted + 1,
+            totalSubjectsExplored: current.childProfile.subjectIds.length,
+            totalBadgesEarned: Math.max(
+              current.childProfile.totalBadgesEarned,
+              Math.floor((current.childProfile.totalExercisesCompleted + 1) / 2)
+            ),
           }
         : current.childProfile;
 

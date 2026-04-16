@@ -60,10 +60,22 @@ export default function ChildProfileWizard() {
   const [wizard, setWizard] = useState<WizardState>(initialWizardState);
   const [direction, setDirection] = useState<Direction>('forward');
   const [nameError, setNameError] = useState<string | undefined>();
+  const [isCompletingSetup, setIsCompletingSetup] = useState(false);
 
   useEffect(() => {
     setWizard(initialWizardState);
   }, [initialWizardState]);
+
+  useEffect(() => {
+    if (isEditMode || !isCompletingSetup) {
+      return;
+    }
+
+    if (profile) {
+      router.replace('/(tabs)' as never);
+      setIsCompletingSetup(false);
+    }
+  }, [isCompletingSetup, isEditMode, profile, router]);
 
   const selectedSubjectNames = useMemo(
     () =>
@@ -74,6 +86,7 @@ export default function ChildProfileWizard() {
   );
 
   const nextDisabled =
+    isCompletingSetup ||
     (wizard.step === 1 && !isNameValid(wizard.childName)) ||
     (wizard.step === 2 && wizard.age === null) ||
     (wizard.step === 4 && wizard.selectedSubjectIds.length === 0);
@@ -120,8 +133,18 @@ export default function ChildProfileWizard() {
     }
 
     if (wizard.step === 5) {
+      if (isCompletingSetup) {
+        return;
+      }
+
       saveWizardState(wizard);
-      router.replace('/(tabs)' as never);
+
+      if (isEditMode) {
+        router.replace('/(tabs)/profile' as never);
+      } else {
+        setIsCompletingSetup(true);
+      }
+
       return;
     }
 
@@ -291,6 +314,7 @@ export default function ChildProfileWizard() {
 
         <PrimaryButton
           label={nextLabel}
+          loading={isCompletingSetup}
           disabled={nextDisabled}
           onPress={handleNext}
           style={styles.nextButton}

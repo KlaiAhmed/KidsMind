@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { getChildProfile } from '@/services/childService';
 import type { AvatarOption, ChildProfile, WizardState } from '@/types/child';
 
 const DEFAULT_AVATAR_ID = 'avatar-1';
@@ -28,8 +29,11 @@ export function useChildProfile() {
   const {
     childProfile,
     avatars,
+    childDataLoading,
+    childDataError,
     saveChildProfile,
     updateChildProfile,
+    refreshChildData,
   } = useAuth();
 
   const hasCompletedProfile = Boolean(childProfile);
@@ -50,16 +54,42 @@ export function useChildProfile() {
       streakDays: childProfile?.streakDays ?? 3,
       dailyGoalMinutes: childProfile?.dailyGoalMinutes ?? 25,
       dailyCompletedMinutes: childProfile?.dailyCompletedMinutes ?? 12,
+      xp: childProfile?.xp ?? 80,
+      level: childProfile?.level ?? 1,
+      xpToNextLevel: childProfile?.xpToNextLevel ?? 100,
+      gradeLevel: childProfile?.gradeLevel,
+      languages: childProfile?.languages,
+      settingsJson: childProfile?.settingsJson,
+      totalSubjectsExplored: childProfile?.totalSubjectsExplored,
+      totalExercisesCompleted: childProfile?.totalExercisesCompleted,
+      totalBadgesEarned: childProfile?.totalBadgesEarned,
     });
+  }
+
+  async function refreshProfileFromApi(): Promise<void> {
+    if (!childProfile?.id) {
+      return;
+    }
+
+    try {
+      const serverProfile = await getChildProfile(childProfile.id);
+      const { id: _id, ...updates } = serverProfile;
+      updateChildProfile(updates);
+    } catch {
+      await refreshChildData();
+    }
   }
 
   return {
     profile: childProfile,
     avatars,
     hasCompletedProfile,
+    isLoading: childDataLoading,
+    error: childDataError,
     initialWizardState,
     getAvatarById,
     saveWizardState,
+    refreshProfileFromApi,
     updateProfile: updateChildProfile,
   };
 }

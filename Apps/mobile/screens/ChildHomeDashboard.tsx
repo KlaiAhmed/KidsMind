@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
 import { useChildProfile } from '@/hooks/useChildProfile';
 import { useSubjects } from '@/hooks/useSubjects';
@@ -80,6 +81,14 @@ function DashboardSkeleton() {
   );
 }
 
+interface DashboardQuickAction {
+  id: string;
+  label: string;
+  subtitle: string;
+  iconName: keyof typeof MaterialCommunityIcons.glyphMap;
+  onPress: () => void;
+}
+
 export default function ChildHomeDashboard() {
   const router = useRouter();
   const { profile, getAvatarById } = useChildProfile();
@@ -135,8 +144,8 @@ export default function ChildHomeDashboard() {
     }
   }
 
-  function goToWizardEditMode() {
-    router.push('/(auth)/child-profile-wizard?mode=edit' as never);
+  function goToProfileHub() {
+    router.push('/(tabs)/profile' as never);
   }
 
   function openSubject(subjectId: string) {
@@ -148,6 +157,38 @@ export default function ChildHomeDashboard() {
     markSubjectAccess(subjectId);
     router.push(`/(tabs)/explore?subjectId=${subjectId}&topicId=${topicId}` as never);
   }
+
+  function openBadgeGallery() {
+    router.push('/badges' as never);
+  }
+
+  function openChat() {
+    router.push('/(tabs)/chat' as never);
+  }
+
+  const quickActions: DashboardQuickAction[] = [
+    {
+      id: 'profile',
+      label: 'Profile Hub',
+      subtitle: 'View avatar, level, and XP',
+      iconName: 'account-circle-outline',
+      onPress: goToProfileHub,
+    },
+    {
+      id: 'badges',
+      label: 'Badge Gallery',
+      subtitle: 'Celebrate achievements',
+      iconName: 'medal-outline',
+      onPress: openBadgeGallery,
+    },
+    {
+      id: 'chat',
+      label: 'AI Chat',
+      subtitle: 'Ask your learning helper',
+      iconName: 'robot-happy-outline',
+      onPress: openChat,
+    },
+  ];
 
   if (isInitialLoading) {
     return (
@@ -168,7 +209,7 @@ export default function ChildHomeDashboard() {
             <GreetingHero
               childName={profile?.name ?? 'Explorer'}
               avatarSource={avatarSource}
-              onAvatarPress={goToWizardEditMode}
+              onAvatarPress={goToProfileHub}
             />
 
             <View style={styles.metricsRow}>
@@ -189,6 +230,25 @@ export default function ChildHomeDashboard() {
                   </Text>
                 </View>
               </View>
+            </View>
+
+            <View style={styles.quickActionsRow}>
+              {quickActions.map((action) => (
+                <Pressable
+                  key={action.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={action.label}
+                  onPress={action.onPress}
+                  style={({ pressed }) => [
+                    styles.quickActionCard,
+                    pressed ? styles.quickActionCardPressed : null,
+                  ]}
+                >
+                  <MaterialCommunityIcons name={action.iconName} size={22} color={Colors.primary} />
+                  <Text style={styles.quickActionTitle}>{action.label}</Text>
+                  <Text style={styles.quickActionSubtitle}>{action.subtitle}</Text>
+                </Pressable>
+              ))}
             </View>
 
             <View style={styles.sectionHeader}>
@@ -300,6 +360,32 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
   supportBody: {
+    ...Typography.caption,
+    color: Colors.textSecondary,
+  },
+  quickActionsRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  quickActionCard: {
+    flex: 1,
+    borderRadius: Radii.lg,
+    borderWidth: 1,
+    borderColor: Colors.outline,
+    backgroundColor: Colors.surfaceContainerLowest,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.sm,
+    gap: Spacing.xs,
+    minHeight: 56,
+  },
+  quickActionCardPressed: {
+    transform: [{ scale: 0.98 }],
+  },
+  quickActionTitle: {
+    ...Typography.captionMedium,
+    color: Colors.text,
+  },
+  quickActionSubtitle: {
     ...Typography.caption,
     color: Colors.textSecondary,
   },

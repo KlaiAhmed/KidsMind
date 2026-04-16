@@ -25,29 +25,49 @@ import { Colors } from '@/constants/theme';
 SplashScreen.preventAutoHideAsync();
 
 function RootNavigator() {
-  const { user, childProfile } = useAuth();
+  const { authResolved, user, childProfile } = useAuth();
   const router = useRouter();
   const rootNavigationState = useRootNavigationState();
   const segments = useSegments();
 
   useEffect(() => {
+    if (!authResolved) return;
     if (!rootNavigationState?.key) return; // Wait for navigation readiness
 
-    if (user) {
-      const inTabs = segments[0] === '(tabs)';
-      const inWizard = segments[0] === '(auth)' && segments[1] === 'child-profile-wizard';
+    const currentSegment = String(segments[0] ?? '');
+    const inAuthGroup = segments[0] === '(auth)';
+    const inTabs = segments[0] === '(tabs)';
+    const inWizard = inAuthGroup && segments[1] === 'child-profile-wizard';
+    const inBadges = currentSegment === 'badges';
+    const inModal = currentSegment === 'modal';
+    const inProtectedRoute = inTabs || inBadges || inWizard;
 
-      if (!childProfile && !inWizard) {
-        router.replace('/(auth)/child-profile-wizard' as never);
-        return;
+    if (!user) {
+      if (inProtectedRoute) {
+        router.replace('/splash' as never);
       }
-
-      if (childProfile && !inTabs) {
-        router.replace('/(tabs)' as never);
-      }
+      return;
     }
-    // If not authenticated, stay on current route (splash → onboarding → login)
-  }, [user, childProfile, rootNavigationState?.key, router, segments]);
+
+    if (!childProfile) {
+      if (!inWizard) {
+        router.replace('/(auth)/child-profile-wizard' as never);
+      }
+      return;
+    }
+
+    if (!inTabs && !inWizard && !inBadges && !inModal) {
+      router.replace('/(tabs)' as never);
+    }
+  }, [authResolved, user, childProfile, rootNavigationState?.key, router, segments]);
+
+  if (!authResolved) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    );
+  }
 
   return (
     <Stack>
@@ -55,6 +75,7 @@ function RootNavigator() {
       <Stack.Screen name="onboarding" options={{ headerShown: false }} />
       <Stack.Screen name="(auth)" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="badges" options={{ headerShown: false }} />
       <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
     </Stack>
   );

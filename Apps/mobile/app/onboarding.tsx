@@ -187,7 +187,6 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: Colors.surface,
-    paddingTop: Spacing.md,
   },
   skipButton: {
     position: 'absolute',

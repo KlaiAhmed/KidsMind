@@ -9,7 +9,7 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
@@ -47,6 +47,7 @@ function subjectMatchesFilter(subject: Subject, filter: TopicFilter): boolean {
 }
 
 export default function SubjectTopicBrowser() {
+  const router = useRouter();
   const params = useLocalSearchParams<{
     subjectId?: string;
     topicId?: string;
@@ -115,7 +116,14 @@ export default function SubjectTopicBrowser() {
 
   function handleTopicPress(topicId: string, subjectId: string) {
     markSubjectAccess(subjectId);
-    console.log(`Open lesson for topic: ${topicId}`);
+    const subjectName = getSubjectById(subjectId)?.title;
+    const query = [`subjectId=${subjectId}`, `topicId=${topicId}`];
+
+    if (subjectName) {
+      query.push(`subjectName=${encodeURIComponent(subjectName)}`);
+    }
+
+    router.push(`/(tabs)/chat?${query.join('&')}` as never);
   }
 
   function handleBackToSubjects() {

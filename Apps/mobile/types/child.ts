@@ -6,15 +6,28 @@ export type TopicFilter = 'all' | 'inProgress' | 'completed' | 'new';
 
 export type TopicDifficulty = 'easy' | 'medium' | 'hard';
 
+export type AgeGroup = '3-6' | '7-11' | '12-15';
+
 export interface ChildProfile {
   id: string;
   name: string;
+  nickname?: string;
   age: number;
+  ageGroup: AgeGroup;
+  gradeLevel: string;
+  languages: string[];
+  settingsJson: Record<string, unknown>;
   avatarId: string;
   subjectIds: string[];
+  xp: number;
+  xpToNextLevel: number;
+  level: number;
   streakDays: number;
   dailyGoalMinutes: number;
   dailyCompletedMinutes: number;
+  totalSubjectsExplored: number;
+  totalExercisesCompleted: number;
+  totalBadgesEarned: number;
 }
 
 export interface Subject {
