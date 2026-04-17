@@ -318,7 +318,15 @@ export default function ChildProfileWizard() {
         <View style={styles.wizardBody}>
           <WizardStepIndicator step={wizard.step} totalSteps={5} />
 
-          <Animated.View key={wizard.step} entering={entering} exiting={exiting} style={styles.stepCard}>
+          <Animated.View
+            key={wizard.step}
+            entering={entering}
+            exiting={exiting}
+            style={[
+              styles.stepCard,
+              wizard.step === 1 ? styles.stepCardStepOne : null,
+            ]}
+          >
             {wizard.step === 3 || wizard.step === 4 ? (
               <View style={styles.stepContent}>{renderStepContent()}</View>
             ) : (
@@ -397,6 +405,9 @@ const styles = StyleSheet.create({
     borderColor: Colors.outline,
     backgroundColor: Colors.surfaceContainerLowest,
     padding: Spacing.md,
+  },
+  stepCardStepOne: {
+    marginTop: Spacing.lg,
   },
   stepScrollView: {
     flex: 1,
