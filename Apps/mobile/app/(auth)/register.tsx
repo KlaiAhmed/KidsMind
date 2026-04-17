@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -16,14 +16,22 @@ import { z } from 'zod/v4';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Colors, Spacing, Radii, Shadows, Typography } from '@/constants/theme';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
+import { CountryPickerField } from '@/components/ui/CountryPickerField';
 import { FormTextInput } from '@/components/ui/FormTextInput';
 import { PasswordInput } from '@/components/ui/PasswordInput';
 import { useAuth } from '@/contexts/AuthContext';
+import {
+  COMMON_COUNTRY_CODES,
+  detectCountryByIp,
+  getCountryOptions,
+  type CountryOption,
+} from '@/services/countryService';
 
 const registerSchema = z
   .object({
     fullName: z.string().min(2, 'Name must be at least 2 characters'),
     email: z.email('Please enter a valid email'),
+    countryCode: z.string().regex(/^[A-Z]{2}$/, 'Please select your country/region'),
     password: z.string().min(8, 'Password must be at least 8 characters'),
     confirmPassword: z.string().min(8, 'Please confirm your password'),
     agreeToTerms: z.literal(true, {
@@ -57,10 +65,15 @@ export default function RegisterScreen() {
   const router = useRouter();
   const { register, loading, error } = useAuth();
   const [apiError, setApiError] = useState<string | null>(null);
+  const [countries, setCountries] = useState<CountryOption[]>([]);
+  const [countryLoading, setCountryLoading] = useState(true);
+  const [countryDetectionMessage, setCountryDetectionMessage] = useState<string | null>(null);
 
   const {
     control,
     handleSubmit,
+    getValues,
+    setValue,
     watch,
     formState: { errors },
   } = useForm<RegisterFormData>({
@@ -68,19 +81,72 @@ export default function RegisterScreen() {
     defaultValues: {
       fullName: '',
       email: '',
+      countryCode: '',
       password: '',
       confirmPassword: '',
+      agreeToTerms: false,
     },
   });
 
   const passwordValue = watch('password');
   const strength = useMemo(() => getPasswordStrength(passwordValue), [passwordValue]);
+  const countryHelperText = countryDetectionMessage
+    ?? 'Search by country name or ISO alpha-2 code.';
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function bootstrapCountryField() {
+      setCountryLoading(true);
+
+      try {
+        const [availableCountries, detectedCountry] = await Promise.all([
+          getCountryOptions(),
+          detectCountryByIp(),
+        ]);
+
+        if (!isMounted) {
+          return;
+        }
+
+        setCountries(availableCountries);
+
+        const currentCountryCode = getValues('countryCode').trim().toUpperCase();
+
+        if (!currentCountryCode && detectedCountry) {
+          const matchedCountry = availableCountries.find(
+            (country) => country.code === detectedCountry.code
+          );
+
+          setValue('countryCode', detectedCountry.code, {
+            shouldValidate: true,
+            shouldDirty: false,
+            shouldTouch: false,
+          });
+
+          const detectedCountryName = matchedCountry?.name || detectedCountry.name || detectedCountry.code;
+          setCountryDetectionMessage(`We've detected you're in ${detectedCountryName}. Is this correct?`);
+        }
+      } finally {
+        if (isMounted) {
+          setCountryLoading(false);
+        }
+      }
+    }
+
+    void bootstrapCountryField();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [getValues, setValue]);
 
   async function onSubmit(data: RegisterFormData) {
     setApiError(null);
     await register({
       fullName: data.fullName,
       email: data.email,
+      countryCode: data.countryCode,
       password: data.password,
       confirmPassword: data.confirmPassword,
     });
@@ -189,6 +255,26 @@ export default function RegisterScreen() {
                       color={Colors.placeholder}
                     />
                   }
+                />
+              )}
+            />
+
+            <Controller
+              control={control}
+              name="countryCode"
+              render={({ field: { onChange, value } }) => (
+                <CountryPickerField
+                  label="Country/Region"
+                  value={value}
+                  countries={countries}
+                  commonCountryCodes={COMMON_COUNTRY_CODES}
+                  loading={countryLoading}
+                  helperText={countryHelperText}
+                  error={errors.countryCode?.message}
+                  onChange={(nextCountryCode) => {
+                    onChange(nextCountryCode);
+                    setCountryDetectionMessage(null);
+                  }}
                 />
               )}
             />

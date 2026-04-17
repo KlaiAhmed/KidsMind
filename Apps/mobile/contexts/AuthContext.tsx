@@ -32,6 +32,7 @@ export interface LoginFormValues {
 export interface RegisterFormValues {
   fullName: string;
   email: string;
+  countryCode: string;
   password: string;
   confirmPassword: string;
 }
