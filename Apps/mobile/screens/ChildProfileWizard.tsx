@@ -92,6 +92,7 @@ export default function ChildProfileWizard() {
     (wizard.step === 4 && wizard.selectedSubjectIds.length === 0);
 
   const nextLabel = wizard.step === 5 ? 'Start Learning' : 'Next';
+  const showBackButton = isEditMode || wizard.step > 1;
 
   function moveToStep(step: WizardState['step']) {
     setWizard((current) => ({
@@ -175,14 +176,18 @@ export default function ChildProfileWizard() {
         style={styles.keyboardAvoid}
       >
         <View style={styles.header}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-            onPress={handleBack}
-            style={({ pressed }) => [styles.backButton, pressed ? styles.backButtonPressed : null]}
-          >
-            <MaterialCommunityIcons name="arrow-left" size={22} color={Colors.text} />
-          </Pressable>
+          {showBackButton ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+              onPress={handleBack}
+              style={({ pressed }) => [styles.backButton, pressed ? styles.backButtonPressed : null]}
+            >
+              <MaterialCommunityIcons name="arrow-left" size={22} color={Colors.text} />
+            </Pressable>
+          ) : (
+            <View style={styles.backButtonSpacer} />
+          )}
           <Text style={styles.headerTitle}>
             {isEditMode ? 'Edit Child Profile' : 'Set up your child profile'}
           </Text>
@@ -352,6 +357,10 @@ const styles = StyleSheet.create({
   },
   backButtonPressed: {
     transform: [{ scale: 0.97 }],
+  },
+  backButtonSpacer: {
+    width: 56,
+    height: 56,
   },
   headerTitle: {
     ...Typography.title,
