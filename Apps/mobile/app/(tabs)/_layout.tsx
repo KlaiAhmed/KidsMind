@@ -8,9 +8,9 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 
 export default function TabLayout() {
-  const { authResolved, user, childProfile } = useAuth();
+  const { isLoading, isAuthenticated, childProfile } = useAuth();
 
-  if (!authResolved) {
+  if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={Colors.primary} />
@@ -18,7 +18,7 @@ export default function TabLayout() {
     );
   }
 
-  if (!user) {
+  if (!isAuthenticated) {
     return <Redirect href="/splash" />;
   }
 

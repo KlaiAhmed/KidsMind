@@ -1,5 +1,6 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack, useRouter, useRootNavigationState, useSegments } from 'expo-router';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { useFonts } from 'expo-font';
@@ -20,48 +21,15 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { Colors } from '@/constants/theme';
+import { queryClient } from '@/services/queryClient';
 
 // Prevent the splash screen from auto-hiding while fonts load
 SplashScreen.preventAutoHideAsync();
 
 function RootNavigator() {
-  const { authResolved, user, childProfile } = useAuth();
-  const router = useRouter();
-  const rootNavigationState = useRootNavigationState();
-  const segments = useSegments();
+  const { isLoading, isAuthenticated } = useAuth();
 
-  useEffect(() => {
-    if (!authResolved) return;
-    if (!rootNavigationState?.key) return; // Wait for navigation readiness
-
-    const currentSegment = String(segments[0] ?? '');
-    const inAuthGroup = segments[0] === '(auth)';
-    const inTabs = segments[0] === '(tabs)';
-    const inWizard = inAuthGroup && segments[1] === 'child-profile-wizard';
-    const inBadges = currentSegment === 'badges';
-    const inModal = currentSegment === 'modal';
-    const inProtectedRoute = inTabs || inBadges || inWizard;
-
-    if (!user) {
-      if (inProtectedRoute) {
-        router.replace('/splash' as never);
-      }
-      return;
-    }
-
-    if (!childProfile) {
-      if (!inWizard) {
-        router.replace('/(auth)/child-profile-wizard' as never);
-      }
-      return;
-    }
-
-    if (!inTabs && !inWizard && !inBadges && !inModal) {
-      router.replace('/(tabs)' as never);
-    }
-  }, [authResolved, user, childProfile, rootNavigationState?.key, router, segments]);
-
-  if (!authResolved) {
+  if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={Colors.primary} />
@@ -69,14 +37,24 @@ function RootNavigator() {
     );
   }
 
+  if (!isAuthenticated) {
+    return (
+      <Stack initialRouteName="splash" screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="splash" />
+        <Stack.Screen name="onboarding" />
+        <Stack.Screen name="(auth)" />
+      </Stack>
+    );
+  }
+
   return (
-    <Stack>
-      <Stack.Screen name="splash" options={{ headerShown: false }} />
-      <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="badges" options={{ headerShown: false }} />
-      <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+    <Stack initialRouteName="(tabs)" screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="(auth)" />
+      <Stack.Screen name="badges" />
+      <Stack.Screen name="modal" options={{ presentation: 'modal', headerShown: true, title: 'Modal' }} />
+      <Stack.Screen name="splash" />
+      <Stack.Screen name="onboarding" />
     </Stack>
   );
 }
@@ -108,12 +86,14 @@ export default function RootLayout() {
   }
 
   return (
-    <AuthProvider>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <RootNavigator />
-        <StatusBar style="auto" />
-      </ThemeProvider>
-    </AuthProvider>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+          <RootNavigator />
+          <StatusBar style="auto" />
+        </ThemeProvider>
+      </AuthProvider>
+    </QueryClientProvider>
   );
 }
 

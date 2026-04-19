@@ -19,6 +19,7 @@ import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { CountryPickerField } from '@/components/ui/CountryPickerField';
 import { FormTextInput } from '@/components/ui/FormTextInput';
 import { PasswordInput } from '@/components/ui/PasswordInput';
+import type { RegisterRequest } from '@/auth/types';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   COMMON_COUNTRY_CODES,
@@ -33,7 +34,13 @@ const registerSchema = z
     fullName: z.string().min(2, 'Name must be at least 2 characters'),
     email: z.email('Please enter a valid email'),
     countryCode: z.string().regex(/^[A-Z]{2}$/, 'Please select your country/region'),
-    password: z.string().min(8, 'Password must be at least 8 characters'),
+    password: z
+      .string()
+      .min(8, 'Password must be at least 8 characters')
+      .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+      .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
+      .regex(/\d/, 'Password must contain at least one number')
+      .regex(/[!@#$%^&*(),.?":{}|<>]/, 'Password must contain at least one special character'),
     confirmPassword: z.string().min(8, 'Please confirm your password'),
     agreeToTerms: z
       .boolean()
@@ -44,7 +51,7 @@ const registerSchema = z
     path: ['confirmPassword'],
   });
 
-type RegisterFormData = z.infer<typeof registerSchema>;
+type RegisterFormData = RegisterRequest & z.infer<typeof registerSchema>;
 
 function getPasswordStrength(password: string): {
   label: string;
@@ -64,8 +71,7 @@ function getPasswordStrength(password: string): {
 
 export default function RegisterScreen() {
   const router = useRouter();
-  const { register, loading, error } = useAuth();
-  const [apiError, setApiError] = useState<string | null>(null);
+  const { register, loading, error, clearError } = useAuth();
   const [countries, setCountries] = useState<CountryOption[]>([]);
   const [countryLoading, setCountryLoading] = useState(true);
   const [countryDetectionMessage, setCountryDetectionMessage] = useState<string | null>(null);
@@ -157,17 +163,18 @@ export default function RegisterScreen() {
   }, [getValues, setValue]);
 
   async function onSubmit(data: RegisterFormData) {
-    setApiError(null);
+    clearError();
     await register({
       fullName: data.fullName,
       email: data.email,
       countryCode: data.countryCode,
       password: data.password,
       confirmPassword: data.confirmPassword,
+      agreeToTerms: data.agreeToTerms,
     });
   }
 
-  const displayError = apiError || error;
+  const displayError = error;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
@@ -182,6 +189,7 @@ export default function RegisterScreen() {
           {/* Back + Brand */}
           <View style={styles.topRow}>
             <TouchableOpacity
+              disabled={loading}
               onPress={() => router.back()}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               accessibilityRole="button"
@@ -234,8 +242,14 @@ export default function RegisterScreen() {
                   label="Full Name"
                   placeholder="John Doe"
                   autoCapitalize="words"
+                  editable={!loading}
                   onBlur={onBlur}
-                  onChangeText={onChange}
+                  onChangeText={(text) => {
+                    onChange(text);
+                    if (displayError) {
+                      clearError();
+                    }
+                  }}
                   value={value}
                   error={errors.fullName?.message}
                   leftIcon={
@@ -259,8 +273,14 @@ export default function RegisterScreen() {
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
+                  editable={!loading}
                   onBlur={onBlur}
-                  onChangeText={onChange}
+                  onChangeText={(text) => {
+                    onChange(text);
+                    if (displayError) {
+                      clearError();
+                    }
+                  }}
                   value={value}
                   error={errors.email?.message}
                   leftIcon={
@@ -278,19 +298,28 @@ export default function RegisterScreen() {
               control={control}
               name="countryCode"
               render={({ field: { onChange, value } }) => (
-                <CountryPickerField
-                  label="Country/Region"
-                  value={value}
-                  countries={countries}
-                  commonCountryCodes={COMMON_COUNTRY_CODES}
-                  blockedCountryCodes={BLOCKED_COUNTRIES}
-                  loading={countryLoading}
-                  error={errors.countryCode?.message}
-                  onChange={(nextCountryCode) => {
-                    onChange(nextCountryCode);
-                    setCountryDetectionMessage(null);
-                  }}
-                />
+                <View>
+                  <CountryPickerField
+                    label="Country/Region"
+                    value={value}
+                    countries={countries}
+                    commonCountryCodes={COMMON_COUNTRY_CODES}
+                    blockedCountryCodes={BLOCKED_COUNTRIES}
+                    loading={countryLoading}
+                    disabled={loading}
+                    error={errors.countryCode?.message}
+                    onChange={(nextCountryCode) => {
+                      onChange(nextCountryCode);
+                      setCountryDetectionMessage(null);
+                      if (displayError) {
+                        clearError();
+                      }
+                    }}
+                  />
+                  {countryDetectionMessage ? (
+                    <Text style={styles.countryDetectionText}>{countryDetectionMessage}</Text>
+                  ) : null}
+                </View>
               )}
             />
 
@@ -302,8 +331,14 @@ export default function RegisterScreen() {
                   <PasswordInput
                     label="Password"
                     placeholder="At least 8 characters"
+                    editable={!loading}
                     onBlur={onBlur}
-                    onChangeText={onChange}
+                    onChangeText={(text) => {
+                      onChange(text);
+                      if (displayError) {
+                        clearError();
+                      }
+                    }}
                     value={value}
                     error={errors.password?.message}
                   />
@@ -323,8 +358,14 @@ export default function RegisterScreen() {
                 <PasswordInput
                   label="Confirm Password"
                   placeholder="Re-enter your password"
+                  editable={!loading}
                   onBlur={onBlur}
-                  onChangeText={onChange}
+                  onChangeText={(text) => {
+                    onChange(text);
+                    if (displayError) {
+                      clearError();
+                    }
+                  }}
                   value={value}
                   error={errors.confirmPassword?.message}
                 />
@@ -338,7 +379,13 @@ export default function RegisterScreen() {
               render={({ field: { onChange, value } }) => (
                 <TouchableOpacity
                   style={styles.termsRow}
-                  onPress={() => onChange(!value)}
+                  disabled={loading}
+                  onPress={() => {
+                    onChange(!value);
+                    if (displayError) {
+                      clearError();
+                    }
+                  }}
                   activeOpacity={0.7}
                   accessibilityRole="checkbox"
                   accessibilityState={{ checked: !!value }}
@@ -376,6 +423,7 @@ export default function RegisterScreen() {
             label="Create Account"
             onPress={handleSubmit(onSubmit)}
             loading={loading}
+            disabled={loading}
             style={styles.ctaButton}
           />
 
@@ -399,7 +447,10 @@ export default function RegisterScreen() {
           {/* Sign in link */}
           <View style={styles.signInRow}>
             <Text style={styles.signInText}>Already have an account? </Text>
-            <TouchableOpacity onPress={() => router.replace('/(auth)/login' as never)}>
+            <TouchableOpacity
+              disabled={loading}
+              onPress={() => router.replace('/(auth)/login' as never)}
+            >
               <Text style={styles.signInLink}>Log In</Text>
             </TouchableOpacity>
           </View>
@@ -483,6 +534,13 @@ const styles = StyleSheet.create({
     marginTop: -Spacing.sm,
     marginBottom: Spacing.md,
     fontFamily: 'Inter_500Medium',
+  },
+  countryDetectionText: {
+    ...Typography.caption,
+    color: Colors.textSecondary,
+    marginTop: -Spacing.sm,
+    marginBottom: Spacing.md,
+    fontFamily: 'Inter_400Regular',
   },
   termsRow: {
     flexDirection: 'row',

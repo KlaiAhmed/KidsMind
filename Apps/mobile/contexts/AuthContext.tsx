@@ -4,9 +4,28 @@ import {
   useState,
   useCallback,
   useEffect,
+  useRef,
   type ReactNode,
 } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { clearRefreshToken, getRefreshToken, saveRefreshToken } from '@/auth/tokenStorage';
+import type {
+  AuthState as SessionAuthState,
+  AuthTokenResponse,
+  AuthUser,
+  LoginRequest,
+  RegisterRequest,
+} from '@/auth/types';
 import { Colors } from '@/constants/theme';
+import { ApiClientError, configureApiClientAuthHandlers } from '@/services/apiClient';
+import {
+  getCurrentUserSummary,
+  login as loginRequest,
+  logout as logoutRequest,
+  refreshToken as refreshTokenRequest,
+  register as registerRequest,
+} from '@/services/authApi';
+import { useAuthStore } from '@/store/authStore';
 import type {
   AgeGroup,
   AvatarOption,
@@ -19,23 +38,14 @@ import type {
 // ─── Types ────────────────────────────────────────────────────────
 
 export interface User {
-  id: string;
+  id: number;
   email: string;
-  fullName: string;
+  fullName?: string;
 }
 
-export interface LoginFormValues {
-  email: string;
-  password: string;
-}
+export type LoginFormValues = LoginRequest;
 
-export interface RegisterFormValues {
-  fullName: string;
-  email: string;
-  countryCode: string;
-  password: string;
-  confirmPassword: string;
-}
+export type RegisterFormValues = RegisterRequest;
 
 interface SaveChildProfileInput {
   id?: string;
@@ -57,11 +67,7 @@ interface SaveChildProfileInput {
   totalBadgesEarned?: number;
 }
 
-interface AuthState {
-  authResolved: boolean;
-  user: User | null;
-  loading: boolean;
-  error: string | null;
+interface ChildState {
   childProfile: ChildProfile | null;
   childDataLoading: boolean;
   childDataError: string | null;
@@ -71,10 +77,16 @@ interface AuthState {
   recentActivity: RecentActivity[];
 }
 
-interface AuthContextValue extends AuthState {
+interface AuthContextValue extends SessionAuthState, ChildState {
+  user: User | null;
+  loading: boolean;
+  error: string | null;
   login: (values: LoginFormValues) => Promise<void>;
   register: (values: RegisterFormValues) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
+  setAuthenticated: (payload: AuthTokenResponse) => void;
+  setUnauthenticated: () => void;
+  setLoading: (isLoading: boolean) => void;
   clearError: () => void;
   saveChildProfile: (profile: SaveChildProfileInput) => void;
   updateChildProfile: (updates: Partial<Omit<ChildProfile, 'id'>>) => void;
@@ -355,15 +367,46 @@ function buildRecentActivity(topics: Topic[]): RecentActivity[] {
     }));
 }
 
+function toUser(authUser: AuthUser): User {
+  return {
+    id: authUser.id,
+    email: authUser.email,
+    fullName: authUser.fullName,
+  };
+}
+
+function toApiErrorMessage(error: unknown): string {
+  if (error instanceof ApiClientError && error.message.trim().length > 0) {
+    return error.message;
+  }
+
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message;
+  }
+
+  return 'Something went wrong. Please try again.';
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const seededTopics = TOPIC_SEED;
   const seededSubjects = buildSubjects(seededTopics);
 
-  const [state, setState] = useState<AuthState>({
-    authResolved: false,
-    user: null,
-    loading: false,
-    error: null,
+  const queryClient = useQueryClient();
+
+  const {
+    isLoading,
+    isAuthenticated,
+    accessToken,
+    user: sessionUser,
+    authError,
+    setLoading: setStoreLoading,
+    setAuthError,
+    setAuthenticatedFromTokenResponse,
+    setUser,
+    clearAuth,
+  } = useAuthStore();
+
+  const [childState, setChildState] = useState<ChildState>({
     childProfile: null,
     childDataLoading: false,
     childDataError: null,
@@ -373,97 +416,216 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     recentActivity: buildRecentActivity(seededTopics),
   });
 
-  useEffect(() => {
-    let active = true;
+  const setLoading = useCallback((nextLoading: boolean) => {
+    setStoreLoading(nextLoading);
+  }, [setStoreLoading]);
 
-    async function bootstrapAuthState() {
-      try {
-        // Reserved for persisted session/profile hydration.
-        await Promise.resolve();
-      } finally {
-        if (active) {
-          setState((current) => ({
-            ...current,
-            authResolved: true,
-          }));
-        }
-      }
+  const setAuthenticated = useCallback((payload: AuthTokenResponse) => {
+    setAuthenticatedFromTokenResponse(payload);
+  }, [setAuthenticatedFromTokenResponse]);
+
+  const setUnauthenticated = useCallback(() => {
+    clearAuth();
+    setChildState((current) => ({
+      ...current,
+      childProfile: null,
+      childDataError: null,
+    }));
+  }, [clearAuth]);
+
+  const clearError = useCallback(() => {
+    setAuthError(null);
+  }, [setAuthError]);
+
+  const refreshMutation = useMutation({
+    mutationFn: refreshTokenRequest,
+  });
+
+  const refreshAccessToken = useCallback(async (): Promise<string | null> => {
+    const storedRefreshToken = await getRefreshToken();
+
+    if (!storedRefreshToken) {
+      await clearRefreshToken();
+      setUnauthenticated();
+      return null;
     }
 
-    void bootstrapAuthState();
+    try {
+      const refreshed = await refreshMutation.mutateAsync({ refreshToken: storedRefreshToken });
+      await saveRefreshToken(refreshed.refresh_token);
+      setAuthenticated(refreshed);
+      return refreshed.access_token;
+    } catch (error) {
+      await clearRefreshToken();
+      setUnauthenticated();
+      setAuthError(toApiErrorMessage(error));
+      return null;
+    }
+  }, [refreshMutation, setAuthenticated, setAuthError, setUnauthenticated]);
+
+  const accessTokenRef = useRef<string | null>(accessToken);
+  const refreshAccessTokenRef = useRef<(() => Promise<string | null>) | null>(refreshAccessToken);
+
+  useEffect(() => {
+    accessTokenRef.current = accessToken;
+  }, [accessToken]);
+
+  useEffect(() => {
+    refreshAccessTokenRef.current = refreshAccessToken;
+  }, [refreshAccessToken]);
+
+  useEffect(() => {
+    configureApiClientAuthHandlers({
+      getAccessToken: () => accessTokenRef.current,
+      refreshAccessToken: () => refreshAccessTokenRef.current?.() ?? Promise.resolve(null),
+    });
 
     return () => {
-      active = false;
+      configureApiClientAuthHandlers(null);
     };
   }, []);
 
-  const login = useCallback(async (values: LoginFormValues) => {
-    setState((s) => ({ ...s, loading: true, error: null }));
-    try {
-      // TODO: Replace with real API call
-      await new Promise((r) => setTimeout(r, 1500));
-      const mockUser: User = {
-        id: '1',
-        email: values.email,
-        fullName: 'Parent',
-      };
-      setState((current) => ({
-        ...current,
-        user: mockUser,
-        loading: false,
-        error: null,
-      }));
-    } catch {
-      setState((s) => ({
-        ...s,
-        loading: false,
-        error: 'Invalid email or password. Please try again.',
-      }));
+  const bootstrapSessionQuery = useQuery({
+    queryKey: ['auth', 'bootstrap-session'],
+    queryFn: async (): Promise<AuthTokenResponse | null> => {
+      const storedRefreshToken = await getRefreshToken();
+
+      if (!storedRefreshToken) {
+        return null;
+      }
+
+      const refreshed = await refreshTokenRequest({ refreshToken: storedRefreshToken });
+      await saveRefreshToken(refreshed.refresh_token);
+
+      return refreshed;
+    },
+    retry: false,
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
+    staleTime: Number.POSITIVE_INFINITY,
+    gcTime: Number.POSITIVE_INFINITY,
+  });
+
+  useEffect(() => {
+    setLoading(bootstrapSessionQuery.isPending);
+  }, [bootstrapSessionQuery.isPending, setLoading]);
+
+  useEffect(() => {
+    if (!bootstrapSessionQuery.isSuccess) {
+      return;
     }
-  }, []);
+
+    if (bootstrapSessionQuery.data) {
+      setAuthenticated(bootstrapSessionQuery.data);
+      setAuthError(null);
+      return;
+    }
+
+    setUnauthenticated();
+  }, [
+    bootstrapSessionQuery.data,
+    bootstrapSessionQuery.isSuccess,
+    setAuthenticated,
+    setAuthError,
+    setUnauthenticated,
+  ]);
+
+  useEffect(() => {
+    if (!bootstrapSessionQuery.isError) {
+      return;
+    }
+
+    void clearRefreshToken();
+    setUnauthenticated();
+    setAuthError(toApiErrorMessage(bootstrapSessionQuery.error));
+  }, [bootstrapSessionQuery.error, bootstrapSessionQuery.isError, setAuthError, setUnauthenticated]);
+
+  const currentUserSummaryQuery = useQuery({
+    queryKey: ['auth', 'current-user-summary', accessToken],
+    queryFn: getCurrentUserSummary,
+    enabled: isAuthenticated && Boolean(accessToken),
+  });
+
+  useEffect(() => {
+    if (!currentUserSummaryQuery.data) {
+      return;
+    }
+
+    setUser({
+      id: currentUserSummaryQuery.data.id,
+      email: currentUserSummaryQuery.data.email,
+    });
+  }, [currentUserSummaryQuery.data, setUser]);
+
+  useEffect(() => {
+    if (!currentUserSummaryQuery.isError) {
+      return;
+    }
+
+    setAuthError(toApiErrorMessage(currentUserSummaryQuery.error));
+  }, [currentUserSummaryQuery.error, currentUserSummaryQuery.isError, setAuthError]);
+
+  const loginMutation = useMutation({
+    mutationFn: loginRequest,
+    onSuccess: async (authPayload) => {
+      await saveRefreshToken(authPayload.refresh_token);
+      setAuthenticated(authPayload);
+      setAuthError(null);
+      void queryClient.invalidateQueries({ queryKey: ['auth', 'current-user-summary'] });
+    },
+    onError: (error) => {
+      setAuthError(toApiErrorMessage(error));
+    },
+  });
+
+  const registerMutation = useMutation({
+    mutationFn: registerRequest,
+    onSuccess: async (authPayload) => {
+      await saveRefreshToken(authPayload.refresh_token);
+      setAuthenticated(authPayload);
+      setAuthError(null);
+      void queryClient.invalidateQueries({ queryKey: ['auth', 'current-user-summary'] });
+    },
+    onError: (error) => {
+      setAuthError(toApiErrorMessage(error));
+    },
+  });
+
+  const logoutMutation = useMutation({
+    mutationFn: async () => {
+      const storedRefreshToken = await getRefreshToken();
+      if (!storedRefreshToken) {
+        return;
+      }
+
+      await logoutRequest({ refreshToken: storedRefreshToken });
+    },
+    onSettled: async () => {
+      await clearRefreshToken();
+      setUnauthenticated();
+      queryClient.removeQueries({ queryKey: ['auth'] });
+    },
+  });
+
+  const login = useCallback(async (values: LoginFormValues) => {
+    clearError();
+    await loginMutation.mutateAsync(values).catch(() => undefined);
+  }, [clearError, loginMutation]);
 
   const register = useCallback(async (values: RegisterFormValues) => {
-    setState((s) => ({ ...s, loading: true, error: null }));
-    try {
-      // TODO: Replace with real API call
-      await new Promise((r) => setTimeout(r, 1500));
-      const mockUser: User = {
-        id: '1',
-        email: values.email,
-        fullName: values.fullName,
-      };
-      setState((current) => ({
-        ...current,
-        user: mockUser,
-        loading: false,
-        error: null,
-      }));
-    } catch {
-      setState((s) => ({
-        ...s,
-        loading: false,
-        error: 'Registration failed. Please try again.',
-      }));
-    }
-  }, []);
+    clearError();
+    await registerMutation.mutateAsync(values).catch(() => undefined);
+  }, [clearError, registerMutation]);
 
-  const logout = useCallback(() => {
-    setState((prev) => ({
-      ...prev,
-      user: null,
-      childProfile: null,
-      loading: false,
-      error: null,
-      childDataError: null,
-    }));
-  }, []);
+  const logout = useCallback(async () => {
+    await logoutMutation.mutateAsync().catch(() => undefined);
+  }, [logoutMutation]);
 
-  const clearError = useCallback(() => {
-    setState((s) => ({ ...s, error: null }));
-  }, []);
+  const loading = loginMutation.isPending || registerMutation.isPending;
+  const error = authError;
 
   const saveChildProfile = useCallback((profile: SaveChildProfileInput) => {
-    setState((current) => {
+    setChildState((current) => {
       const completedTopicCount = current.topics.filter((topic) => topic.isCompleted).length;
       const totalXp = profile.xp ?? current.childProfile?.xp ?? completedTopicCount * 25;
       const progression = buildLevelProgress(totalXp);
@@ -504,7 +666,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateChildProfile = useCallback((updates: Partial<Omit<ChildProfile, 'id'>>) => {
-    setState((current) => {
+    setChildState((current) => {
       if (!current.childProfile) {
         return current;
       }
@@ -520,7 +682,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshChildData = useCallback(async () => {
-    setState((current) => ({
+    setChildState((current) => ({
       ...current,
       childDataLoading: true,
       childDataError: null,
@@ -528,13 +690,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     try {
       await new Promise((resolve) => setTimeout(resolve, 550));
-      setState((current) => ({
+      setChildState((current) => ({
         ...current,
         childDataLoading: false,
         childDataError: null,
       }));
     } catch {
-      setState((current) => ({
+      setChildState((current) => ({
         ...current,
         childDataLoading: false,
         childDataError: 'Unable to refresh progress right now.',
@@ -543,7 +705,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const markSubjectAccess = useCallback((subjectId: string) => {
-    setState((current) => ({
+    setChildState((current) => ({
       ...current,
       subjects: current.subjects.map((subject) =>
         subject.id === subjectId
@@ -557,7 +719,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const completeTopic = useCallback((topicId: string) => {
-    setState((current) => {
+    setChildState((current) => {
       const targetTopic = current.topics.find((topic) => topic.id === topicId);
       if (!targetTopic || targetTopic.isCompleted) {
         return current;
@@ -624,10 +786,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider
       value={{
-        ...state,
+        isLoading,
+        isAuthenticated,
+        accessToken,
+        user: sessionUser ? toUser(sessionUser) : null,
+        loading,
+        error,
+        ...childState,
         login,
         register,
         logout,
+        setAuthenticated,
+        setUnauthenticated,
+        setLoading,
         clearError,
         saveChildProfile,
         updateChildProfile,

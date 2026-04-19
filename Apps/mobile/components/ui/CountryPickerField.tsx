@@ -30,6 +30,7 @@ interface CountryPickerFieldProps {
   error?: string;
   helperText?: string;
   loading?: boolean;
+  disabled?: boolean;
   placeholder?: string;
   blockedCountryCodes?: readonly string[];
 }
@@ -47,6 +48,7 @@ export function CountryPickerField({
   error,
   helperText,
   loading = false,
+  disabled = false,
   placeholder = 'Search and select your country',
   blockedCountryCodes,
 }: CountryPickerFieldProps) {
@@ -133,7 +135,12 @@ export function CountryPickerField({
     ? `${selectedCountry.flag} ${selectedCountry.name}`
     : placeholder;
 
+  const isFieldDisabled = disabled || loading;
+
   const openModal = () => {
+    if (isFieldDisabled) {
+      return;
+    }
     setIsModalVisible(true);
   };
 
@@ -152,9 +159,10 @@ export function CountryPickerField({
       <Text style={styles.label}>{label}</Text>
 
       <TouchableOpacity
-        style={[styles.inputRow, !!error && styles.inputRowError]}
+        style={[styles.inputRow, !!error && styles.inputRowError, isFieldDisabled && styles.inputRowDisabled]}
         onPress={openModal}
         activeOpacity={0.85}
+        disabled={isFieldDisabled}
         accessibilityRole="button"
         accessibilityLabel={label}
         accessibilityHint="Opens a searchable country list"
@@ -319,6 +327,9 @@ const styles = StyleSheet.create({
   },
   inputRowError: {
     borderColor: Colors.error,
+  },
+  inputRowDisabled: {
+    opacity: 0.6,
   },
   iconLeft: {
     marginRight: Spacing.sm,

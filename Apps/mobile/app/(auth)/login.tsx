@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import {
   View,
   Text,
@@ -18,6 +17,7 @@ import { Colors, Spacing, Radii, Shadows, Typography } from '@/constants/theme';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { FormTextInput } from '@/components/ui/FormTextInput';
 import { PasswordInput } from '@/components/ui/PasswordInput';
+import type { LoginRequest } from '@/auth/types';
 import { useAuth } from '@/contexts/AuthContext';
 
 const loginSchema = z.object({
@@ -25,12 +25,11 @@ const loginSchema = z.object({
   password: z.string().min(8, 'Password must be at least 8 characters'),
 });
 
-type LoginFormData = z.infer<typeof loginSchema>;
+type LoginFormData = LoginRequest & z.infer<typeof loginSchema>;
 
 export default function LoginScreen() {
   const router = useRouter();
   const { login, loading, error, clearError } = useAuth();
-  const [apiError, setApiError] = useState<string | null>(null);
 
   const {
     control,
@@ -42,12 +41,12 @@ export default function LoginScreen() {
   });
 
   async function onSubmit(data: LoginFormData) {
-    setApiError(null);
+    clearError();
     await login(data);
     // AuthContext will update — navigation is handled by root layout
   }
 
-  const displayError = apiError || error;
+  const displayError = error;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
@@ -97,11 +96,11 @@ export default function LoginScreen() {
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
+                  editable={!loading}
                   onBlur={onBlur}
                   onChangeText={(text) => {
                     onChange(text);
                     if (displayError) {
-                      setApiError(null);
                       clearError();
                     }
                   }}
@@ -125,11 +124,11 @@ export default function LoginScreen() {
                 <PasswordInput
                   label="Password"
                   placeholder="Enter your password"
+                  editable={!loading}
                   onBlur={onBlur}
                   onChangeText={(text) => {
                     onChange(text);
                     if (displayError) {
-                      setApiError(null);
                       clearError();
                     }
                   }}
@@ -140,6 +139,7 @@ export default function LoginScreen() {
             />
 
             <TouchableOpacity
+              disabled={loading}
               onPress={() => {
                 // TODO: Navigate to forgot password
               }}
@@ -154,6 +154,7 @@ export default function LoginScreen() {
             label="Log In"
             onPress={handleSubmit(onSubmit)}
             loading={loading}
+            disabled={loading}
             style={styles.ctaButton}
           />
 
@@ -177,7 +178,10 @@ export default function LoginScreen() {
           {/* Sign up link */}
           <View style={styles.signUpRow}>
             <Text style={styles.signUpText}>Don&apos;t have an account? </Text>
-            <TouchableOpacity onPress={() => router.push('/(auth)/register' as never)}>
+            <TouchableOpacity
+              disabled={loading}
+              onPress={() => router.push('/(auth)/register' as never)}
+            >
               <Text style={styles.signUpLink}>Sign up</Text>
             </TouchableOpacity>
           </View>
