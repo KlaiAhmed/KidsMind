@@ -36,6 +36,8 @@ export interface DaySchedule {
   enabled: boolean;
   subjects: SubjectKey[];
   durationMinutes: number | null;
+  startTime: string | null;
+  endTime: string | null;
 }
 
 export type WeekSchedule = Record<WeekdayKey, DaySchedule>;

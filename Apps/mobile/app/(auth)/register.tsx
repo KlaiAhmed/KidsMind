@@ -190,7 +190,7 @@ export default function RegisterScreen() {
           <View style={styles.topRow}>
             <TouchableOpacity
               disabled={loading}
-              onPress={() => router.back()}
+              onPress={() => router.replace('/(auth)/login' as never)}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               accessibilityRole="button"
               accessibilityLabel="Go back"

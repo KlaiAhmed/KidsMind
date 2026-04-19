@@ -30,7 +30,9 @@ import {
   type ChildProfileWizardFormValues,
 } from '@/src/schemas/childProfileWizardSchema';
 import {
+  deriveBlockedSubjects,
   deriveAgeGroupFromBirthDate,
+  deriveTimeWindowFromWeekSchedule,
   educationLevelToBackendStage,
 } from '@/src/utils/childProfileWizard';
 import { patchChildRules } from '@/services/childService';
@@ -101,14 +103,11 @@ export default function ChildProfileWizard() {
       3: ['schedule.allowedSubjects', 'schedule.dailyLimitMinutes', 'schedule.weekSchedule'],
       4: [
         'rules.defaultLanguage',
-        'rules.blockedSubjects',
         'rules.homeworkModeEnabled',
         'rules.voiceModeEnabled',
         'rules.audioStorageEnabled',
         'rules.conversationHistoryEnabled',
         'rules.contentSafetyLevel',
-        'rules.timeWindowStart',
-        'rules.timeWindowEnd',
       ],
       5: [],
     };
@@ -137,6 +136,10 @@ export default function ChildProfileWizard() {
     try {
       const birthDate = new Date(values.childInfo.birthDateIso);
       const ageGroup = deriveAgeGroupFromBirthDate(birthDate) ?? undefined;
+      const blockedSubjects = deriveBlockedSubjects(values.schedule.allowedSubjects);
+      const { timeWindowStart, timeWindowEnd } = deriveTimeWindowFromWeekSchedule(
+        values.schedule.weekSchedule,
+      );
 
       const savedProfile = await saveChildProfile({
         nickname: values.childInfo.nickname.trim(),
@@ -151,10 +154,10 @@ export default function ChildProfileWizard() {
         defaultLanguage: values.rules.defaultLanguage,
         dailyLimitMinutes: values.schedule.dailyLimitMinutes,
         allowedSubjects: values.schedule.allowedSubjects,
-        blockedSubjects: values.rules.blockedSubjects,
+        blockedSubjects,
         weekSchedule: values.schedule.weekSchedule,
-        timeWindowStart: values.rules.timeWindowStart || null,
-        timeWindowEnd: values.rules.timeWindowEnd || null,
+        timeWindowStart,
+        timeWindowEnd,
         homeworkModeEnabled: values.rules.homeworkModeEnabled,
         voiceModeEnabled: values.rules.voiceModeEnabled,
         audioStorageEnabled: values.rules.audioStorageEnabled,
@@ -250,15 +253,22 @@ export default function ChildProfileWizard() {
 
           <FormProvider {...methods}>
             <View style={styles.stepCard}>
-              <ScrollView
-                keyboardShouldPersistTaps="handled"
-                contentContainerStyle={styles.scrollContent}
-                showsVerticalScrollIndicator={false}
-                style={styles.stepScrollView}
-              >
-                {renderStepContent()}
-                {submitError ? <Text style={styles.inlineError}>{submitError}</Text> : null}
-              </ScrollView>
+              {step === 2 ? (
+                <View style={[styles.stepContent, styles.stepContentFill]}>
+                  {renderStepContent()}
+                  {submitError ? <Text style={styles.inlineError}>{submitError}</Text> : null}
+                </View>
+              ) : (
+                <ScrollView
+                  keyboardShouldPersistTaps="handled"
+                  contentContainerStyle={[styles.stepContent, styles.stepContentGrow]}
+                  showsVerticalScrollIndicator={false}
+                  style={styles.stepScrollView}
+                >
+                  {renderStepContent()}
+                  {submitError ? <Text style={styles.inlineError}>{submitError}</Text> : null}
+                </ScrollView>
+              )}
             </View>
           </FormProvider>
         </View>
@@ -331,10 +341,16 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 0,
   },
-  scrollContent: {
+  stepContent: {
     padding: Spacing.lg,
     gap: Spacing.md,
+  },
+  stepContentGrow: {
     flexGrow: 1,
+  },
+  stepContentFill: {
+    flex: 1,
+    minHeight: 0,
   },
   section: {
     gap: Spacing.md,

@@ -142,16 +142,54 @@ export function deriveEducationLevelFromBirthDate(birthDate: Date): EducationLev
   return 'secondary_school';
 }
 
-export function buildDefaultWeekSchedule(subjects: SubjectKey[] = ['math']): WeekSchedule {
+export function buildDefaultWeekSchedule(subjects: SubjectKey[] = []): WeekSchedule {
+  const hasSubjects = subjects.length > 0;
+
   return {
-    monday: { enabled: true, subjects: [...subjects], durationMinutes: 30 },
-    tuesday: { enabled: true, subjects: [...subjects], durationMinutes: 30 },
-    wednesday: { enabled: true, subjects: [...subjects], durationMinutes: 30 },
-    thursday: { enabled: true, subjects: [...subjects], durationMinutes: 30 },
-    friday: { enabled: true, subjects: [...subjects], durationMinutes: 30 },
-    saturday: { enabled: false, subjects: [], durationMinutes: null },
-    sunday: { enabled: false, subjects: [], durationMinutes: null },
+    monday: {
+      enabled: hasSubjects,
+      subjects: [...subjects],
+      durationMinutes: hasSubjects ? 30 : null,
+      startTime: null,
+      endTime: null,
+    },
+    tuesday: {
+      enabled: hasSubjects,
+      subjects: [...subjects],
+      durationMinutes: hasSubjects ? 30 : null,
+      startTime: null,
+      endTime: null,
+    },
+    wednesday: {
+      enabled: hasSubjects,
+      subjects: [...subjects],
+      durationMinutes: hasSubjects ? 30 : null,
+      startTime: null,
+      endTime: null,
+    },
+    thursday: {
+      enabled: hasSubjects,
+      subjects: [...subjects],
+      durationMinutes: hasSubjects ? 30 : null,
+      startTime: null,
+      endTime: null,
+    },
+    friday: {
+      enabled: hasSubjects,
+      subjects: [...subjects],
+      durationMinutes: hasSubjects ? 30 : null,
+      startTime: null,
+      endTime: null,
+    },
+    saturday: { enabled: false, subjects: [], durationMinutes: null, startTime: null, endTime: null },
+    sunday: { enabled: false, subjects: [], durationMinutes: null, startTime: null, endTime: null },
   };
+}
+
+export function deriveBlockedSubjects(allowedSubjects: SubjectKey[]): SubjectKey[] {
+  return SUBJECT_OPTIONS
+    .map((subject) => subject.value)
+    .filter((subject) => !allowedSubjects.includes(subject));
 }
 
 export function toIsoDateString(day: number, month: number, year: number): string {
@@ -170,4 +208,63 @@ export function parseTimeToMinutes(value: string): number | null {
   const hours = parseInt(match[1], 10);
   const minutes = parseInt(match[2], 10);
   return hours * 60 + minutes;
+}
+
+function formatMinutesToTime(value: number): string {
+  const minutesPerDay = 24 * 60;
+  const normalized = ((value % minutesPerDay) + minutesPerDay) % minutesPerDay;
+  const hours = Math.floor(normalized / 60);
+  const minutes = normalized % 60;
+  return `${`${hours}`.padStart(2, '0')}:${`${minutes}`.padStart(2, '0')}`;
+}
+
+export function computeEndTimeFromStart(
+  startTime: string | null | undefined,
+  durationMinutes: number | null | undefined,
+): string | null {
+  if (!startTime || !durationMinutes || durationMinutes <= 0) {
+    return null;
+  }
+
+  const startMinutes = parseTimeToMinutes(startTime);
+  if (startMinutes === null) {
+    return null;
+  }
+
+  return formatMinutesToTime(startMinutes + durationMinutes);
+}
+
+export function deriveTimeWindowFromWeekSchedule(
+  weekSchedule: WeekSchedule,
+): { timeWindowStart: string | null; timeWindowEnd: string | null } {
+  let minStart: number | null = null;
+  let maxEnd: number | null = null;
+
+  for (const weekday of WEEKDAY_OPTIONS) {
+    const day = weekSchedule[weekday.key];
+    if (!day.enabled || !day.startTime || !day.durationMinutes || day.durationMinutes <= 0) {
+      continue;
+    }
+
+    const startMinutes = parseTimeToMinutes(day.startTime);
+    if (startMinutes === null) {
+      continue;
+    }
+
+    const endMinutes = Math.min(startMinutes + day.durationMinutes, (24 * 60) - 1);
+    minStart = minStart === null ? startMinutes : Math.min(minStart, startMinutes);
+    maxEnd = maxEnd === null ? endMinutes : Math.max(maxEnd, endMinutes);
+  }
+
+  if (minStart === null || maxEnd === null || maxEnd <= minStart) {
+    return {
+      timeWindowStart: null,
+      timeWindowEnd: null,
+    };
+  }
+
+  return {
+    timeWindowStart: formatMinutesToTime(minStart),
+    timeWindowEnd: formatMinutesToTime(maxEnd),
+  };
 }

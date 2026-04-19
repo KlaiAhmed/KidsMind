@@ -18,6 +18,8 @@ interface DayScheduleApiResponse {
   enabled: boolean;
   subjects?: SubjectKey[];
   duration_minutes?: number | null;
+  start_time?: string | null;
+  end_time?: string | null;
 }
 
 interface WeekScheduleApiResponse {
@@ -158,13 +160,25 @@ function normalizeSubjectKeys(value: unknown): SubjectKey[] {
 
 function defaultWeekSchedule(): WeekSchedule {
   return {
-    monday: { enabled: true, subjects: ['math'], durationMinutes: 30 },
-    tuesday: { enabled: true, subjects: ['reading'], durationMinutes: 30 },
-    wednesday: { enabled: true, subjects: ['science'], durationMinutes: 30 },
-    thursday: { enabled: true, subjects: ['english'], durationMinutes: 30 },
-    friday: { enabled: true, subjects: ['art'], durationMinutes: 30 },
-    saturday: { enabled: false, subjects: [], durationMinutes: null },
-    sunday: { enabled: false, subjects: [], durationMinutes: null },
+    monday: { enabled: true, subjects: ['math'], durationMinutes: 30, startTime: null, endTime: null },
+    tuesday: { enabled: true, subjects: ['reading'], durationMinutes: 30, startTime: null, endTime: null },
+    wednesday: {
+      enabled: true,
+      subjects: ['science'],
+      durationMinutes: 30,
+      startTime: null,
+      endTime: null,
+    },
+    thursday: {
+      enabled: true,
+      subjects: ['english'],
+      durationMinutes: 30,
+      startTime: null,
+      endTime: null,
+    },
+    friday: { enabled: true, subjects: ['art'], durationMinutes: 30, startTime: null, endTime: null },
+    saturday: { enabled: false, subjects: [], durationMinutes: null, startTime: null, endTime: null },
+    sunday: { enabled: false, subjects: [], durationMinutes: null, startTime: null, endTime: null },
   };
 }
 
@@ -179,6 +193,8 @@ function normalizeDaySchedule(value: DayScheduleApiResponse | undefined): DaySch
     enabled,
     subjects,
     durationMinutes: enabled ? duration : null,
+    startTime: typeof value?.start_time === 'string' ? value.start_time : null,
+    endTime: typeof value?.end_time === 'string' ? value.end_time : null,
   };
 }
 

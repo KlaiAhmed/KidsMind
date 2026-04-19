@@ -3,6 +3,8 @@ import type { ChildProfile, EducationLevel, SubjectKey, WeekSchedule } from '@/t
 import {
   backendStageToEducationLevel,
   buildDefaultWeekSchedule,
+  computeEndTimeFromStart,
+  deriveBlockedSubjects,
   parseTimeToMinutes,
   SUBJECT_OPTIONS,
 } from '@/src/utils/childProfileWizard';
@@ -20,6 +22,8 @@ const dayScheduleSchema = z.object({
   enabled: z.boolean(),
   subjects: z.array(subjectSchema),
   durationMinutes: z.number().int().positive().nullable(),
+  startTime: z.string().nullable(),
+  endTime: z.string().nullable(),
 });
 
 const weekScheduleSchema = z.object({
@@ -85,6 +89,29 @@ const scheduleSchema = z
         });
       }
 
+      if (!day.startTime) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['weekSchedule', dayKey, 'startTime'],
+          message: 'Choose a start time for enabled days',
+        });
+      } else if (parseTimeToMinutes(day.startTime) === null) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['weekSchedule', dayKey, 'startTime'],
+          message: 'Start time must be in HH:MM format',
+        });
+      }
+
+      const expectedEndTime = computeEndTimeFromStart(day.startTime, day.durationMinutes);
+      if (expectedEndTime && day.endTime !== expectedEndTime) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['weekSchedule', dayKey, 'endTime'],
+          message: 'End time is calculated automatically from start time and duration',
+        });
+      }
+
       if (day.subjects.length === 0) {
         ctx.addIssue({
           code: 'custom',
@@ -107,50 +134,17 @@ const scheduleSchema = z
     }
   });
 
-const rulesSchema = z
-  .object({
-    defaultLanguage: z.string().trim().min(2, 'Choose a default language'),
-    blockedSubjects: z.array(subjectSchema),
-    homeworkModeEnabled: z.boolean(),
-    voiceModeEnabled: z.boolean(),
-    audioStorageEnabled: z.boolean(),
-    conversationHistoryEnabled: z.boolean(),
-    contentSafetyLevel: z.enum(['strict', 'moderate']),
-    timeWindowStart: z.string(),
-    timeWindowEnd: z.string(),
-  })
-  .superRefine((value, ctx) => {
-    if (value.timeWindowStart && parseTimeToMinutes(value.timeWindowStart) === null) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['timeWindowStart'],
-        message: 'Earliest session start must be in HH:MM format',
-      });
-    }
-
-    if (value.timeWindowEnd && parseTimeToMinutes(value.timeWindowEnd) === null) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['timeWindowEnd'],
-        message: 'Latest session end must be in HH:MM format',
-      });
-    }
-
-    if (!value.timeWindowStart || !value.timeWindowEnd) {
-      return;
-    }
-
-    const start = parseTimeToMinutes(value.timeWindowStart);
-    const end = parseTimeToMinutes(value.timeWindowEnd);
-
-    if (start !== null && end !== null && end <= start) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['timeWindowEnd'],
-        message: 'Latest session end must be later than earliest session start',
-      });
-    }
-  });
+const rulesSchema = z.object({
+  defaultLanguage: z.string().trim().min(2, 'Choose a default language'),
+  blockedSubjects: z.array(subjectSchema),
+  homeworkModeEnabled: z.boolean(),
+  voiceModeEnabled: z.boolean(),
+  audioStorageEnabled: z.boolean(),
+  conversationHistoryEnabled: z.boolean(),
+  contentSafetyLevel: z.enum(['strict', 'moderate']),
+  timeWindowStart: z.string().nullable(),
+  timeWindowEnd: z.string().nullable(),
+});
 
 export const childProfileWizardSchema = z
   .object({
@@ -226,21 +220,45 @@ function extractDobParts(birthDate: string | undefined): { day: string; month: s
 function normalizeExistingWeekSchedule(
   weekSchedule: WeekSchedule | null | undefined,
   allowedSubjects: SubjectKey[],
+  defaultTimeWindowStart: string | null,
 ): WeekSchedule {
-  const fallback = buildDefaultWeekSchedule(allowedSubjects.length > 0 ? allowedSubjects : ['math']);
+  const fallback = buildDefaultWeekSchedule(allowedSubjects);
+
+  function normalizeDay(
+    day: WeekSchedule[keyof WeekSchedule] | undefined,
+    fallbackDay: WeekSchedule[keyof WeekSchedule],
+  ) {
+    const mergedDay = day ?? fallbackDay;
+    const startTime = mergedDay.startTime ?? (mergedDay.enabled ? defaultTimeWindowStart : null);
+    const endTime = computeEndTimeFromStart(startTime, mergedDay.durationMinutes);
+
+    return {
+      ...mergedDay,
+      startTime,
+      endTime,
+    };
+  }
 
   if (!weekSchedule) {
-    return fallback;
+    return {
+      monday: normalizeDay(undefined, fallback.monday),
+      tuesday: normalizeDay(undefined, fallback.tuesday),
+      wednesday: normalizeDay(undefined, fallback.wednesday),
+      thursday: normalizeDay(undefined, fallback.thursday),
+      friday: normalizeDay(undefined, fallback.friday),
+      saturday: normalizeDay(undefined, fallback.saturday),
+      sunday: normalizeDay(undefined, fallback.sunday),
+    };
   }
 
   return {
-    monday: weekSchedule.monday ?? fallback.monday,
-    tuesday: weekSchedule.tuesday ?? fallback.tuesday,
-    wednesday: weekSchedule.wednesday ?? fallback.wednesday,
-    thursday: weekSchedule.thursday ?? fallback.thursday,
-    friday: weekSchedule.friday ?? fallback.friday,
-    saturday: weekSchedule.saturday ?? fallback.saturday,
-    sunday: weekSchedule.sunday ?? fallback.sunday,
+    monday: normalizeDay(weekSchedule.monday, fallback.monday),
+    tuesday: normalizeDay(weekSchedule.tuesday, fallback.tuesday),
+    wednesday: normalizeDay(weekSchedule.wednesday, fallback.wednesday),
+    thursday: normalizeDay(weekSchedule.thursday, fallback.thursday),
+    friday: normalizeDay(weekSchedule.friday, fallback.friday),
+    saturday: normalizeDay(weekSchedule.saturday, fallback.saturday),
+    sunday: normalizeDay(weekSchedule.sunday, fallback.sunday),
   };
 }
 
@@ -252,9 +270,14 @@ export function buildChildProfileWizardDefaultValues(
     ? profile.rules.allowedSubjects
     : profile?.subjectIds?.length
       ? profile.subjectIds
-      : ['math', 'reading'];
+      : [];
 
-  const weekSchedule = normalizeExistingWeekSchedule(profile?.rules?.weekSchedule, allowedSubjects);
+  const weekSchedule = normalizeExistingWeekSchedule(
+    profile?.rules?.weekSchedule,
+    allowedSubjects,
+    profile?.rules?.timeWindowStart ?? null,
+  );
+  const blockedSubjects = deriveBlockedSubjects(allowedSubjects);
   const dob = extractDobParts(profile?.birthDate);
 
   return {
@@ -277,14 +300,14 @@ export function buildChildProfileWizardDefaultValues(
     },
     rules: {
       defaultLanguage: profile?.rules?.defaultLanguage ?? profile?.languages?.[0] ?? 'en',
-      blockedSubjects: profile?.rules?.blockedSubjects ?? [],
-      homeworkModeEnabled: profile?.rules?.homeworkModeEnabled ?? false,
+      blockedSubjects,
+      homeworkModeEnabled: profile?.rules?.homeworkModeEnabled ?? true,
       voiceModeEnabled: profile?.rules?.voiceModeEnabled ?? true,
-      audioStorageEnabled: profile?.rules?.audioStorageEnabled ?? false,
+      audioStorageEnabled: profile?.rules?.audioStorageEnabled ?? true,
       conversationHistoryEnabled: profile?.rules?.conversationHistoryEnabled ?? true,
       contentSafetyLevel: profile?.rules?.contentSafetyLevel ?? 'moderate',
-      timeWindowStart: profile?.rules?.timeWindowStart ?? '08:00',
-      timeWindowEnd: profile?.rules?.timeWindowEnd ?? '21:00',
+      timeWindowStart: profile?.rules?.timeWindowStart ?? null,
+      timeWindowEnd: profile?.rules?.timeWindowEnd ?? null,
     },
   };
 }

@@ -82,7 +82,7 @@ export default function OnboardingScreen() {
   }
 
   function handleSkip() {
-    router.replace('/(auth)/register' as never);
+    router.replace('/(auth)/login' as never);
   }
 
   function handleAlreadyHaveAccount() {

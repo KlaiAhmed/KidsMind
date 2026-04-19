@@ -3,7 +3,11 @@ import { useFormContext, useWatch } from 'react-hook-form';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
 import type { ChildProfileWizardFormValues } from '@/src/schemas/childProfileWizardSchema';
-import { SUBJECT_OPTIONS, WEEKDAY_OPTIONS } from '@/src/utils/childProfileWizard';
+import {
+  computeEndTimeFromStart,
+  SUBJECT_OPTIONS,
+  WEEKDAY_OPTIONS,
+} from '@/src/utils/childProfileWizard';
 import type { SubjectKey, WeekdayKey } from '@/types/child';
 
 function toMinuteLabel(value: number | null): string {
@@ -66,6 +70,14 @@ export function WeekScheduleStep() {
         shouldDirty: true,
         shouldValidate: true,
       });
+      setValue(`schedule.weekSchedule.${day}.startTime` as any, null, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+      setValue(`schedule.weekSchedule.${day}.endTime` as any, null, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
       return;
     }
 
@@ -75,12 +87,22 @@ export function WeekScheduleStep() {
       shouldValidate: true,
     });
 
+    const nextDuration = weekSchedule[day].durationMinutes ?? Math.min(30, dailyLimitMinutes);
     if (!weekSchedule[day].durationMinutes) {
-      setValue(`schedule.weekSchedule.${day}.durationMinutes` as any, Math.min(30, dailyLimitMinutes), {
+      setValue(`schedule.weekSchedule.${day}.durationMinutes` as any, nextDuration, {
         shouldDirty: true,
         shouldValidate: true,
       });
     }
+
+    setValue(
+      `schedule.weekSchedule.${day}.endTime` as any,
+      computeEndTimeFromStart(weekSchedule[day].startTime, nextDuration),
+      {
+        shouldDirty: true,
+        shouldValidate: true,
+      },
+    );
   }
 
   function toggleDaySubject(day: WeekdayKey, subject: SubjectKey) {
@@ -189,6 +211,72 @@ export function WeekScheduleStep() {
           <View key={day.key} style={styles.dayCard}>
             <Text style={styles.dayTitle}>{day.fullLabel}</Text>
 
+            <Text style={styles.dayLabel}>Duration (minutes)</Text>
+            <TextInput
+              value={toMinuteLabel(dayState.durationMinutes)}
+              onChangeText={(nextValue) => {
+                const parsed = parseInt(nextValue.replace(/\D/g, ''), 10);
+                const nextDuration = Number.isNaN(parsed) ? null : parsed;
+                setValue(
+                  `schedule.weekSchedule.${day.key}.durationMinutes` as any,
+                  nextDuration,
+                  {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  },
+                );
+
+                setValue(
+                  `schedule.weekSchedule.${day.key}.endTime` as any,
+                  computeEndTimeFromStart(dayState.startTime, nextDuration),
+                  {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  },
+                );
+              }}
+              keyboardType="number-pad"
+              inputMode="numeric"
+              maxLength={3}
+              style={styles.numericInput}
+              accessibilityLabel={`${day.fullLabel} duration in minutes`}
+            />
+
+            <Text style={styles.dayLabel}>Start Time (HH:MM)</Text>
+            <TextInput
+              value={dayState.startTime ?? ''}
+              onChangeText={(nextValue) => {
+                const nextStartTime = nextValue.trim().length > 0 ? nextValue.trim() : null;
+                setValue(`schedule.weekSchedule.${day.key}.startTime` as any, nextStartTime, {
+                  shouldDirty: true,
+                  shouldValidate: true,
+                });
+
+                setValue(
+                  `schedule.weekSchedule.${day.key}.endTime` as any,
+                  computeEndTimeFromStart(nextStartTime, dayState.durationMinutes),
+                  {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  },
+                );
+              }}
+              placeholder="08:00"
+              keyboardType="numbers-and-punctuation"
+              style={styles.numericInput}
+              accessibilityLabel={`${day.fullLabel} start time`}
+            />
+
+            <Text style={styles.dayLabel}>End Time (auto)</Text>
+            <TextInput
+              value={dayState.endTime ?? ''}
+              editable={false}
+              selectTextOnFocus={false}
+              placeholder="Calculated automatically"
+              style={[styles.numericInput, styles.readOnlyInput]}
+              accessibilityLabel={`${day.fullLabel} end time`}
+            />
+
             <Text style={styles.dayLabel}>Subjects for this day</Text>
             <View style={styles.chipRow}>
               {SUBJECT_OPTIONS.filter((subject) => allowedSubjects.includes(subject.value)).map((subject) => {
@@ -215,27 +303,6 @@ export function WeekScheduleStep() {
               })}
             </View>
 
-            <Text style={styles.dayLabel}>Duration (minutes)</Text>
-            <TextInput
-              value={toMinuteLabel(dayState.durationMinutes)}
-              onChangeText={(nextValue) => {
-                const parsed = parseInt(nextValue.replace(/\D/g, ''), 10);
-                setValue(
-                  `schedule.weekSchedule.${day.key}.durationMinutes` as any,
-                  Number.isNaN(parsed) ? null : parsed,
-                  {
-                    shouldDirty: true,
-                    shouldValidate: true,
-                  },
-                );
-              }}
-              keyboardType="number-pad"
-              inputMode="numeric"
-              maxLength={3}
-              style={styles.numericInput}
-              accessibilityLabel={`${day.fullLabel} duration in minutes`}
-            />
-
             {errors.schedule?.weekSchedule?.[day.key]?.subjects?.message ? (
               <Text style={styles.errorText}>{errors.schedule.weekSchedule[day.key]?.subjects?.message}</Text>
             ) : null}
@@ -243,6 +310,12 @@ export function WeekScheduleStep() {
               <Text style={styles.errorText}>
                 {errors.schedule.weekSchedule[day.key]?.durationMinutes?.message}
               </Text>
+            ) : null}
+            {errors.schedule?.weekSchedule?.[day.key]?.startTime?.message ? (
+              <Text style={styles.errorText}>{errors.schedule.weekSchedule[day.key]?.startTime?.message}</Text>
+            ) : null}
+            {errors.schedule?.weekSchedule?.[day.key]?.endTime?.message ? (
+              <Text style={styles.errorText}>{errors.schedule.weekSchedule[day.key]?.endTime?.message}</Text>
             ) : null}
           </View>
         );
@@ -351,6 +424,10 @@ const styles = StyleSheet.create({
     ...Typography.body,
     height: 44,
     paddingHorizontal: Spacing.sm,
+  },
+  readOnlyInput: {
+    backgroundColor: Colors.surfaceContainerLow,
+    color: Colors.textSecondary,
   },
   errorText: {
     ...Typography.caption,

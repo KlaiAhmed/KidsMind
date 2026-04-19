@@ -90,7 +90,6 @@ export function ProfileSummaryStep({ onEditStep }: ProfileSummaryStepProps) {
         <Text style={styles.itemText}>Voice mode: {rules.voiceModeEnabled ? 'Enabled' : 'Disabled'}</Text>
         <Text style={styles.itemText}>Homework mode: {rules.homeworkModeEnabled ? 'Enabled' : 'Disabled'}</Text>
         <Text style={styles.itemText}>Content safety: {rules.contentSafetyLevel}</Text>
-        <Text style={styles.itemText}>Session window: {rules.timeWindowStart} - {rules.timeWindowEnd}</Text>
         <Text style={styles.itemText}>Allowed subjects: {allowedSubjectLabels.join(', ') || '-'}</Text>
         <Text style={styles.itemText}>Blocked subjects: {blockedSubjectLabels.join(', ') || '-'}</Text>
       </View>
