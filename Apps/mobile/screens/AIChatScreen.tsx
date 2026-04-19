@@ -54,8 +54,8 @@ export default function AIChatScreen() {
     (params.subjectId ? getSubjectById(params.subjectId)?.title : undefined);
 
   const dailyLimitMinutes =
-    typeof profile?.settingsJson?.daily_limit_minutes === 'number'
-      ? profile.settingsJson.daily_limit_minutes
+    typeof profile?.rules?.dailyLimitMinutes === 'number'
+      ? profile.rules.dailyLimitMinutes
       : undefined;
 
   const { state, elapsedSeconds, minutesRemaining, sendMessage, setInputText, endSession, clearError } =

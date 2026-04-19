@@ -1,4 +1,6 @@
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect, useMemo, useState } from 'react';
+import { Controller, FormProvider, useForm } from 'react-hook-form';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -12,37 +14,30 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import Animated, {
-  SlideInLeft,
-  SlideInRight,
-  SlideOutLeft,
-  SlideOutRight,
-} from 'react-native-reanimated';
 import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
-import { FormTextInput } from '@/components/ui/FormTextInput';
+import { toApiErrorMessage } from '@/contexts/AuthContext';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { AvatarPicker } from '@/components/wizard/AvatarPicker';
-import { SubjectInterestPicker } from '@/components/wizard/SubjectInterestPicker';
+import { ChildInfoStep } from '@/components/wizard/ChildInfoStep';
+import { ChildRulesStep } from '@/components/wizard/ChildRulesStep';
+import { ProfileSummaryStep } from '@/components/wizard/ProfileSummaryStep';
+import { WeekScheduleStep } from '@/components/wizard/WeekScheduleStep';
 import { WizardStepIndicator } from '@/components/wizard/WizardStepIndicator';
 import { useChildProfile } from '@/hooks/useChildProfile';
-import { useSubjects } from '@/hooks/useSubjects';
-import type { WizardState } from '@/types/child';
+import {
+  buildChildProfileWizardDefaultValues,
+  childProfileWizardSchema,
+  type ChildProfileWizardFormValues,
+} from '@/src/schemas/childProfileWizardSchema';
+import {
+  deriveAgeGroupFromBirthDate,
+  educationLevelToBackendStage,
+} from '@/src/utils/childProfileWizard';
+import { patchChildRules } from '@/services/childService';
 
-const MIN_AGE = 4;
-const MAX_AGE = 14;
+const TOTAL_STEPS = 5;
 
-const ageOptions = Array.from({ length: MAX_AGE - MIN_AGE + 1 }, (_, index) => MIN_AGE + index);
-
-type Direction = 'forward' | 'backward';
-
-function isNameValid(name: string): boolean {
-  const trimmed = name.trim();
-  if (trimmed.length < 2) {
-    return false;
-  }
-
-  return /^[A-Za-z'\-\s]+$/.test(trimmed);
-}
+type WizardStep = 1 | 2 | 3 | 4 | 5;
 
 export default function ChildProfileWizard() {
   const router = useRouter();
@@ -52,59 +47,36 @@ export default function ChildProfileWizard() {
   const {
     profile,
     avatars,
-    initialWizardState,
-    saveWizardState,
+    defaultAvatarId,
+    saveChildProfile,
+    refreshChildData,
   } = useChildProfile();
-  const { allSubjects } = useSubjects();
 
-  const [wizard, setWizard] = useState<WizardState>(initialWizardState);
-  const [direction, setDirection] = useState<Direction>('forward');
-  const [nameError, setNameError] = useState<string | undefined>();
-  const [isCompletingSetup, setIsCompletingSetup] = useState(false);
+  const [step, setStep] = useState<WizardStep>(1);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
-  useEffect(() => {
-    setWizard(initialWizardState);
-  }, [initialWizardState]);
-
-  useEffect(() => {
-    if (isEditMode || !isCompletingSetup) {
-      return;
-    }
-
-    if (profile) {
-      router.replace('/(tabs)' as never);
-      setIsCompletingSetup(false);
-    }
-  }, [isCompletingSetup, isEditMode, profile, router]);
-
-  const selectedSubjectNames = useMemo(
-    () =>
-      allSubjects
-        .filter((subject) => wizard.selectedSubjectIds.includes(subject.id))
-        .map((subject) => subject.title),
-    [allSubjects, wizard.selectedSubjectIds]
+  const defaultValues = useMemo(
+    () => buildChildProfileWizardDefaultValues(profile, defaultAvatarId),
+    [defaultAvatarId, profile],
   );
 
-  const nextDisabled =
-    isCompletingSetup ||
-    (wizard.step === 1 && !isNameValid(wizard.childName)) ||
-    (wizard.step === 2 && wizard.age === null) ||
-    (wizard.step === 4 && wizard.selectedSubjectIds.length === 0);
+  const methods = useForm<ChildProfileWizardFormValues>({
+    resolver: zodResolver(childProfileWizardSchema),
+    defaultValues,
+    mode: 'onChange',
+  });
 
-  const nextLabel = wizard.step === 5 ? 'Start Learning' : 'Next';
-  const showBackButton = isEditMode || wizard.step > 1;
+  useEffect(() => {
+    methods.reset(defaultValues);
+  }, [defaultValues, methods]);
 
-  function moveToStep(step: WizardState['step']) {
-    setWizard((current) => ({
-      ...current,
-      step,
-    }));
-  }
+  const showBackButton = isEditMode || step > 1;
+  const nextLabel = step === 5 ? (isEditMode ? 'Save Changes' : 'Start Learning') : 'Next';
 
   function handleBack() {
-    if (wizard.step > 1) {
-      setDirection('backward');
-      moveToStep((wizard.step - 1) as WizardState['step']);
+    if (step > 1) {
+      setStep((current) => (current - 1) as WizardStep);
       return;
     }
 
@@ -116,180 +88,138 @@ export default function ChildProfileWizard() {
     router.replace('/(auth)/login' as never);
   }
 
-  function handleNext() {
-    if (wizard.step === 1) {
-      const valid = isNameValid(wizard.childName);
-      setNameError(valid ? undefined : 'Name must be at least 2 letters and contain no numbers.');
-      if (!valid) {
-        return;
-      }
-    }
+  async function handleStepAdvance() {
+    const fieldsByStep: Record<WizardStep, Array<keyof ChildProfileWizardFormValues | string>> = {
+      1: [
+        'childInfo.nickname',
+        'childInfo.dob',
+        'childInfo.birthDateIso',
+        'childInfo.educationLevel',
+        'childInfo.mismatchAcknowledged',
+      ],
+      2: ['avatar.avatarId'],
+      3: ['schedule.allowedSubjects', 'schedule.dailyLimitMinutes', 'schedule.weekSchedule'],
+      4: [
+        'rules.defaultLanguage',
+        'rules.blockedSubjects',
+        'rules.homeworkModeEnabled',
+        'rules.voiceModeEnabled',
+        'rules.audioStorageEnabled',
+        'rules.conversationHistoryEnabled',
+        'rules.contentSafetyLevel',
+        'rules.timeWindowStart',
+        'rules.timeWindowEnd',
+      ],
+      5: [],
+    };
 
-    if (wizard.step === 2 && wizard.age === null) {
-      return;
-    }
-
-    if (wizard.step === 4 && wizard.selectedSubjectIds.length === 0) {
-      return;
-    }
-
-    if (wizard.step === 5) {
-      if (isCompletingSetup) {
-        return;
-      }
-
-      saveWizardState(wizard);
-
-      if (isEditMode) {
-        router.replace('/(tabs)/profile' as never);
-      } else {
-        setIsCompletingSetup(true);
-      }
-
+    const valid = await methods.trigger(fieldsByStep[step] as any, { shouldFocus: true });
+    if (!valid) {
       return;
     }
 
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
-    setDirection('forward');
-    moveToStep((wizard.step + 1) as WizardState['step']);
+    setStep((current) => (Math.min(current + 1, TOTAL_STEPS) as WizardStep));
   }
 
-  function toggleSubject(subjectId: string) {
-    setWizard((current) => {
-      const exists = current.selectedSubjectIds.includes(subjectId);
-      return {
-        ...current,
-        selectedSubjectIds: exists
-          ? current.selectedSubjectIds.filter((entry) => entry !== subjectId)
-          : [...current.selectedSubjectIds, subjectId],
-      };
-    });
-  }
+  async function submit(values: ChildProfileWizardFormValues) {
+    if (isSubmitting) {
+      return;
+    }
 
-  const entering = direction === 'forward' ? SlideInRight.duration(300) : SlideInLeft.duration(300);
-  const exiting = direction === 'forward' ? SlideOutLeft.duration(220) : SlideOutRight.duration(220);
+    if (!values.childInfo.birthDateIso || !values.childInfo.educationLevel) {
+      return;
+    }
+
+    setSubmitError(null);
+    setIsSubmitting(true);
+
+    try {
+      const birthDate = new Date(values.childInfo.birthDateIso);
+      const ageGroup = deriveAgeGroupFromBirthDate(birthDate) ?? undefined;
+
+      const savedProfile = await saveChildProfile({
+        nickname: values.childInfo.nickname.trim(),
+        birthDate: values.childInfo.birthDateIso,
+        educationStage: educationLevelToBackendStage(values.childInfo.educationLevel),
+        ageGroup,
+        languages: [values.rules.defaultLanguage],
+        avatarId: values.avatar.avatarId,
+      });
+
+      await patchChildRules(savedProfile.id, {
+        defaultLanguage: values.rules.defaultLanguage,
+        dailyLimitMinutes: values.schedule.dailyLimitMinutes,
+        allowedSubjects: values.schedule.allowedSubjects,
+        blockedSubjects: values.rules.blockedSubjects,
+        weekSchedule: values.schedule.weekSchedule,
+        timeWindowStart: values.rules.timeWindowStart || null,
+        timeWindowEnd: values.rules.timeWindowEnd || null,
+        homeworkModeEnabled: values.rules.homeworkModeEnabled,
+        voiceModeEnabled: values.rules.voiceModeEnabled,
+        audioStorageEnabled: values.rules.audioStorageEnabled,
+        conversationHistoryEnabled: values.rules.conversationHistoryEnabled,
+        contentSafetyLevel: values.rules.contentSafetyLevel,
+      });
+
+      await refreshChildData();
+
+      if (isEditMode) {
+        router.replace('/(tabs)/profile' as never);
+      } else {
+        router.replace('/(tabs)' as never);
+      }
+    } catch (error) {
+      setSubmitError(toApiErrorMessage(error));
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
 
   function renderStepContent() {
-    return (
-      <>
-        {wizard.step === 1 ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>What should we call you?</Text>
-            <Text style={styles.sectionSubtitle}>Pick a name your child loves to hear.</Text>
-            <FormTextInput
-              label="Child Name"
-              placeholder="Enter child name"
-              value={wizard.childName}
-              onChangeText={(value) => {
-                setNameError(undefined);
-                setWizard((current) => ({
-                  ...current,
-                  childName: value,
-                }));
-              }}
-              error={nameError}
-            />
-          </View>
-        ) : null}
+    if (step === 1) {
+      return <ChildInfoStep />;
+    }
 
-        {wizard.step === 2 ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>How old are you?</Text>
-            <Text style={styles.sectionSubtitle}>Tap an age to personalize the lessons.</Text>
-            <View style={styles.ageGrid}>
-              {ageOptions.map((age) => {
-                const selected = wizard.age === age;
+    if (step === 2) {
+      return (
+        <View style={[styles.section, styles.sectionFill]}>
+          <Text style={styles.sectionTitle}>Choose your avatar</Text>
+          <Text style={styles.sectionSubtitle}>This buddy appears on your dashboard.</Text>
 
-                return (
-                  <Pressable
-                    key={`age-${age}`}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Select age ${age}`}
-                    accessibilityState={{ selected }}
-                    onPress={() =>
-                      setWizard((current) => ({
-                        ...current,
-                        age,
-                      }))
-                    }
-                    style={({ pressed }) => [
-                      styles.ageButton,
-                      selected ? styles.ageButtonSelected : null,
-                      pressed ? styles.ageButtonPressed : null,
-                    ]}
-                  >
-                    <Text style={[styles.ageText, selected ? styles.ageTextSelected : null]}>{age}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-        ) : null}
+          <Controller
+            control={methods.control}
+            name="avatar.avatarId"
+            render={({ field: { value, onChange } }) => (
+              <AvatarPicker
+                avatars={avatars}
+                selectedAvatarId={value}
+                onSelect={onChange}
+                style={styles.pickerList}
+              />
+            )}
+          />
+        </View>
+      );
+    }
 
-        {wizard.step === 3 ? (
-          <View style={[styles.section, styles.sectionFill]}>
-            <Text style={styles.sectionTitle}>Choose your avatar</Text>
-            <Text style={styles.sectionSubtitle}>This buddy appears on your dashboard.</Text>
-            <AvatarPicker
-              avatars={avatars}
-              selectedAvatarId={wizard.avatarId}
-              onSelect={(avatarId) =>
-                setWizard((current) => ({
-                  ...current,
-                  avatarId,
-                }))
-              }
-              style={styles.pickerList}
-            />
-          </View>
-        ) : null}
+    if (step === 3) {
+      return <WeekScheduleStep />;
+    }
 
-        {wizard.step === 4 ? (
-          <View style={[styles.section, styles.sectionFill]}>
-            <Text style={styles.sectionTitle}>Pick your favorite subjects</Text>
-            <Text style={styles.sectionSubtitle}>Select at least one subject to continue.</Text>
-            <SubjectInterestPicker
-              subjects={allSubjects}
-              selectedSubjectIds={wizard.selectedSubjectIds}
-              onToggleSubject={toggleSubject}
-              style={styles.pickerList}
-            />
-            {wizard.selectedSubjectIds.length === 0 ? (
-              <Text style={styles.inlineError}>Please choose at least one subject.</Text>
-            ) : null}
-          </View>
-        ) : null}
+    if (step === 4) {
+      return <ChildRulesStep />;
+    }
 
-        {wizard.step === 5 ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>You are all set!</Text>
-            <Text style={styles.sectionSubtitle}>Review and begin your learning adventure.</Text>
-
-            <View style={styles.summaryCard}>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Name</Text>
-                <Text style={styles.summaryValue}>{wizard.childName}</Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Age</Text>
-                <Text style={styles.summaryValue}>{wizard.age ?? '--'}</Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Subjects</Text>
-                <Text style={styles.summaryValue}>
-                  {selectedSubjectNames.length > 0 ? selectedSubjectNames.join(', ') : 'None selected'}
-                </Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Daily Goal</Text>
-                <Text style={styles.summaryValue}>{profile?.dailyGoalMinutes ?? 25} min</Text>
-              </View>
-            </View>
-          </View>
-        ) : null}
-      </>
-    );
+    return <ProfileSummaryStep onEditStep={(targetStep) => setStep((targetStep + 1) as WizardStep)} />;
   }
+
+  const onNextPress =
+    step === 5
+      ? methods.handleSubmit(submit)
+      : () => {
+          void handleStepAdvance();
+        };
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
@@ -316,20 +246,10 @@ export default function ChildProfileWizard() {
         </View>
 
         <View style={styles.wizardBody}>
-          <WizardStepIndicator step={wizard.step} totalSteps={5} />
+          <WizardStepIndicator step={step} totalSteps={TOTAL_STEPS} />
 
-          <Animated.View
-            key={wizard.step}
-            entering={entering}
-            exiting={exiting}
-            style={[
-              styles.stepCard,
-              wizard.step === 1 ? styles.stepCardStepOne : null,
-            ]}
-          >
-            {wizard.step === 3 || wizard.step === 4 ? (
-              <View style={styles.stepContent}>{renderStepContent()}</View>
-            ) : (
+          <FormProvider {...methods}>
+            <View style={styles.stepCard}>
               <ScrollView
                 keyboardShouldPersistTaps="handled"
                 contentContainerStyle={styles.scrollContent}
@@ -337,16 +257,17 @@ export default function ChildProfileWizard() {
                 style={styles.stepScrollView}
               >
                 {renderStepContent()}
+                {submitError ? <Text style={styles.inlineError}>{submitError}</Text> : null}
               </ScrollView>
-            )}
-          </Animated.View>
+            </View>
+          </FormProvider>
         </View>
 
         <PrimaryButton
           label={nextLabel}
-          loading={isCompletingSetup}
-          disabled={nextDisabled}
-          onPress={handleNext}
+          loading={isSubmitting}
+          disabled={isSubmitting}
+          onPress={onNextPress}
           style={styles.nextButton}
         />
       </KeyboardAvoidingView>
@@ -401,35 +322,24 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 0,
     borderRadius: Radii.xl,
+    backgroundColor: Colors.surfaceContainerLowest,
     borderWidth: 1,
     borderColor: Colors.outline,
-    backgroundColor: Colors.surfaceContainerLowest,
-    padding: Spacing.md,
-  },
-  stepCardStepOne: {
-    marginTop: Spacing.lg,
+    overflow: 'hidden',
   },
   stepScrollView: {
     flex: 1,
     minHeight: 0,
   },
-  stepContent: {
-    flex: 1,
-    minHeight: 0,
-  },
   scrollContent: {
-    flexGrow: 1,
+    padding: Spacing.lg,
     gap: Spacing.md,
-    paddingBottom: Spacing.md,
+    flexGrow: 1,
   },
   section: {
     gap: Spacing.md,
   },
   sectionFill: {
-    flex: 1,
-    minHeight: 0,
-  },
-  pickerList: {
     flex: 1,
     minHeight: 0,
   },
@@ -441,65 +351,15 @@ const styles = StyleSheet.create({
     ...Typography.body,
     color: Colors.textSecondary,
   },
-  ageGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.sm,
+  pickerList: {
+    flex: 1,
+    minHeight: 0,
   },
-  ageButton: {
-    width: 64,
-    height: 64,
-    borderRadius: Radii.lg,
-    borderWidth: 1,
-    borderColor: Colors.outline,
-    backgroundColor: Colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ageButtonSelected: {
-    borderColor: Colors.primary,
-    backgroundColor: Colors.primary,
-  },
-  ageButtonPressed: {
-    transform: [{ scale: 0.96 }],
-  },
-  ageText: {
-    ...Typography.bodySemiBold,
-    color: Colors.text,
-  },
-  ageTextSelected: {
-    color: Colors.white,
+  nextButton: {
+    marginTop: Spacing.md,
   },
   inlineError: {
     ...Typography.caption,
     color: Colors.errorText,
-  },
-  summaryCard: {
-    borderRadius: Radii.lg,
-    borderWidth: 1,
-    borderColor: Colors.outline,
-    backgroundColor: Colors.surface,
-    padding: Spacing.md,
-    gap: Spacing.sm,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: Spacing.sm,
-  },
-  summaryLabel: {
-    ...Typography.captionMedium,
-    color: Colors.textSecondary,
-    minWidth: 78,
-  },
-  summaryValue: {
-    ...Typography.bodyMedium,
-    color: Colors.text,
-    flex: 1,
-    textAlign: 'right',
-  },
-  nextButton: {
-    marginTop: Spacing.md,
   },
 });

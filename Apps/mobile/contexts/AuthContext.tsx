@@ -25,11 +25,16 @@ import {
   refreshToken as refreshTokenRequest,
   register as registerRequest,
 } from '@/services/authApi';
+import {
+  createChildProfile,
+  listChildProfiles,
+  patchChildProfile,
+} from '@/services/childService';
 import { useAuthStore } from '@/store/authStore';
 import type {
-  AgeGroup,
   AvatarOption,
   ChildProfile,
+  CreateChildProfileInput,
   RecentActivity,
   Subject,
   Topic,
@@ -46,26 +51,6 @@ export interface User {
 export type LoginFormValues = LoginRequest;
 
 export type RegisterFormValues = RegisterRequest;
-
-interface SaveChildProfileInput {
-  id?: string;
-  name: string;
-  age: number;
-  avatarId: string;
-  subjectIds: string[];
-  streakDays: number;
-  dailyGoalMinutes: number;
-  dailyCompletedMinutes: number;
-  gradeLevel?: string;
-  languages?: string[];
-  settingsJson?: Record<string, unknown>;
-  xp?: number;
-  level?: number;
-  xpToNextLevel?: number;
-  totalSubjectsExplored?: number;
-  totalExercisesCompleted?: number;
-  totalBadgesEarned?: number;
-}
 
 interface ChildState {
   childProfile: ChildProfile | null;
@@ -88,7 +73,7 @@ interface AuthContextValue extends SessionAuthState, ChildState {
   setUnauthenticated: () => void;
   setLoading: (isLoading: boolean) => void;
   clearError: () => void;
-  saveChildProfile: (profile: SaveChildProfileInput) => void;
+  saveChildProfile: (input: CreateChildProfileInput) => Promise<ChildProfile>;
   updateChildProfile: (updates: Partial<Omit<ChildProfile, 'id'>>) => void;
   refreshChildData: () => Promise<void>;
   markSubjectAccess: (subjectId: string) => void;
@@ -107,61 +92,6 @@ function hoursAgo(hours: number): string {
   return new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
 }
 
-function getAgeGroup(age: number): AgeGroup {
-  if (age <= 6) {
-    return '3-6';
-  }
-
-  if (age <= 11) {
-    return '7-11';
-  }
-
-  return '12-15';
-}
-
-function getGradeLevel(age: number): string {
-  if (age <= 5) {
-    return 'Kindergarten';
-  }
-
-  if (age <= 6) {
-    return 'Grade 1';
-  }
-
-  if (age <= 7) {
-    return 'Grade 2';
-  }
-
-  if (age <= 8) {
-    return 'Grade 3';
-  }
-
-  if (age <= 9) {
-    return 'Grade 4';
-  }
-
-  if (age <= 10) {
-    return 'Grade 5';
-  }
-
-  if (age <= 11) {
-    return 'Grade 6';
-  }
-
-  if (age <= 12) {
-    return 'Grade 7';
-  }
-
-  if (age <= 13) {
-    return 'Grade 8';
-  }
-
-  if (age <= 14) {
-    return 'Grade 9';
-  }
-
-  return 'Grade 10';
-}
 
 function buildLevelProgress(xp: number): { level: number; xpToNextLevel: number } {
   const normalizedXp = Math.max(0, Math.floor(xp));
@@ -220,7 +150,7 @@ const AVATAR_OPTIONS: AvatarOption[] = [
 const TOPIC_SEED: Topic[] = [
   {
     id: 'topic-math-1',
-    subjectId: 'subject-math',
+    subjectId: 'math',
     title: 'Count to 100 with Rockets',
     duration: 12,
     isCompleted: true,
@@ -231,7 +161,7 @@ const TOPIC_SEED: Topic[] = [
   },
   {
     id: 'topic-math-2',
-    subjectId: 'subject-math',
+    subjectId: 'math',
     title: 'Quick Addition Quest',
     duration: 10,
     isCompleted: false,
@@ -241,7 +171,7 @@ const TOPIC_SEED: Topic[] = [
   },
   {
     id: 'topic-reading-1',
-    subjectId: 'subject-reading',
+    subjectId: 'reading',
     title: 'Story Detectives: Clues & Characters',
     duration: 14,
     isCompleted: true,
@@ -252,7 +182,7 @@ const TOPIC_SEED: Topic[] = [
   },
   {
     id: 'topic-reading-2',
-    subjectId: 'subject-reading',
+    subjectId: 'reading',
     title: 'Build New Words',
     duration: 9,
     isCompleted: false,
@@ -262,7 +192,7 @@ const TOPIC_SEED: Topic[] = [
   },
   {
     id: 'topic-science-1',
-    subjectId: 'subject-science',
+    subjectId: 'science',
     title: 'Plant Power Lab',
     duration: 11,
     isCompleted: false,
@@ -272,7 +202,7 @@ const TOPIC_SEED: Topic[] = [
   },
   {
     id: 'topic-science-2',
-    subjectId: 'subject-science',
+    subjectId: 'science',
     title: 'Weather Wizards',
     duration: 13,
     isCompleted: false,
@@ -282,7 +212,7 @@ const TOPIC_SEED: Topic[] = [
   },
   {
     id: 'topic-art-1',
-    subjectId: 'subject-art',
+    subjectId: 'art',
     title: 'Color Mixing Jam',
     duration: 8,
     isCompleted: false,
@@ -292,7 +222,7 @@ const TOPIC_SEED: Topic[] = [
   },
   {
     id: 'topic-art-2',
-    subjectId: 'subject-art',
+    subjectId: 'art',
     title: 'Shape Adventure Collage',
     duration: 10,
     isCompleted: false,
@@ -303,36 +233,44 @@ const TOPIC_SEED: Topic[] = [
 ];
 
 function buildSubjects(topics: Topic[]): Subject[] {
-  const subjectMap = [
+  const subjectMap: Subject[] = [
     {
-      id: 'subject-math',
+      id: 'math',
       title: 'Math',
       iconAsset: require('../assets/images/icon.png'),
       color: Colors.primary,
+      progressPercent: 0,
+      topicCount: 0,
       lastAccessedAt: hoursAgo(3),
       description: 'Numbers, puzzles, and pattern adventures.',
     },
     {
-      id: 'subject-reading',
+      id: 'reading',
       title: 'Reading',
       iconAsset: require('../assets/images/splash-icon.png'),
       color: Colors.secondaryContainer,
+      progressPercent: 0,
+      topicCount: 0,
       lastAccessedAt: hoursAgo(6),
       description: 'Stories, vocabulary, and comprehension quests.',
     },
     {
-      id: 'subject-science',
+      id: 'science',
       title: 'Science',
       iconAsset: require('../assets/images/android-icon-background.png'),
       color: Colors.accentAmber,
+      progressPercent: 0,
+      topicCount: 0,
       lastAccessedAt: hoursAgo(18),
       description: 'Discover the world through experiments and wonder.',
     },
     {
-      id: 'subject-art',
+      id: 'art',
       title: 'Art',
       iconAsset: require('../assets/images/android-icon-foreground.png'),
       color: Colors.tertiary,
+      progressPercent: 0,
+      topicCount: 0,
       lastAccessedAt: hoursAgo(26),
       description: 'Draw, color, and design playful creations.',
     },
@@ -375,7 +313,7 @@ function toUser(authUser: AuthUser): User {
   };
 }
 
-function toApiErrorMessage(error: unknown): string {
+export function toApiErrorMessage(error: unknown): string {
   if (error instanceof ApiClientError && error.message.trim().length > 0) {
     return error.message;
   }
@@ -624,46 +562,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loading = loginMutation.isPending || registerMutation.isPending;
   const error = authError;
 
-  const saveChildProfile = useCallback((profile: SaveChildProfileInput) => {
-    setChildState((current) => {
-      const completedTopicCount = current.topics.filter((topic) => topic.isCompleted).length;
-      const totalXp = profile.xp ?? current.childProfile?.xp ?? completedTopicCount * 25;
-      const progression = buildLevelProgress(totalXp);
-      const totalExercisesCompleted = profile.totalExercisesCompleted ?? completedTopicCount;
+  const saveChildProfile = useCallback(async (input: CreateChildProfileInput) => {
+    try {
+      const profile = childState.childProfile?.id
+        ? await patchChildProfile(childState.childProfile.id, input)
+        : await createChildProfile(input);
 
-      const nextProfile: ChildProfile = {
-        id: profile.id ?? current.childProfile?.id ?? 'child-1',
-        name: profile.name,
-        nickname: profile.name,
-        age: profile.age,
-        ageGroup: getAgeGroup(profile.age),
-        gradeLevel: profile.gradeLevel ?? getGradeLevel(profile.age),
-        languages: profile.languages ?? current.childProfile?.languages ?? ['en'],
-        settingsJson:
-          profile.settingsJson ?? current.childProfile?.settingsJson ?? { daily_limit_minutes: 20 },
-        avatarId: profile.avatarId,
-        subjectIds: profile.subjectIds,
-        xp: totalXp,
-        level: profile.level ?? progression.level,
-        xpToNextLevel: profile.xpToNextLevel ?? progression.xpToNextLevel,
-        streakDays: profile.streakDays,
-        dailyGoalMinutes: profile.dailyGoalMinutes,
-        dailyCompletedMinutes: profile.dailyCompletedMinutes,
-        totalSubjectsExplored: profile.totalSubjectsExplored ?? profile.subjectIds.length,
-        totalExercisesCompleted,
-        totalBadgesEarned:
-          profile.totalBadgesEarned ??
-          current.childProfile?.totalBadgesEarned ??
-          Math.floor(totalExercisesCompleted / 2),
-      };
-
-      return {
+      setChildState((current) => ({
         ...current,
-        childProfile: nextProfile,
+        childProfile: profile,
         childDataError: null,
-      };
-    });
-  }, []);
+      }));
+      return profile;
+    } catch (err) {
+      const message = toApiErrorMessage(err);
+      setChildState((current) => ({
+        ...current,
+        childDataError: message,
+      }));
+      throw err;
+    }
+  }, [childState.childProfile?.id]);
 
   const updateChildProfile = useCallback((updates: Partial<Omit<ChildProfile, 'id'>>) => {
     setChildState((current) => {
@@ -689,9 +608,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }));
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 550));
+      const profiles = await listChildProfiles();
       setChildState((current) => ({
         ...current,
+        childProfile: profiles.length > 0 ? profiles[0] : current.childProfile,
         childDataLoading: false,
         childDataError: null,
       }));
