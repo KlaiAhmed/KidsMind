@@ -69,20 +69,36 @@ mc mb myminio/media-public  --ignore-existing
 mc mb myminio/media-private --ignore-existing
 mc mb myminio/loki-chunks --ignore-existing
 
-# Opens media-public for anonymous download (CDN/public assets)
-mc anonymous set download myminio/media-public
 ```
 
 > The `bucket-service` uses `depends_on: service_healthy`, so provisioning only begins after the storage backend passes its readiness probe.
 
 ### Bucket Reference
 
-| Bucket          | Access Policy              | Purpose                                                        |
-|-----------------|----------------------------|----------------------------------------------------------------|
-| `media-public`  | Anonymous read / Auth write| General application assets (avatars, UI media, content files)  |
-| `media-private` | Authenticated only         | Sensitive user data, child voice recordings, AI interactions   |
-| `loki-chunks`   | Authenticated only         | Dedicated bucket for Loki log chunks (separate from app media) |
+| Bucket          | Access Policy      | Purpose                                                        |
+|-----------------|--------------------|----------------------------------------------------------------|
+| `media-public`  | Authenticated only | General application assets (avatars, badges, audio content)    |
+| `media-private` | Authenticated only | Sensitive user data, child voice recordings, AI interactions   |
+| `loki-chunks`   | Authenticated only | Dedicated bucket for Loki log chunks (separate from app media) |
 ---
+
+## Public Media Key Convention
+
+All metadata-backed assets stored in `media-public` follow this schema:
+
+```
+{category}/{sub_category}/{uuid_or_slug}.{ext}
+```
+
+Examples:
+
+```
+avatars/starter/avatar_001.webp
+avatars/rare/avatar_012.webp
+badges/achievement/first_lesson.webp
+audio/tracks/happy_theme.mp3
+audio/effects/correct_answer.mp3
+```
 
 ## Privacy-First Voice Storage Logic
 
@@ -224,7 +240,7 @@ The storage service was architected around GDPR and COPPA principles from the gr
 
 | Bucket          | Anonymous Read | Authenticated Read | Authenticated Write |
 |-----------------|:--------------:|:------------------:|:-------------------:|
-| `media-public`  | Yes            | Yes                | Yes                 |
+| `media-public`  | No            | Yes                | Yes                 |
 | `media-private` | No             | Yes                | Yes                 |
 | `loki-chunks`   | No             | Yes                | Yes                 |
 

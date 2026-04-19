@@ -14,6 +14,4 @@ mc mb "$ALIAS/media-public" --ignore-existing
 mc mb "$ALIAS/media-private" --ignore-existing
 mc mb "$ALIAS/loki-chunks" --ignore-existing
 
-mc anonymous set download "$ALIAS/media-public"
-
 echo "Setup complete. Buckets are ready."
