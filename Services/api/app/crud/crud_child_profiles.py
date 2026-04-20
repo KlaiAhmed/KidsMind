@@ -2,7 +2,7 @@
 CRUD operations for child profiles.
 """
 
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from models.child_profile import ChildProfile
 from utils.child_profile_logic import StudentProfileDerivation
@@ -32,24 +32,13 @@ def create_child_profile(
     return child_profile
 
 
-def list_children_for_parent(db: Session, *, parent_id: int, include_rules: bool = False) -> list[ChildProfile]:
-    query = db.query(ChildProfile).filter(ChildProfile.parent_id == parent_id).order_by(ChildProfile.id.asc())
-    if include_rules:
-        query = query.options(selectinload(ChildProfile.rules))
-    return query.all()
-
-
-def get_child_for_parent(
-    db: Session,
-    *,
-    child_id: int,
-    parent_id: int,
-    include_rules: bool = False,
-) -> ChildProfile | None:
-    query = db.query(ChildProfile).filter(ChildProfile.id == child_id, ChildProfile.parent_id == parent_id)
-    if include_rules:
-        query = query.options(selectinload(ChildProfile.rules))
-    return query.first()
+def list_children_for_parent(db: Session, *, parent_id: int) -> list[ChildProfile]:
+    return (
+        db.query(ChildProfile)
+        .filter(ChildProfile.parent_id == parent_id)
+        .order_by(ChildProfile.id.asc())
+        .all()
+    )
 
 
 def delete_child_profile(db: Session, *, child_profile: ChildProfile) -> None:

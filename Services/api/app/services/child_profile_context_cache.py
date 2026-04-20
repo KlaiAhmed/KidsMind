@@ -10,6 +10,7 @@ Domain: Children / Caching
 import json
 import time
 from typing import Any
+from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -22,20 +23,23 @@ from utils.logger import logger
 CHILD_PROFILE_CONTEXT_TTL_SECONDS = 3600
 
 
-def _child_profile_cache_key(child_id: int) -> str:
+def _child_profile_cache_key(child_id: UUID) -> str:
     return f"child:profile:{child_id}"
 
 
-def _parse_child_id(child_id: str | int) -> int:
+def _parse_child_id(child_id: str | UUID) -> UUID:
+    if isinstance(child_id, UUID):
+        return child_id
+
     try:
-        parsed_child_id = int(child_id)
+        parsed_child_id = UUID(str(child_id))
     except (TypeError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail="child_id must be an integer") from exc
+        raise HTTPException(status_code=400, detail="child_id must be a valid UUID") from exc
 
     return parsed_child_id
 
 
-async def get_child_profile_context(child_id: str | int, redis: Any, db: Session) -> dict[str, str | bool]:
+async def get_child_profile_context(child_id: str | UUID, redis: Any, db: Session) -> dict[str, str | bool]:
     """Return child profile context from cache or database as the single source of truth."""
     timer_total_start = time.perf_counter()
     parsed_child_id = _parse_child_id(child_id)
@@ -151,7 +155,7 @@ async def get_child_profile_context(child_id: str | int, redis: Any, db: Session
     return profile_context
 
 
-async def invalidate_child_profile_context_cache(child_id: str | int, redis: Any) -> None:
+async def invalidate_child_profile_context_cache(child_id: str | UUID, redis: Any) -> None:
     """Remove a child profile context cache entry after profile updates."""
     timer_start = time.perf_counter()
     parsed_child_id = _parse_child_id(child_id)

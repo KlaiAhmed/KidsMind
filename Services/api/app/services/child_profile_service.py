@@ -6,27 +6,47 @@ Layer: Service
 Domain: Children
 """
 
+from collections import defaultdict
+from collections.abc import Sequence
+from uuid import UUID
+
 from fastapi import HTTPException
-from sqlalchemy import func
+from sqlalchemy import delete, func, insert
 from sqlalchemy.orm import Session
 
-from crud.crud_child_profiles import (
-    create_child_profile,
-    delete_child_profile,
-    get_child_for_parent,
-    list_children_for_parent,
-)
+from crud.crud_child_profiles import create_child_profile, list_children_for_parent
 from crud.crud_child_rules import upsert_child_rules
+from models.child_allowed_subject import ChildAllowedSubject
 from models.child_profile import ChildProfile
+from models.child_schedule_subject import ChildScheduleSubject
 from models.child_rules import ChildRules
+from models.child_week_schedule import ChildWeekSchedule
 from models.user import User
-from schemas.child_profile_schema import ChildProfileCreate, ChildProfileUpdate, ChildRulesCreate, ChildRulesUpdate
+from schemas.child_profile_schema import (
+    ChildAllowedSubjectIn,
+    ChildProfileCreate,
+    ChildProfileRead,
+    ChildProfileUpdate,
+    ChildRulesRead,
+    ChildScheduleSubjectIn,
+    ChildRulesUpdate,
+    ChildWeekScheduleIn,
+    ChildWeekScheduleOut,
+)
 from utils.child_profile_logic import derive_student_profile_fields
 from utils.manage_pwd import hash_password
 
 
 class ChildProfileService:
     MAX_CHILD_PROFILES_PER_PARENT = 5
+
+    RULE_FIELD_NAMES = {
+        "default_language",
+        "homework_mode_enabled",
+        "voice_mode_enabled",
+        "audio_storage_enabled",
+        "conversation_history_enabled",
+    }
 
     def __init__(self, db: Session):
         """Initialize service with database session."""
@@ -41,7 +61,259 @@ class ChildProfileService:
             or 0
         )
 
-    def create_child_profile(self, parent_user: User, payload: ChildProfileCreate) -> ChildProfile:
+    def _get_child_by_id(self, child_id: UUID) -> ChildProfile | None:
+        return self.db.query(ChildProfile).filter(ChildProfile.id == child_id).first()
+
+    def _require_parent_ownership(self, child_profile: ChildProfile, parent_id: int) -> None:
+        if child_profile.parent_id != parent_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+
+    def _get_child_for_parent_or_raise(self, child_id: UUID, parent_id: int) -> ChildProfile:
+        child_profile = self._get_child_by_id(child_id)
+        if not child_profile:
+            raise HTTPException(status_code=404, detail="Child profile not found")
+        self._require_parent_ownership(child_profile, parent_id)
+        return child_profile
+
+    @staticmethod
+    def _extract_unique_subjects(
+        items: Sequence[ChildAllowedSubjectIn | ChildScheduleSubjectIn],
+    ) -> list[str]:
+        seen: set[str] = set()
+        ordered_subjects: list[str] = []
+        for item in items:
+            if item.subject in seen:
+                continue
+            seen.add(item.subject)
+            ordered_subjects.append(item.subject)
+        return ordered_subjects
+
+    def _replace_allowed_subjects_rows(
+        self,
+        *,
+        child_profile_id: UUID,
+        allowed_subjects: Sequence[ChildAllowedSubjectIn],
+    ) -> None:
+        self.db.execute(
+            delete(ChildAllowedSubject).where(ChildAllowedSubject.child_profile_id == child_profile_id)
+        )
+        self.db.flush()
+
+        unique_subjects = self._extract_unique_subjects(allowed_subjects)
+        if not unique_subjects:
+            return
+
+        rows = [
+            {
+                "child_profile_id": child_profile_id,
+                "subject": subject,
+            }
+            for subject in unique_subjects
+        ]
+        self.db.execute(insert(ChildAllowedSubject), rows)
+
+    def _replace_all_week_schedule_rows(
+        self,
+        *,
+        child_profile_id: UUID,
+        week_schedule: Sequence[ChildWeekScheduleIn],
+    ) -> None:
+        self.db.execute(
+            delete(ChildWeekSchedule).where(ChildWeekSchedule.child_profile_id == child_profile_id)
+        )
+        self.db.flush()
+
+        if not week_schedule:
+            return
+
+        all_subject_rows: list[dict[str, object]] = []
+        for schedule in week_schedule:
+            inserted_schedule = self.db.execute(
+                insert(ChildWeekSchedule)
+                .values(
+                    child_profile_id=child_profile_id,
+                    day_of_week=schedule.day_of_week,
+                    access_window_start=schedule.access_window_start,
+                    access_window_end=schedule.access_window_end,
+                    daily_cap_seconds=schedule.daily_cap_seconds,
+                )
+                .returning(ChildWeekSchedule.id)
+            ).first()
+
+            if inserted_schedule and schedule.subjects:
+                unique_subjects = self._extract_unique_subjects(schedule.subjects)
+                for subject in unique_subjects:
+                    all_subject_rows.append({"schedule_id": inserted_schedule.id, "subject": subject})
+
+        if all_subject_rows:
+            self.db.execute(insert(ChildScheduleSubject), all_subject_rows)
+
+    def update_allowed_subjects(
+        self,
+        *,
+        child_id: UUID,
+        parent_user: User,
+        allowed_subjects: Sequence[ChildAllowedSubjectIn],
+    ) -> ChildProfileRead:
+        child_profile = self._get_child_for_parent_or_raise(child_id, parent_user.id)
+
+        try:
+            self._replace_allowed_subjects_rows(
+                child_profile_id=child_profile.id,
+                allowed_subjects=allowed_subjects,
+            )
+            self.db.commit()
+        except HTTPException:
+            self.db.rollback()
+            raise
+        except Exception:
+            self.db.rollback()
+            raise
+
+        return self._serialize_child_profiles([child_profile])[0]
+
+    def replace_schedule_day(
+        self,
+        *,
+        child_id: UUID,
+        parent_user: User,
+        schedule_day: ChildWeekScheduleIn,
+    ) -> ChildProfileRead:
+        child_profile = self._get_child_for_parent_or_raise(child_id, parent_user.id)
+
+        try:
+            existing = (
+                self.db.query(ChildWeekSchedule)
+                .filter(
+                    ChildWeekSchedule.child_profile_id == child_profile.id,
+                    ChildWeekSchedule.day_of_week == schedule_day.day_of_week,
+                )
+                .first()
+            )
+            if existing:
+                self.db.delete(existing)
+                self.db.flush()
+
+            inserted_schedule = self.db.execute(
+                insert(ChildWeekSchedule)
+                .values(
+                    child_profile_id=child_profile.id,
+                    day_of_week=schedule_day.day_of_week,
+                    access_window_start=schedule_day.access_window_start,
+                    access_window_end=schedule_day.access_window_end,
+                    daily_cap_seconds=schedule_day.daily_cap_seconds,
+                )
+                .returning(ChildWeekSchedule.id)
+            ).first()
+
+            if inserted_schedule and schedule_day.subjects:
+                subject_rows = [
+                    {"schedule_id": inserted_schedule.id, "subject": subject}
+                    for subject in self._extract_unique_subjects(schedule_day.subjects)
+                ]
+                if subject_rows:
+                    self.db.execute(insert(ChildScheduleSubject), subject_rows)
+
+            self.db.commit()
+        except HTTPException:
+            self.db.rollback()
+            raise
+        except Exception:
+            self.db.rollback()
+            raise
+
+        return self._serialize_child_profiles([child_profile])[0]
+
+    def _serialize_child_profiles(self, profiles: Sequence[ChildProfile]) -> list[ChildProfileRead]:
+        if not profiles:
+            return []
+
+        child_ids = [profile.id for profile in profiles]
+
+        rules_rows = (
+            self.db.query(ChildRules)
+            .filter(ChildRules.child_profile_id.in_(child_ids))
+            .all()
+        )
+        rules_by_child_id = {row.child_profile_id: row for row in rules_rows}
+
+        allowed_subject_rows = (
+            self.db.query(ChildAllowedSubject)
+            .filter(ChildAllowedSubject.child_profile_id.in_(child_ids))
+            .order_by(ChildAllowedSubject.subject.asc())
+            .all()
+        )
+        allowed_subjects_by_child_id: dict[UUID, list[str]] = defaultdict(list)
+        for row in allowed_subject_rows:
+            allowed_subjects_by_child_id[row.child_profile_id].append(row.subject)
+
+        week_schedule_rows = (
+            self.db.query(ChildWeekSchedule)
+            .filter(ChildWeekSchedule.child_profile_id.in_(child_ids))
+            .order_by(ChildWeekSchedule.day_of_week.asc())
+            .all()
+        )
+        week_schedule_by_child_id: dict[UUID, list[ChildWeekSchedule]] = defaultdict(list)
+        schedule_ids: list[UUID] = []
+        for row in week_schedule_rows:
+            week_schedule_by_child_id[row.child_profile_id].append(row)
+            schedule_ids.append(row.id)
+
+        schedule_subjects_by_schedule_id: dict[UUID, list[str]] = defaultdict(list)
+        if schedule_ids:
+            schedule_subject_rows = (
+                self.db.query(ChildScheduleSubject)
+                .filter(ChildScheduleSubject.schedule_id.in_(schedule_ids))
+                .order_by(ChildScheduleSubject.subject.asc())
+                .all()
+            )
+            for row in schedule_subject_rows:
+                schedule_subjects_by_schedule_id[row.schedule_id].append(row.subject)
+
+        serialized_profiles: list[ChildProfileRead] = []
+        for profile in profiles:
+            rules_row = rules_by_child_id.get(profile.id)
+            week_schedule = [
+                ChildWeekScheduleOut(
+                    id=schedule_row.id,
+                    day_of_week=int(schedule_row.day_of_week),
+                    access_window_start=schedule_row.access_window_start,
+                    access_window_end=schedule_row.access_window_end,
+                    daily_cap_seconds=int(schedule_row.daily_cap_seconds),
+                    subjects=schedule_subjects_by_schedule_id.get(schedule_row.id, []),
+                )
+                for schedule_row in week_schedule_by_child_id.get(profile.id, [])
+            ]
+
+            serialized_profiles.append(
+                ChildProfileRead(
+                    id=profile.id,
+                    parent_id=profile.parent_id,
+                    nickname=profile.nickname,
+                    birth_date=profile.birth_date,
+                    education_stage=profile.education_stage,
+                    is_accelerated=profile.is_accelerated,
+                    is_below_expected_stage=profile.is_below_expected_stage,
+                    languages=profile.languages,
+                    avatar=profile.avatar,
+                    xp=profile.xp,
+                    rules=ChildRulesRead.model_validate(rules_row) if rules_row else None,
+                    allowed_subjects=allowed_subjects_by_child_id.get(profile.id, []),
+                    week_schedule=week_schedule,
+                    created_at=profile.created_at,
+                    updated_at=profile.updated_at,
+                )
+            )
+
+        return serialized_profiles
+
+    def _serialize_single_child_profile(self, profile: ChildProfile) -> ChildProfileRead:
+        serialized_profiles = self._serialize_child_profiles([profile])
+        if not serialized_profiles:
+            raise HTTPException(status_code=404, detail="Child profile not found")
+        return serialized_profiles[0]
+
+    def create_child_profile(self, parent_user: User, payload: ChildProfileCreate) -> ChildProfileRead:
         """Create a child profile linked to the authenticated parent."""
         existing_children_count = self.count_children_for_parent(parent_user.id)
         if existing_children_count >= self.MAX_CHILD_PROFILES_PER_PARENT:
@@ -54,70 +326,70 @@ class ChildProfileService:
             derived = derive_student_profile_fields(
                 education_stage=payload.education_stage,
                 birth_date=payload.birth_date,
-                age=payload.age,
-                age_group=payload.age_group,
+                age=None,
+                age_group=None,
                 input_is_accelerated=payload.is_accelerated,
                 input_is_below_expected_stage=payload.is_below_expected_stage,
             )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-        child_profile = create_child_profile(
-            self.db,
-            parent_id=parent_user.id,
-            nickname=payload.nickname,
-            languages=payload.languages,
-            avatar=payload.avatar,
-            derivation=derived,
-        )
+        try:
+            child_profile = create_child_profile(
+                self.db,
+                parent_id=parent_user.id,
+                nickname=payload.nickname,
+                languages=payload.languages,
+                avatar=payload.avatar,
+                derivation=derived,
+            )
 
-        upsert_child_rules(
-            self.db,
-            child_profile_id=child_profile.id,
-            payload=payload.rules.model_dump() if payload.rules else None,
-        )
+            upsert_child_rules(
+                self.db,
+                child_profile_id=child_profile.id,
+                payload=payload.rules.model_dump(),
+            )
 
-        self.db.commit()
-        created_child = get_child_for_parent(
-            self.db,
-            child_id=child_profile.id,
-            parent_id=parent_user.id,
-            include_rules=True,
-        )
-        if not created_child:
-            raise HTTPException(status_code=500, detail="Failed to load created child profile")
-        return created_child
+            self._replace_allowed_subjects_rows(
+                child_profile_id=child_profile.id,
+                allowed_subjects=payload.allowed_subjects,
+            )
+            self._replace_all_week_schedule_rows(
+                child_profile_id=child_profile.id,
+                week_schedule=payload.week_schedule,
+            )
 
-    def get_children_for_parent(self, parent_user: User) -> list[ChildProfile]:
+            self.db.commit()
+        except HTTPException:
+            self.db.rollback()
+            raise
+        except Exception:
+            self.db.rollback()
+            raise
+
+        return self._serialize_single_child_profile(child_profile)
+
+    def get_children_for_parent(self, parent_user: User) -> list[ChildProfileRead]:
         """Return all child profiles for the authenticated parent account."""
-        return list_children_for_parent(self.db, parent_id=parent_user.id, include_rules=True)
+        children = list_children_for_parent(self.db, parent_id=parent_user.id)
+        return self._serialize_child_profiles(children)
 
-    def get_child_profile_for_parent(self, child_id: int, parent_user: User) -> ChildProfile:
+    def get_children_for_parent_id(self, parent_id: int) -> list[ChildProfileRead]:
+        children = list_children_for_parent(self.db, parent_id=parent_id)
+        return self._serialize_child_profiles(children)
+
+    def get_child_profile_for_parent(self, child_id: UUID, parent_user: User) -> ChildProfileRead:
         """Return one child profile when it belongs to the authenticated parent."""
-        child_profile = get_child_for_parent(
-            self.db,
-            child_id=child_id,
-            parent_id=parent_user.id,
-            include_rules=True,
-        )
-        if not child_profile:
-            raise HTTPException(status_code=404, detail="Child profile not found")
-        return child_profile
+        child_profile = self._get_child_for_parent_or_raise(child_id, parent_user.id)
+        return self._serialize_single_child_profile(child_profile)
 
-    def update_child_profile(self, child_id: int, parent_user: User, payload: ChildProfileUpdate) -> ChildProfile:
+    def update_child_profile(self, child_id: UUID, parent_user: User, payload: ChildProfileUpdate) -> ChildProfileRead:
         """Update an existing child profile owned by the authenticated parent."""
-        child_profile = get_child_for_parent(
-            self.db,
-            child_id=child_id,
-            parent_id=parent_user.id,
-            include_rules=True,
-        )
-        if not child_profile:
-            raise HTTPException(status_code=404, detail="Child profile not found")
+        child_profile = self._get_child_for_parent_or_raise(child_id, parent_user.id)
 
         update_data = payload.model_dump(exclude_unset=True)
         if not update_data:
-            return child_profile
+            return self._serialize_single_child_profile(child_profile)
 
         if "nickname" in update_data:
             child_profile.nickname = update_data["nickname"]
@@ -128,14 +400,7 @@ class ChildProfileService:
 
         has_profile_derivation_input = any(
             key in update_data
-            for key in (
-                "birth_date",
-                "age",
-                "age_group",
-                "education_stage",
-                "is_accelerated",
-                "is_below_expected_stage",
-            )
+            for key in ("birth_date", "education_stage", "is_accelerated", "is_below_expected_stage")
         )
 
         if has_profile_derivation_input:
@@ -143,8 +408,8 @@ class ChildProfileService:
                 derived = derive_student_profile_fields(
                     education_stage=update_data.get("education_stage", child_profile.education_stage),
                     birth_date=update_data.get("birth_date", child_profile.birth_date),
-                    age=update_data.get("age"),
-                    age_group=update_data.get("age_group"),
+                    age=None,
+                    age_group=None,
                     input_is_accelerated=update_data.get("is_accelerated"),
                     input_is_below_expected_stage=update_data.get("is_below_expected_stage"),
                 )
@@ -155,67 +420,117 @@ class ChildProfileService:
             child_profile.is_accelerated = derived.is_accelerated
             child_profile.is_below_expected_stage = derived.is_below_expected_stage
 
-        self.db.commit()
-        updated_child = get_child_for_parent(
-            self.db,
-            child_id=child_id,
-            parent_id=parent_user.id,
-            include_rules=True,
-        )
-        if not updated_child:
-            raise HTTPException(status_code=404, detail="Child profile not found")
+        try:
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
 
-        return updated_child
+        return self._serialize_single_child_profile(child_profile)
 
-    def update_child_rules(self, child_id: int, parent_user: User, payload: ChildRulesUpdate) -> ChildRules:
-        """Update normalized rule settings for one child profile owned by the parent."""
-        child_profile = get_child_for_parent(
-            self.db,
-            child_id=child_id,
-            parent_id=parent_user.id,
-            include_rules=False,
-        )
+    def update_child_profile_for_admin(
+        self,
+        *,
+        parent_id: int,
+        child_id: UUID,
+        payload: ChildProfileUpdate,
+    ) -> ChildProfileRead:
+        child_profile = self._get_child_by_id(child_id)
         if not child_profile:
+            raise HTTPException(status_code=404, detail="Child profile not found")
+        if child_profile.parent_id != parent_id:
             raise HTTPException(status_code=404, detail="Child profile not found")
 
         update_data = payload.model_dump(exclude_unset=True)
+        if not update_data:
+            return self._serialize_single_child_profile(child_profile)
+
+        if "nickname" in update_data:
+            child_profile.nickname = update_data["nickname"]
+        if "languages" in update_data:
+            child_profile.languages = update_data["languages"]
+        if "avatar" in update_data:
+            child_profile.avatar = update_data["avatar"]
+
+        has_profile_derivation_input = any(
+            key in update_data
+            for key in ("birth_date", "education_stage", "is_accelerated", "is_below_expected_stage")
+        )
+
+        if has_profile_derivation_input:
+            try:
+                derived = derive_student_profile_fields(
+                    education_stage=update_data.get("education_stage", child_profile.education_stage),
+                    birth_date=update_data.get("birth_date", child_profile.birth_date),
+                    age=None,
+                    age_group=None,
+                    input_is_accelerated=update_data.get("is_accelerated"),
+                    input_is_below_expected_stage=update_data.get("is_below_expected_stage"),
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+            child_profile.birth_date = derived.birth_date
+            child_profile.education_stage = derived.education_stage
+            child_profile.is_accelerated = derived.is_accelerated
+            child_profile.is_below_expected_stage = derived.is_below_expected_stage
+
+        try:
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
+
+        return self._serialize_single_child_profile(child_profile)
+
+    def update_child_rules(self, child_id: UUID, parent_user: User, payload: ChildRulesUpdate) -> ChildRulesRead:
+        """Update normalized rule settings for one child profile owned by the parent."""
+        child_profile = self._get_child_for_parent_or_raise(child_id, parent_user.id)
+
+        update_data = payload.model_dump(exclude_unset=True)
         parent_pin = update_data.pop("parent_pin", None)
+        allowed_subjects_payload = update_data.pop("allowed_subjects", None)
+        week_schedule_payload = update_data.pop("week_schedule", None)
 
-        rules = upsert_child_rules(self.db, child_profile_id=child_id, payload=None)
+        rules_update_payload = {
+            key: value for key, value in update_data.items() if key in self.RULE_FIELD_NAMES
+        }
 
-        if update_data:
-            merged_rules_payload = {
-                "default_language": rules.default_language,
-                "daily_limit_minutes": rules.daily_limit_minutes,
-                "allowed_subjects": rules.allowed_subjects,
-                "blocked_subjects": rules.blocked_subjects,
-                "week_schedule": rules.week_schedule,
-                "time_window_start": rules.time_window_start,
-                "time_window_end": rules.time_window_end,
-                "homework_mode_enabled": rules.homework_mode_enabled,
-                "voice_mode_enabled": rules.voice_mode_enabled,
-                "audio_storage_enabled": rules.audio_storage_enabled,
-                "conversation_history_enabled": rules.conversation_history_enabled,
-                "content_safety_level": rules.content_safety_level,
-            }
-            merged_rules_payload.update(update_data)
+        rules = upsert_child_rules(self.db, child_profile_id=child_profile.id, payload=None)
 
-            validated_payload = ChildRulesCreate.model_validate(merged_rules_payload)
+        if rules_update_payload:
             rules = upsert_child_rules(
                 self.db,
-                child_profile_id=child_id,
-                payload=validated_payload.model_dump(),
+                child_profile_id=child_profile.id,
+                payload=rules_update_payload,
+            )
+
+        if allowed_subjects_payload is not None:
+            self._replace_allowed_subjects_rows(
+                child_profile_id=child_profile.id,
+                allowed_subjects=allowed_subjects_payload,
+            )
+
+        if week_schedule_payload is not None:
+            self._replace_all_week_schedule_rows(
+                child_profile_id=child_profile.id,
+                week_schedule=week_schedule_payload,
             )
 
         if parent_pin:
             parent_user.parent_pin_hash = hash_password(parent_pin)
             self.db.add(parent_user)
 
-        self.db.commit()
-        self.db.refresh(rules)
-        return rules
+        try:
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
 
-    def delete_child_profile(self, child_id: int, parent_user: User) -> None:
+        self.db.refresh(rules)
+        return ChildRulesRead.model_validate(rules)
+
+    def delete_child_profile(self, child_id: UUID, parent_user: User) -> None:
         """Delete a child profile owned by the authenticated parent.
 
         Args:
@@ -225,14 +540,11 @@ class ChildProfileService:
         Raises:
             HTTPException: 404 if profile not found or doesn't belong to parent.
         """
-        child_profile = get_child_for_parent(
-            self.db,
-            child_id=child_id,
-            parent_id=parent_user.id,
-            include_rules=False,
-        )
-        if not child_profile:
-            raise HTTPException(status_code=404, detail="Child profile not found")
+        child_profile = self._get_child_for_parent_or_raise(child_id, parent_user.id)
 
-        delete_child_profile(self.db, child_profile=child_profile)
-        self.db.commit()
+        try:
+            self.db.delete(child_profile)
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
