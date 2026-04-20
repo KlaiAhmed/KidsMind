@@ -8,6 +8,7 @@ Domain: Media
 
 from datetime import timedelta
 from typing import Any
+from uuid import UUID
 
 from fastapi import HTTPException, UploadFile
 from minio.commonconfig import CopySource
@@ -22,7 +23,7 @@ from models.child_profile import ChildProfile
 from models.media_asset import AvatarTier, MediaAsset, MediaType
 from models.user import User, UserRole
 from schemas.media_schema import AvatarTierThresholdItem, MediaUpdateRequest, MediaUploadFormData
-from services.media_cache_service import get_base_avatar_cache, invalidate_base_avatar_cache
+from services.media_cache_service import get_base_avatar_cache
 from utils.avatar_tier import (
     AvatarTierThresholdValue,
     build_default_avatar_tier_threshold_values,
@@ -76,11 +77,6 @@ class MediaService:
         self.db = db
         self.redis = redis
 
-    def _require_user(self, current_user: User | object) -> User:
-        if not isinstance(current_user, User):
-            raise HTTPException(status_code=401, detail="Not authenticated")
-        return current_user
-
     def _validate_file(self, *, file: UploadFile, media_type: MediaType, file_size: int) -> None:
         if media_type in (MediaType.AVATAR, MediaType.BADGE):
             if file.content_type not in _allowed_image_content_types():
@@ -113,10 +109,15 @@ class MediaService:
             for row in rows
         ]
 
-    def _derive_avatar_tier(self, xp_threshold: int) -> AvatarTier:
+    def _derive_avatar_tier(
+        self,
+        xp_threshold: int,
+        *,
+        thresholds: list[AvatarTierThresholdValue] | None = None,
+    ) -> AvatarTier:
         tier_name = derive_avatar_tier(
             xp_threshold=xp_threshold,
-            thresholds=self._load_avatar_thresholds(),
+            thresholds=thresholds if thresholds is not None else self._load_avatar_thresholds(),
         )
         return AvatarTier(tier_name)
 
@@ -157,12 +158,6 @@ class MediaService:
         if asset.is_base_avatar:
             return False
         return bool((asset.xp_threshold or 0) > 0)
-
-    async def _invalidate_base_avatar_cache_if_needed(self, *, before: bool, after: bool) -> None:
-        if not self.redis:
-            return
-        if before or after:
-            await invalidate_base_avatar_cache(self.redis)
 
     def create_media_asset(self, *, file: UploadFile, payload: MediaUploadFormData, actor_user_id: int) -> MediaAsset:
         file_size = _file_size_bytes(file)
@@ -349,7 +344,7 @@ class MediaService:
         *,
         asset: MediaAsset,
         current_user: User,
-        child_id: int | None,
+        child_id: UUID | None,
     ) -> None:
         if child_id is None:
             raise HTTPException(status_code=422, detail="child_id is required for locked avatar access")
@@ -369,7 +364,7 @@ class MediaService:
         *,
         media_id: int,
         current_user: User,
-        child_id: int | None,
+        child_id: UUID | None,
     ) -> dict[str, Any]:
         asset = self.get_media_asset_or_404(media_id)
 
@@ -436,10 +431,14 @@ class MediaService:
 
         self.db.flush()
 
+        threshold_values = self._load_avatar_thresholds()
         avatars = self.db.query(MediaAsset).filter(MediaAsset.media_type == MediaType.AVATAR).all()
         for avatar in avatars:
             xp_threshold = int(avatar.xp_threshold or 0)
-            recalculated_tier = self._derive_avatar_tier(xp_threshold)
+            recalculated_tier = self._derive_avatar_tier(
+                xp_threshold,
+                thresholds=threshold_values,
+            )
             if avatar.avatar_tier != recalculated_tier:
                 self._move_object_key(asset=avatar, new_sub_category=recalculated_tier.value)
                 avatar.avatar_tier = recalculated_tier

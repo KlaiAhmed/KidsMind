@@ -7,6 +7,7 @@ Domain: Users
 """
 
 from datetime import datetime, timedelta, timezone
+from uuid import UUID
 
 from sqlalchemy.orm import Session, selectinload
 
@@ -19,7 +20,13 @@ from utils.manage_pwd import hash_password
 SOFT_DELETE_RETENTION_DAYS = 30
 
 
-def get_all_users(db: Session, *, include_child_profiles: bool = False) -> list[User]:
+def get_all_users(
+    db: Session,
+    *,
+    include_child_profiles: bool = False,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[User]:
     """Retrieve all user records from the database.
 
     Args:
@@ -27,14 +34,16 @@ def get_all_users(db: Session, *, include_child_profiles: bool = False) -> list[
 
     Args:
         include_child_profiles: When True, eager-load child profile relations.
+        limit: Maximum number of users to return.
+        offset: Number of users to skip before collecting results.
 
     Returns:
-        A list of all User ORM instances.
+        A bounded list of User ORM instances.
     """
     query = db.query(User)
     if include_child_profiles:
         query = query.options(selectinload(User.child_profiles))
-    return query.all()
+    return query.offset(offset).limit(limit).all()
 
 
 def get_user_by_id(db: Session, user_id: int) -> User | None:
@@ -48,25 +57,6 @@ def get_user_by_id(db: Session, user_id: int) -> User | None:
         The matching User instance or None if not found.
     """
     return db.query(User).filter(User.id == user_id).first()
-
-
-def get_children_by_parent_id(db: Session, parent_id: int) -> list[ChildProfile]:
-    """Retrieve all child profiles owned by a parent user id.
-
-    Args:
-        db: Active database session.
-        parent_id: The parent user numeric identifier.
-
-    Returns:
-        ChildProfile ORM instances owned by the parent.
-    """
-    return (
-        db.query(ChildProfile)
-        .options(selectinload(ChildProfile.rules))
-        .filter(ChildProfile.parent_id == parent_id)
-        .order_by(ChildProfile.id.asc())
-        .all()
-    )
 
 
 def soft_delete_user_account(db: Session, user: User) -> dict:
@@ -107,7 +97,7 @@ def revoke_all_user_sessions(db: Session, user: User) -> datetime:
 
 def update_user_password(db: Session, user: User, new_password: str) -> datetime:
     """Update password and invalidate all previously issued access tokens."""
-    changed_at = datetime.utcnow()
+    changed_at = datetime.now(timezone.utc)
     user.hashed_password = hash_password(new_password)
     user.password_changed_at = changed_at
     user.token_valid_after = changed_at
@@ -118,7 +108,7 @@ def update_user_password(db: Session, user: User, new_password: str) -> datetime
 
 def update_user_email(db: Session, user: User, new_email: str) -> datetime:
     """Update email and invalidate all previously issued access tokens."""
-    changed_at = datetime.utcnow()
+    changed_at = datetime.now(timezone.utc)
     user.email = new_email
     user.email_changed_at = changed_at
     user.token_valid_after = changed_at
@@ -129,7 +119,7 @@ def update_user_email(db: Session, user: User, new_email: str) -> datetime:
 
 def update_user_mfa_settings(db: Session, user: User, *, mfa_enabled: bool, mfa_secret: str | None = None) -> datetime:
     """Update MFA state and invalidate all previously issued access tokens."""
-    changed_at = datetime.utcnow()
+    changed_at = datetime.now(timezone.utc)
     user.mfa_enabled = mfa_enabled
     user.mfa_secret = mfa_secret if mfa_enabled else None
     user.mfa_changed_at = changed_at
@@ -176,7 +166,7 @@ def _revoke_active_refresh_sessions(db: Session, user_id: int, revoked_at: datet
     ).update({"revoked": True, "revoked_at": revoked_at}, synchronize_session="fetch")
 
 
-def hard_delete_child_by_id(db: Session, parent_id: int, child_id: int) -> dict | None:
+def hard_delete_child_by_id(db: Session, parent_id: int, child_id: UUID) -> dict | None:
     """Permanently delete a child's profile by id for a specific parent.
 
     Args:
