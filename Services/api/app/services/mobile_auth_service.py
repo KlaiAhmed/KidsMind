@@ -24,23 +24,14 @@ from services.auth_service import (
     TokenType,
     TrustLevel,
     build_user_data,
-    clear_login_failure_state,
     create_parent_user,
     create_refresh_session,
-    ensure_account_is_active_for_login,
-    ensure_account_not_locked,
-    enforce_login_challenge,
     find_refresh_session,
     generate_tokens,
-    register_login_failure,
-    resolved_login_failure_threshold,
-    resolved_login_lockout_ttl_seconds,
-    require_existing_user_or_reject,
-    reset_login_security_state,
     rotate_refresh_session,
-    verify_password_or_apply_lockout,
     verify_token,
 )
+from services.login_flow import authenticate_user_with_challenge
 
 
 class MobileAuthService:
@@ -66,35 +57,15 @@ class MobileAuthService:
         )
 
     async def login(self, request: Request, payload: UserLogin, device_info: str | None = None) -> dict:
-        now = datetime.now(timezone.utc)
         client_ip = request.client.host if request.client else None
-        await enforce_login_challenge(
+        user = await authenticate_user_with_challenge(
+            db=self.db,
+            email=payload.email,
+            password=payload.password,
             client_ip=client_ip,
             captcha_token=payload.captcha_token,
             pow_token=payload.pow_token,
         )
-
-        try:
-            user = require_existing_user_or_reject(self.db, payload.email, payload.password)
-            ensure_account_is_active_for_login(user, payload.email)
-            ensure_account_not_locked(user, now, payload.email)
-            verify_password_or_apply_lockout(self.db, user, payload.password, now, payload.email)
-        except HTTPException as exc:
-            if exc.status_code != 401 or exc.detail != "Invalid credentials":
-                raise
-            failed_attempts = await register_login_failure(client_ip=client_ip)
-            if failed_attempts >= resolved_login_failure_threshold():
-                raise HTTPException(
-                    status_code=429,
-                    detail="Too many failed login attempts",
-                    headers={"Retry-After": str(resolved_login_lockout_ttl_seconds())},
-                )
-            if failed_attempts >= settings.LOGIN_CAPTCHA_THRESHOLD:
-                raise HTTPException(status_code=429, detail={"captcha_required": True})
-            raise
-
-        reset_login_security_state(user, now)
-        await clear_login_failure_state(client_ip=client_ip)
 
         return self._issue_tokens_response(user, device_info=device_info)
 

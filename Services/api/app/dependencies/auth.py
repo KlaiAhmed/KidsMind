@@ -7,7 +7,6 @@ mobile bearer auth with audience validation.
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Literal
 
 from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
@@ -88,7 +87,6 @@ async def _resolve_authenticated_user(
     request: Request,
     token: str,
     expected_audience: str,
-    auth_path: Literal["web", "mobile"],
     db: Session,
 ) -> User:
     payload = verify_token(token, TokenType.ACCESS, expected_audience=expected_audience)
@@ -97,9 +95,8 @@ async def _resolve_authenticated_user(
     if not user_id or not token_jti:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    if auth_path == "web":
-        if await is_access_token_blocklisted(str(token_jti)):
-            raise HTTPException(status_code=401, detail="Token has been revoked")
+    if await is_access_token_blocklisted(str(token_jti)):
+        raise HTTPException(status_code=401, detail="Token has been revoked")
 
     user = (
         db.query(User)
@@ -147,7 +144,6 @@ async def get_web_user(
         request=request,
         token=cookie_token,
         expected_audience=settings.JWT_AUD_WEB,
-        auth_path="web",
         db=db,
     )
 
@@ -165,7 +161,6 @@ async def get_mobile_user(
         request=request,
         token=bearer_token,
         expected_audience=settings.JWT_AUD_MOBILE,
-        auth_path="mobile",
         db=db,
     )
 

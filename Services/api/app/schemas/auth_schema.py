@@ -8,11 +8,8 @@ Domain: Auth
 """
 
 import re
-from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
-
-from models.user import UserRole
 
 
 class UserRegister(BaseModel):
@@ -68,49 +65,11 @@ class MobileRegisterRequest(UserRegister):
     attestation_platform: str | None = None
     device_info: str | None = None
 
-
-class RegisterResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    email: EmailStr
-    role: UserRole
-    created_at: datetime
-
 class UserLogin(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=8)
+    password: str = Field(min_length=1)
     captcha_token: str | None = None
     pow_token: str | None = None
-
-    @field_validator("password")
-    @classmethod
-    def validate_password(cls, value: str) -> str:
-        errors = []
-
-        if len(value) < 8:
-            errors.append("at least 8 characters")
-        if not re.search(r"[A-Z]", value):
-            errors.append("one uppercase letter")
-        if not re.search(r"[a-z]", value):
-            errors.append("one lowercase letter")
-        if not re.search(r"\d", value):
-            errors.append("one number")
-        if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", value):
-            errors.append("one special character (!@#$...)")
-
-        if errors:
-            raise ValueError(f"Password must contain: {', '.join(errors)}")
-
-        return value
-
-
-class RefreshRequest(BaseModel):
-    refresh_token: str | None = None
-
-
-class LogoutRequest(BaseModel):
-    refresh_token: str | None = None
 
 
 class MobileRefreshRequest(BaseModel):

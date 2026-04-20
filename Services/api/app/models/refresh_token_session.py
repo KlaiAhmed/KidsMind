@@ -7,7 +7,7 @@ Layer: Model
 Domain: Auth
 """
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, func
 
 from core.database import Base
 
@@ -35,6 +35,14 @@ class RefreshTokenSession(Base):
     """
 
     __tablename__ = "refresh_token_sessions"
+    __table_args__ = (
+        Index(
+            "ix_refresh_token_sessions_user_family_revoked",
+            "user_id",
+            "family_id",
+            "revoked",
+        ),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
