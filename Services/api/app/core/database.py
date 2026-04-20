@@ -7,6 +7,8 @@ Layer: Core
 Domain: Database
 """
 
+from urllib.parse import urlparse
+
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -15,8 +17,19 @@ from core.config import settings
 from utils.logger import logger
 
 
+def _resolve_database_host_port() -> tuple[str, int]:
+    endpoint = settings.DB_SERVICE_ENDPOINT.strip()
+    if "://" not in endpoint:
+        endpoint = f"http://{endpoint}"
+    parsed = urlparse(endpoint)
+    return parsed.hostname or "database", parsed.port or 5432
+
+
 # Format: postgresql://[user]:[password]@[service_name]:[port]/[db_name]
-SQLALCHEMY_DATABASE_URL = f"postgresql://{settings.DB_USERNAME}:{settings.DB_PASSWORD}@database:5432/{settings.DB_NAME}"
+db_host, db_port = _resolve_database_host_port()
+SQLALCHEMY_DATABASE_URL = (
+    f"postgresql://{settings.DB_USERNAME}:{settings.DB_PASSWORD}@{db_host}:{db_port}/{settings.DB_NAME}"
+)
 
 # Create the SQLAlchemy engine
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
@@ -63,15 +76,17 @@ def init_db() -> None:
 
     Creates all tables defined by ORM models that inherit from Base.
     """
-    import models.user  # noqa: F401
-    import models.child_profile  # noqa: F401
-    import models.child_rules  # noqa: F401
-    import models.child_allowed_subject  # noqa: F401
-    import models.child_week_schedule  # noqa: F401
-    import models.child_schedule_subject  # noqa: F401
-    import models.media_asset  # noqa: F401
-    import models.avatar_tier_threshold  # noqa: F401
-    import models.refresh_token_session  # noqa: F401
+    if not settings.IS_PROD:
+        import models.user  # noqa: F401
+        import models.child_profile  # noqa: F401
+        import models.child_rules  # noqa: F401
+        import models.child_allowed_subject  # noqa: F401
+        import models.child_week_schedule  # noqa: F401
+        import models.child_schedule_subject  # noqa: F401
+        import models.media_asset  # noqa: F401
+        import models.avatar_tier_threshold  # noqa: F401
+        import models.refresh_token_session  # noqa: F401
 
-    Base.metadata.create_all(bind=engine)
+        Base.metadata.create_all(bind=engine)
+
     _migrate_refresh_session_family_column()

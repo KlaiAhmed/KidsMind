@@ -12,11 +12,8 @@ import redis.asyncio as aioredis
 from fastapi import Request
 from sqlalchemy.orm import Session
 
-from core.config import settings
+from core.cache_client import get_cache_client
 from core.database import SessionLocal
-
-
-REDIS_CHILD_PROFILE_CACHE_URL = f"redis://:{settings.CACHE_PASSWORD}@cache:6379"
 
 
 def get_db() -> Session:
@@ -54,19 +51,10 @@ def get_client(request: Request) -> httpx.AsyncClient:
 
 async def get_redis() -> AsyncGenerator[aioredis.Redis, None]:
     """
-    Yield a Redis connection for request-scoped dependencies.
+    Yield the shared Redis cache client.
 
     Yields:
         An active aioredis Redis client.
     """
-    redis_client = aioredis.from_url(
-        REDIS_CHILD_PROFILE_CACHE_URL,
-        encoding="utf-8",
-        decode_responses=True,
-        socket_connect_timeout=3,
-        socket_timeout=3,
-    )
-    try:
-        yield redis_client
-    finally:
-        await redis_client.aclose()
+    redis_client = await get_cache_client()
+    yield redis_client

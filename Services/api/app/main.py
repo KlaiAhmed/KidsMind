@@ -9,6 +9,8 @@ Domain: Application Infrastructure
 
 from contextlib import asynccontextmanager
 
+import asyncio
+
 import httpx
 from fastapi.exceptions import RequestValidationError
 from fastapi import FastAPI
@@ -104,8 +106,8 @@ async def lifespan(app: FastAPI):
         ensure_super_admin_exists()
         logger.info("Super admin bootstrap completed")
 
-        await warm_base_avatar_cache()
-        logger.info("Base avatar cache warm-up completed")
+        asyncio.create_task(warm_base_avatar_cache())
+        logger.info("Base avatar cache warm-up scheduled in background")
 
         logger.info(
             "Application startup complete",

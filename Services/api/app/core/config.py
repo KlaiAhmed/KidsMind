@@ -7,11 +7,9 @@ Layer: Core
 Domain: Configuration
 """
 
-import os
-
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import Set
+from typing import Literal, Set
 
 from utils.logger import logger
 
@@ -28,8 +26,8 @@ class Settings(BaseSettings):
     SERVICE_NAME: str = "KidsMind API Service"
 
     # App State
-    IS_PROD: bool = os.getenv("IS_PROD", "true").lower() == "true"
-    logger.info(f"Running in {'production' if IS_PROD else 'development'} mode")
+    ENV: str = "development"
+    IS_PROD: bool = False
 
     # CORS configuration
     CORS_ORIGINS: list[str] 
@@ -51,7 +49,7 @@ class Settings(BaseSettings):
     STT_SERVICE_ENDPOINT: str = "http://stt-service:8000"
     STORAGE_SERVICE_ENDPOINT: str = "http://storage-service:9000"
     AI_SERVICE_ENDPOINT: str = "http://ai-service:8000"
-    DB_SERVICE_ENDPOINT: str = "http://db:5432"
+    DB_SERVICE_ENDPOINT: str = "http://database:5432"
     CACHE_SERVICE_ENDPOINT: str = "redis://cache:6379"
 
     # File Upload Configuration
@@ -102,7 +100,7 @@ class Settings(BaseSettings):
     DEV_MULTIPLIER: int = 1000
 
     # Legacy global limits kept for backward compatibility during migration.
-    RATE_LIMIT: str = "100/minute" if not IS_PROD else "5/minute"
+    RATE_LIMIT: str = ""
     AUTH_LOGIN_RATE_LIMIT: str = "5/15minute"
     AUTH_REGISTER_RATE_LIMIT: str = "3/hour"
     AUTH_REFRESH_RATE_LIMIT: str = "10/minute"
@@ -148,15 +146,16 @@ class Settings(BaseSettings):
     RL_T5_VOICE_BURST_1M: int = 3
     RL_T5_VOICE_SUSTAINED_1H: int = 30
     RL_T5_VOICE_DAILY: int = 100
+    RL_STORE_UNAVAILABLE_MODE: Literal["fail_open", "fail_closed"] = "fail_open"
 
-    CAPTCHA_ENABLED: bool = os.getenv("CAPTCHA_ENABLED", "true").lower() == "true"
-    LOGIN_CAPTCHA_THRESHOLD: int = int(os.getenv("LOGIN_CAPTCHA_THRESHOLD", "3"))
-    LOGIN_LOCKOUT_THRESHOLD: int = int(os.getenv("LOGIN_LOCKOUT_THRESHOLD", "5"))
-    LOGIN_LOCKOUT_MINUTES: int = int(os.getenv("LOGIN_LOCKOUT_MINUTES", "15"))
+    CAPTCHA_ENABLED: bool = True
+    LOGIN_CAPTCHA_THRESHOLD: int = 3
+    LOGIN_LOCKOUT_THRESHOLD: int = 5
+    LOGIN_LOCKOUT_MINUTES: int = 15
     MOBILE_MAX_ACTIVE_SESSIONS: int = 10
     APP_ATTESTATION_ENABLED: bool = False
     APP_ATTESTATION_STRICT: bool = False
-    SERVICE_TOKEN: str = ""
+    SERVICE_TOKEN: str | None = None
     DUMMY_HASH: str 
     SECRET_KEY: str | None = None
     SECRET_ACCESS_KEY: str
@@ -183,10 +182,30 @@ class Settings(BaseSettings):
             raise ValueError("SECRET_KEY cannot be empty")
         return v
 
+    @field_validator("SERVICE_TOKEN")
+    @classmethod
+    def normalize_service_token(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        normalized = v.strip()
+        return normalized or None
+
     @model_validator(mode="after")
     def derive_cookie_secure_from_prod(self):
+        if "IS_PROD" not in self.model_fields_set:
+            self.IS_PROD = self.ENV.lower() in {"production", "prod"}
+
+        if not self.RATE_LIMIT:
+            self.RATE_LIMIT = "5/minute" if self.IS_PROD else "100/minute"
+
         if self.COOKIE_SECURE is None:
             self.COOKIE_SECURE = self.IS_PROD
+
+        if self.IS_PROD and not self.SERVICE_TOKEN:
+            raise ValueError("SERVICE_TOKEN is required in production")
+
+        logger.info(f"Running in {'production' if self.IS_PROD else 'development'} mode")
+
         return self
 
 settings = Settings()
