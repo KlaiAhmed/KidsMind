@@ -40,31 +40,31 @@ class User(Base):
 
     __tablename__ = "users"
 
-    # IDENTITY
+    # Identity
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(255), unique=True, nullable=False, index=True)
     username = Column(String(100), unique=True, nullable=False, index=True)
     hashed_password = Column(String(255), nullable=False)
 
-    # ROLE 
+    # Role
     role = Column(SAEnum(UserRole), nullable=False, default=UserRole.PARENT)
 
-    # ACCOUNT STATUS
+    # Account status
     is_active = Column(Boolean, default=True, nullable=False)
     is_verified = Column(Boolean, default=False, nullable=False)
 
-    # PREFRENCES
+    # Preferences
     default_language = Column(String(10), default="fr", nullable=False)
     country = Column(String(100), nullable=True)
     timezone = Column(String(100), default="UTC", nullable=False)
 
-    # CONSENTEMENTS 
+    # Consents
     consent_terms = Column(Boolean, default=False, nullable=False)
     consent_data_processing = Column(Boolean, default=False, nullable=False)
     consent_analytics = Column(Boolean, default=False, nullable=True)
     consent_given_at = Column(DateTime, nullable=True)
 
-    # SECURITY
+    # Security
     mfa_enabled = Column(Boolean, default=False, nullable=False)
     mfa_secret = Column(String(255), nullable=True)
     parent_pin_hash = Column(String(255), nullable=True)
@@ -76,11 +76,11 @@ class User(Base):
     email_changed_at = Column(DateTime(timezone=True), nullable=True)
     mfa_changed_at = Column(DateTime(timezone=True), nullable=True)
 
-    # RESET PASSWORD
+    # Password reset
     reset_token = Column(String(255), nullable=True)
     reset_token_expires_at = Column(DateTime, nullable=True)
 
-    # METADATA 
+    # Metadata
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
     deleted_at = Column(DateTime, nullable=True)
@@ -92,22 +92,14 @@ class User(Base):
         passive_deletes=True,
     )
 
-    # Helpers :
-
-    # IS_LOCKED : CHECK IF ACCOUNT IS CURRENTLY LOCKED DUE TO FAILED LOGIN ATTEMPTS
     @property
     def is_locked(self) -> bool:
-        from datetime import datetime, timezone
-        if self.locked_until and self.locked_until > datetime.now(timezone.utc):
-            return True
-        return False
+        return bool(self.locked_until and self.locked_until > datetime.now(timezone.utc))
 
-    # IS_PARENT : CHECK IF USER HAS PARENT ROLE
     @property
     def is_parent(self) -> bool:
         return self.role == UserRole.PARENT
 
-    # IS_ADMIN : CHECK IF USER HAS ADMIN ROLE
     @property
     def is_admin(self) -> bool:
         return self.role in (UserRole.ADMIN, UserRole.SUPER_ADMIN)
@@ -116,6 +108,5 @@ class User(Base):
     def is_super_admin(self) -> bool:
         return self.role == UserRole.SUPER_ADMIN
 
-    # REPRESENTATION
     def __repr__(self) -> str:
         return f"<User id={self.id} email={self.email} role={self.role}>"

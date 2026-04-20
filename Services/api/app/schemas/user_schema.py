@@ -9,6 +9,7 @@ Domain: Users
 import enum
 
 from datetime import datetime
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr
 
@@ -78,7 +79,7 @@ class DeleteChildResponse(BaseModel):
 
     message: str
     mode: str
-    child_id: int
+    child_id: UUID
     parent_id: int
     deleted_at: datetime
 

@@ -1,7 +1,7 @@
 """
 Child Week Schedule Model
 
-Responsibility: Stores one weekly time window and duration cap per child day.
+Responsibility: Stores one weekly access window and daily cap per child day.
 Layer: Model
 Domain: Children
 """
@@ -17,7 +17,7 @@ class ChildWeekSchedule(Base):
     __tablename__ = "child_week_schedule"
     __table_args__ = (
         CheckConstraint("day_of_week BETWEEN 0 AND 6", name="ck_child_week_schedule_day_of_week"),
-        CheckConstraint("max_duration_minutes > 0", name="ck_child_week_schedule_max_duration_minutes"),
+        CheckConstraint("daily_cap_seconds > 0", name="ck_child_week_schedule_daily_cap_seconds"),
         UniqueConstraint(
             "child_profile_id",
             "day_of_week",
@@ -32,9 +32,9 @@ class ChildWeekSchedule(Base):
         nullable=False,
     )
     day_of_week = Column(SmallInteger, nullable=False)
-    session_start_time = Column(Time(), nullable=False)
-    session_end_time = Column(Time(), nullable=False)
-    max_duration_minutes = Column(Integer, nullable=False)
+    access_window_start = Column(Time(), nullable=False)
+    access_window_end = Column(Time(), nullable=False)
+    daily_cap_seconds = Column(Integer, nullable=False)
     created_at = Column(DateTime(), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(), server_default=func.now(), onupdate=func.now(), nullable=False)
 

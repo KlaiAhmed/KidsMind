@@ -1,15 +1,15 @@
 """
 Child Profile Schemas
 
-Responsibility: Defines Pydantic request/response schemas for child profile
-               and child rules endpoints.
+Responsibility: Defines normalized Pydantic request/response schemas for
+               child profile, rules, allowed subjects, and week schedule APIs.
 Layer: Schema
 Domain: Children
 """
 
 import re
 from datetime import date, datetime, time
-from enum import Enum
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
@@ -37,127 +37,117 @@ LANGUAGE_CODE_ALIASES = {
 }
 
 
-class ChildSubject(str, Enum):
-    MATH = "math"
-    READING = "reading"
-    FRENCH = "french"
-    ENGLISH = "english"
-    SCIENCE = "science"
-    HISTORY = "history"
-    ART = "art"
+def _normalize_subject(value: str) -> str:
+    normalized = value.strip().lower()
+    if not normalized:
+        raise ValueError("subject cannot be blank")
+    return normalized
 
 
-class ContentSafetyLevel(str, Enum):
-    STRICT = "strict"
-    MODERATE = "moderate"
+def _dedupe_ordered(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        deduped.append(value)
+    return deduped
 
 
-class DaySchedule(BaseModel):
-    model_config = ConfigDict(extra="forbid", use_enum_values=True)
+class ChildAllowedSubjectIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
-    enabled: bool
-    subjects: list[ChildSubject] = Field(default_factory=list)
-    duration_minutes: int | None = Field(default=None, ge=1)
+    subject: str = Field(min_length=1, max_length=64)
+
+    @field_validator("subject")
+    @classmethod
+    def validate_subject(cls, value: str) -> str:
+        return _normalize_subject(value)
+
+
+class ChildScheduleSubjectIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    subject: str = Field(min_length=1, max_length=64)
+
+    @field_validator("subject")
+    @classmethod
+    def validate_subject(cls, value: str) -> str:
+        return _normalize_subject(value)
+
+
+class ChildWeekScheduleIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    day_of_week: int = Field(ge=0, le=6, description="ISO weekday index where 0=Monday and 6=Sunday")
+    access_window_start: time
+    access_window_end: time
+    daily_cap_seconds: int = Field(ge=1)
+    subjects: list[ChildScheduleSubjectIn] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_time_window(self) -> "ChildWeekScheduleIn":
+        if self.access_window_start >= self.access_window_end:
+            raise ValueError("access_window_start must be earlier than access_window_end; overnight windows are not supported")
+        return self
 
     @field_validator("subjects")
     @classmethod
-    def validate_subjects_unique(cls, value: list[ChildSubject]) -> list[ChildSubject]:
-        if len(set(value)) != len(value):
+    def validate_subjects_unique(cls, value: list[ChildScheduleSubjectIn]) -> list[ChildScheduleSubjectIn]:
+        normalized_subjects = [_normalize_subject(item.subject) for item in value]
+        if len(normalized_subjects) != len(set(normalized_subjects)):
             raise ValueError("subjects cannot contain duplicate values")
         return value
 
-    @model_validator(mode="after")
-    def validate_duration(self) -> "DaySchedule":
-        if not self.enabled and self.duration_minutes is not None:
-            raise ValueError("duration_minutes must be null when enabled is false")
-        return self
 
-
-def default_week_schedule() -> "WeekSchedule":
-    return WeekSchedule(
-        monday=DaySchedule(enabled=True, subjects=[ChildSubject.MATH], duration_minutes=30),
-        tuesday=DaySchedule(enabled=True, subjects=[ChildSubject.FRENCH], duration_minutes=30),
-        wednesday=DaySchedule(enabled=True, subjects=[ChildSubject.ENGLISH], duration_minutes=30),
-        thursday=DaySchedule(enabled=True, subjects=[ChildSubject.SCIENCE], duration_minutes=30),
-        friday=DaySchedule(enabled=True, subjects=[ChildSubject.HISTORY], duration_minutes=30),
-        saturday=DaySchedule(enabled=False),
-        sunday=DaySchedule(enabled=False),
-    )
-
-
-class WeekSchedule(BaseModel):
-    model_config = ConfigDict(extra="forbid", use_enum_values=True)
-
-    monday: DaySchedule
-    tuesday: DaySchedule
-    wednesday: DaySchedule
-    thursday: DaySchedule
-    friday: DaySchedule
-    saturday: DaySchedule
-    sunday: DaySchedule
-
-
-class ChildRulesBase(BaseModel):
-    model_config = ConfigDict(extra="forbid", use_enum_values=True)
-
-    default_language: str = Field(default="fr", min_length=2, max_length=10)
-    daily_limit_minutes: int | None = Field(default=None, ge=1)
-    allowed_subjects: list[ChildSubject] = Field(default_factory=list)
-    blocked_subjects: list[ChildSubject] = Field(default_factory=list)
-    week_schedule: WeekSchedule = Field(default_factory=default_week_schedule)
-    time_window_start: time | None = None
-    time_window_end: time | None = None
-    homework_mode_enabled: bool = False
-    voice_mode_enabled: bool = True
-    audio_storage_enabled: bool = False
-    conversation_history_enabled: bool = True
-    content_safety_level: ContentSafetyLevel = ContentSafetyLevel.STRICT
-
-    @field_validator("allowed_subjects", "blocked_subjects")
-    @classmethod
-    def validate_subject_lists_unique(cls, value: list[ChildSubject]) -> list[ChildSubject]:
-        if len(set(value)) != len(value):
-            raise ValueError("subject lists cannot contain duplicate values")
-        return value
-
-    @model_validator(mode="after")
-    def validate_subject_overlap(self) -> "ChildRulesBase":
-        if set(self.allowed_subjects).intersection(self.blocked_subjects):
-            raise ValueError("allowed_subjects and blocked_subjects cannot overlap")
-        if self.time_window_start and self.time_window_end and self.time_window_start >= self.time_window_end:
-            raise ValueError("time_window_start must be earlier than time_window_end")
-        return self
-
-
-class ChildRulesCreate(ChildRulesBase):
-    pass
-
-
-class ChildRulesUpdate(BaseModel):
-    model_config = ConfigDict(extra="forbid", use_enum_values=True, populate_by_name=True)
+class ChildRulesIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
     default_language: str | None = Field(default=None, min_length=2, max_length=10)
-    daily_limit_minutes: int | None = Field(default=None, ge=1)
-    allowed_subjects: list[ChildSubject] | None = None
-    blocked_subjects: list[ChildSubject] | None = None
-    week_schedule: WeekSchedule | None = None
-    time_window_start: time | None = None
-    time_window_end: time | None = None
+    homework_mode_enabled: bool = False
+    voice_mode_enabled: bool = False
+    audio_storage_enabled: bool = False
+    conversation_history_enabled: bool = True
+
+    @field_validator("default_language")
+    @classmethod
+    def validate_default_language(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip().lower()
+        normalized = LANGUAGE_CODE_ALIASES.get(normalized, normalized)
+        if normalized not in ALLOWED_LANGUAGE_CODES:
+            raise ValueError(
+                f"Unsupported language code '{normalized}'. Allowed values: {', '.join(sorted(ALLOWED_LANGUAGE_CODES))}"
+            )
+        return normalized
+
+
+class ChildRulesUpdateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    default_language: str | None = Field(default=None, min_length=2, max_length=10)
     homework_mode_enabled: bool | None = None
     voice_mode_enabled: bool | None = None
     audio_storage_enabled: bool | None = None
     conversation_history_enabled: bool | None = None
-    content_safety_level: ContentSafetyLevel | None = None
+    allowed_subjects: list[ChildAllowedSubjectIn] | None = None
+    week_schedule: list[ChildWeekScheduleIn] | None = None
     parent_pin: str | None = Field(default=None, alias="parentPin", min_length=4, max_length=4)
 
-    @field_validator("allowed_subjects", "blocked_subjects")
+    @field_validator("default_language")
     @classmethod
-    def validate_subject_lists_unique(cls, value: list[ChildSubject] | None) -> list[ChildSubject] | None:
+    def validate_default_language(cls, value: str | None) -> str | None:
         if value is None:
             return value
-        if len(set(value)) != len(value):
-            raise ValueError("subject lists cannot contain duplicate values")
-        return value
+        normalized = value.strip().lower()
+        normalized = LANGUAGE_CODE_ALIASES.get(normalized, normalized)
+        if normalized not in ALLOWED_LANGUAGE_CODES:
+            raise ValueError(
+                f"Unsupported language code '{normalized}'. Allowed values: {', '.join(sorted(ALLOWED_LANGUAGE_CODES))}"
+            )
+        return normalized
 
     @field_validator("parent_pin")
     @classmethod
@@ -169,14 +159,15 @@ class ChildRulesUpdate(BaseModel):
             raise ValueError("parent pin must be exactly 4 digits")
         return normalized
 
-
-class ChildRulesRead(ChildRulesBase):
-    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
-
-    id: str
-    child_profile_id: int
-    created_at: datetime
-    updated_at: datetime
+    @field_validator("week_schedule")
+    @classmethod
+    def validate_unique_days(cls, value: list[ChildWeekScheduleIn] | None) -> list[ChildWeekScheduleIn] | None:
+        if value is None:
+            return value
+        days = [entry.day_of_week for entry in value]
+        if len(days) != len(set(days)):
+            raise ValueError("week_schedule cannot contain duplicate day_of_week values")
+        return value
 
 
 def _normalize_and_validate_languages(value: list[str]) -> list[str]:
@@ -194,48 +185,22 @@ def _normalize_and_validate_languages(value: list[str]) -> list[str]:
 
         normalized_languages.append(candidate)
 
-    if not normalized_languages:
-        raise ValueError("languages must contain at least one valid ISO language code")
-
-    return normalized_languages
+    return _dedupe_ordered(normalized_languages)
 
 
-class ChildProfileCreate(BaseModel):
+class ChildProfileCreateIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     nickname: str = Field(min_length=1, max_length=64)
-    birth_date: date | None = None
-    age: int | None = Field(default=None, ge=MIN_PROFILE_AGE, le=MAX_PROFILE_AGE)
-    age_group: str | None = None
+    birth_date: date
     education_stage: EducationStage
-    is_accelerated: bool | None = None
-    is_below_expected_stage: bool | None = None
-    languages: list[str] = Field(default_factory=lambda: ["en"], min_length=1)
+    is_accelerated: bool = False
+    is_below_expected_stage: bool = False
+    languages: list[str] = Field(default_factory=list)
     avatar: str | None = Field(default=None, max_length=64)
-    rules: ChildRulesCreate | None = None
-
-    @field_validator("languages")
-    @classmethod
-    def validate_languages(cls, value: list[str]) -> list[str]:
-        return _normalize_and_validate_languages(value)
-
-    @model_validator(mode="after")
-    def validate_and_derive(self) -> "ChildProfileCreate":
-        derived = derive_student_profile_fields(
-            education_stage=self.education_stage,
-            birth_date=self.birth_date,
-            age=self.age,
-            age_group=self.age_group,
-            input_is_accelerated=self.is_accelerated,
-            input_is_below_expected_stage=self.is_below_expected_stage,
-        )
-        self.birth_date = derived.birth_date
-        self.age = derived.age
-        self.age_group = derived.age_group
-        self.education_stage = derived.education_stage
-        self.is_accelerated = derived.is_accelerated
-        self.is_below_expected_stage = derived.is_below_expected_stage
-        return self
+    rules: ChildRulesIn = Field(default_factory=ChildRulesIn)
+    allowed_subjects: list[ChildAllowedSubjectIn] = Field(default_factory=list)
+    week_schedule: list[ChildWeekScheduleIn] = Field(default_factory=list)
 
     @field_validator("nickname")
     @classmethod
@@ -245,26 +210,62 @@ class ChildProfileCreate(BaseModel):
             raise ValueError("nickname cannot be blank")
         return normalized
 
+    @field_validator("birth_date")
+    @classmethod
+    def validate_birth_date(cls, value: date) -> date:
+        if value > date.today():
+            raise ValueError("birth_date cannot be in the future")
+        age = get_age(value)
+        if age < MIN_PROFILE_AGE or age > MAX_PROFILE_AGE:
+            raise ValueError("birth_date must correspond to an age between 3 and 15")
+        return value
 
-class ChildProfileUpdate(BaseModel):
+    @field_validator("languages")
+    @classmethod
+    def validate_languages(cls, value: list[str]) -> list[str]:
+        return _normalize_and_validate_languages(value)
+
+    @field_validator("week_schedule")
+    @classmethod
+    def validate_unique_days(cls, value: list[ChildWeekScheduleIn]) -> list[ChildWeekScheduleIn]:
+        days = [entry.day_of_week for entry in value]
+        if len(days) != len(set(days)):
+            raise ValueError("week_schedule cannot contain duplicate day_of_week values")
+        return value
+
+    @model_validator(mode="after")
+    def validate_derived_stage_alignment(self) -> "ChildProfileCreateIn":
+        derive_student_profile_fields(
+            education_stage=self.education_stage,
+            birth_date=self.birth_date,
+            age=None,
+            age_group=None,
+            input_is_accelerated=self.is_accelerated,
+            input_is_below_expected_stage=self.is_below_expected_stage,
+        )
+        return self
+
+
+class ChildProfileUpdateIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     nickname: str | None = Field(default=None, min_length=1, max_length=64)
     birth_date: date | None = None
-    age: int | None = Field(default=None, ge=MIN_PROFILE_AGE, le=MAX_PROFILE_AGE)
-    age_group: str | None = None
     education_stage: EducationStage | None = None
     is_accelerated: bool | None = None
     is_below_expected_stage: bool | None = None
     languages: list[str] | None = None
     avatar: str | None = Field(default=None, max_length=64)
 
-    @field_validator("languages")
+    @field_validator("nickname")
     @classmethod
-    def validate_languages(cls, value: list[str] | None) -> list[str] | None:
+    def validate_nickname(cls, value: str | None) -> str | None:
         if value is None:
             return value
-        return _normalize_and_validate_languages(value)
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("nickname cannot be blank")
+        return normalized
 
     @field_validator("birth_date")
     @classmethod
@@ -278,27 +279,49 @@ class ChildProfileUpdate(BaseModel):
             raise ValueError("birth_date must correspond to an age between 3 and 15")
         return value
 
+    @field_validator("languages")
+    @classmethod
+    def validate_languages(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return value
+        return _normalize_and_validate_languages(value)
+
     @model_validator(mode="after")
-    def validate_boolean_exclusivity(self) -> "ChildProfileUpdate":
+    def validate_boolean_exclusivity(self) -> "ChildProfileUpdateIn":
         if self.is_accelerated and self.is_below_expected_stage:
             raise ValueError("is_accelerated and is_below_expected_stage cannot both be true")
         return self
 
-    @field_validator("nickname")
-    @classmethod
-    def validate_nickname(cls, value: str | None) -> str | None:
-        if value is None:
-            return value
-        normalized = value.strip()
-        if not normalized:
-            raise ValueError("nickname cannot be blank")
-        return normalized
 
-
-class ChildProfileRead(BaseModel):
+class ChildRulesOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    id: UUID
+    child_profile_id: UUID
+    default_language: str | None
+    homework_mode_enabled: bool
+    voice_mode_enabled: bool
+    audio_storage_enabled: bool
+    conversation_history_enabled: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class ChildWeekScheduleOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    day_of_week: int = Field(description="ISO weekday index where 0=Monday and 6=Sunday")
+    access_window_start: time
+    access_window_end: time
+    daily_cap_seconds: int
+    subjects: list[str] = Field(default_factory=list)
+
+
+class ChildProfileOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
     parent_id: int
     nickname: str
     birth_date: date
@@ -307,7 +330,10 @@ class ChildProfileRead(BaseModel):
     is_below_expected_stage: bool
     languages: list[str]
     avatar: str | None
-    rules: ChildRulesRead | None = None
+    xp: int
+    rules: ChildRulesOut | None = None
+    allowed_subjects: list[str] = Field(default_factory=list)
+    week_schedule: list[ChildWeekScheduleOut] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
@@ -320,3 +346,12 @@ class ChildProfileRead(BaseModel):
     @property
     def age_group(self) -> str:
         return get_age_group(self.birth_date)
+
+
+# Backward-compatible aliases inside API layer.
+ChildProfileCreate = ChildProfileCreateIn
+ChildProfileUpdate = ChildProfileUpdateIn
+ChildProfileRead = ChildProfileOut
+ChildRulesCreate = ChildRulesIn
+ChildRulesUpdate = ChildRulesUpdateIn
+ChildRulesRead = ChildRulesOut
