@@ -1,11 +1,15 @@
 import { z } from 'zod/v4';
 import type { ChildProfile, EducationLevel, SubjectKey, WeekSchedule } from '@/types/child';
 import {
+  CHILD_PROFILE_MAX_AGE,
+  CHILD_PROFILE_MIN_AGE,
   backendStageToEducationLevel,
   buildDefaultWeekSchedule,
   computeEndTimeFromStart,
   deriveBlockedSubjects,
+  isChildProfileAgeInRange,
   parseTimeToMinutes,
+  parseIsoDateOnly,
   SUBJECT_OPTIONS,
 } from '@/src/utils/childProfileWizard';
 
@@ -14,9 +18,12 @@ const subjectValues = SUBJECT_OPTIONS.map((entry) => entry.value) as [
   SubjectKey,
   ...SubjectKey[],
 ];
+const scheduleModeValues = ['simple', 'advanced'] as const;
+const languageCodeValues = ['ar', 'en', 'es', 'fr', 'it', 'zh'] as const;
 
 const educationLevelSchema = z.enum(educationLevelValues);
 const subjectSchema = z.enum(subjectValues);
+const scheduleModeSchema = z.enum(scheduleModeValues);
 
 const dayScheduleSchema = z.object({
   enabled: z.boolean(),
@@ -37,7 +44,8 @@ const weekScheduleSchema = z.object({
 });
 
 const childInfoSchema = z.object({
-  nickname: z.string().trim().min(2, 'Child name must be at least 2 characters').max(64),
+  // Fixed: aligned with API field 'nickname' (min_length=1).
+  nickname: z.string().trim().min(1, 'Child name is required').max(64),
   dob: z.object({
     day: z.string(),
     month: z.string(),
@@ -52,6 +60,7 @@ const childInfoSchema = z.object({
 
 const scheduleSchema = z
   .object({
+    mode: scheduleModeSchema,
     allowedSubjects: z.array(subjectSchema).min(1, 'Choose at least one subject'),
     dailyLimitMinutes: z.number().int().min(1, 'Daily limit must be at least 1 minute').max(600),
     weekSchedule: weekScheduleSchema,
@@ -71,6 +80,9 @@ const scheduleSchema = z
       });
       return;
     }
+
+    const [referenceDayKey, referenceDay] = enabledDays[0];
+    const referenceSubjects = [...referenceDay.subjects].sort().join('|');
 
     for (const [dayKey, day] of enabledDays) {
       if (!day.durationMinutes || day.durationMinutes <= 0) {
@@ -103,13 +115,30 @@ const scheduleSchema = z
         });
       }
 
-      const expectedEndTime = computeEndTimeFromStart(day.startTime, day.durationMinutes);
-      if (expectedEndTime && day.endTime !== expectedEndTime) {
+      if (!day.endTime) {
         ctx.addIssue({
           code: 'custom',
           path: ['weekSchedule', dayKey, 'endTime'],
-          message: 'End time is calculated automatically from start time and duration',
+          message: 'Choose an end time for enabled days',
         });
+      } else {
+        const endMinutes = parseTimeToMinutes(day.endTime);
+        if (endMinutes === null) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['weekSchedule', dayKey, 'endTime'],
+            message: 'End time must be in HH:MM format',
+          });
+        } else if (day.startTime) {
+          const startMinutes = parseTimeToMinutes(day.startTime);
+          if (startMinutes !== null && endMinutes <= startMinutes) {
+            ctx.addIssue({
+              code: 'custom',
+              path: ['weekSchedule', dayKey, 'endTime'],
+              message: 'End time must be after the start time',
+            });
+          }
+        }
       }
 
       if (day.subjects.length === 0) {
@@ -131,11 +160,29 @@ const scheduleSchema = z
           message: 'Per-day subjects must come from the allowed subject list',
         });
       }
+
+      if (value.mode === 'simple' && dayKey !== referenceDayKey) {
+        const daySubjects = [...day.subjects].sort().join('|');
+        const hasMismatch =
+          day.durationMinutes !== referenceDay.durationMinutes ||
+          day.startTime !== referenceDay.startTime ||
+          day.endTime !== referenceDay.endTime ||
+          daySubjects !== referenceSubjects;
+
+        if (hasMismatch) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['weekSchedule', dayKey],
+            message: 'Simple mode requires one shared schedule across selected days',
+          });
+        }
+      }
     }
   });
 
 const rulesSchema = z.object({
-  defaultLanguage: z.string().trim().min(2, 'Choose a default language'),
+  // Fixed: aligned with API field 'default_language' allowed codes.
+  defaultLanguage: z.enum(languageCodeValues),
   blockedSubjects: z.array(subjectSchema),
   homeworkModeEnabled: z.boolean(),
   voiceModeEnabled: z.boolean(),
@@ -159,9 +206,25 @@ export const childProfileWizardSchema = z
     if (!value.childInfo.birthDateIso) {
       ctx.addIssue({
         code: 'custom',
-        path: ['childInfo', 'dob'],
-        message: 'Enter a valid date of birth',
+        path: ['childInfo', 'birthDateIso'],
+        message: 'Date of birth is required',
       });
+    } else {
+      const birthDate = parseIsoDateOnly(value.childInfo.birthDateIso);
+
+      if (!birthDate) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['childInfo', 'birthDateIso'],
+          message: 'Enter a valid date of birth',
+        });
+      } else if (!isChildProfileAgeInRange(birthDate)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['childInfo', 'birthDateIso'],
+          message: `Child must be between ${CHILD_PROFILE_MIN_AGE} and ${CHILD_PROFILE_MAX_AGE} years old`,
+        });
+      }
     }
 
     if (!value.childInfo.educationLevel) {
@@ -211,9 +274,9 @@ function extractDobParts(birthDate: string | undefined): { day: string; month: s
   }
 
   return {
-    year: `${parseInt(match[1], 10)}`,
-    month: `${parseInt(match[2], 10)}`,
-    day: `${parseInt(match[3], 10)}`,
+    year: match[1],
+    month: match[2],
+    day: match[3],
   };
 }
 
@@ -230,7 +293,11 @@ function normalizeExistingWeekSchedule(
   ) {
     const mergedDay = day ?? fallbackDay;
     const startTime = mergedDay.startTime ?? (mergedDay.enabled ? defaultTimeWindowStart : null);
-    const endTime = computeEndTimeFromStart(startTime, mergedDay.durationMinutes);
+    const computedEndTime = computeEndTimeFromStart(startTime, mergedDay.durationMinutes);
+    const endTime =
+      mergedDay.endTime && parseTimeToMinutes(mergedDay.endTime) !== null
+        ? mergedDay.endTime
+        : computedEndTime;
 
     return {
       ...mergedDay,
@@ -294,6 +361,7 @@ export function buildChildProfileWizardDefaultValues(
       avatarId: profile?.avatarId ?? defaultAvatarId,
     },
     schedule: {
+      mode: 'simple',
       allowedSubjects,
       dailyLimitMinutes: profile?.rules?.dailyLimitMinutes ?? profile?.dailyGoalMinutes ?? 30,
       weekSchedule,

@@ -7,7 +7,8 @@ import {
   LANGUAGE_LABEL_MAP,
   SUBJECT_LABEL_MAP,
   WEEKDAY_OPTIONS,
-  calculateAgeFromBirthDate,
+  calculateAgeFromDateOfBirth,
+  parseIsoDateOnly,
 } from '@/src/utils/childProfileWizard';
 
 interface ProfileSummaryStepProps {
@@ -23,16 +24,12 @@ export function ProfileSummaryStep({ onEditStep }: ProfileSummaryStepProps) {
   const rules = useWatch({ control, name: 'rules' });
 
   const age = useMemo(() => {
-    if (!childInfo.birthDateIso) {
+    const date = parseIsoDateOnly(childInfo.birthDateIso);
+    if (!date) {
       return null;
     }
 
-    const date = new Date(childInfo.birthDateIso);
-    if (Number.isNaN(date.getTime())) {
-      return null;
-    }
-
-    return calculateAgeFromBirthDate(date);
+    return calculateAgeFromDateOfBirth(date);
   }, [childInfo.birthDateIso]);
 
   const enabledDayLabels = WEEKDAY_OPTIONS.filter((day) => schedule.weekSchedule[day.key].enabled).map((day) => day.fullLabel);

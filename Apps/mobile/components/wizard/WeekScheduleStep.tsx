@@ -1,14 +1,38 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import Animated, {
+  FadeInDown,
+  FadeOutUp,
+  LinearTransition,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
 import type { ChildProfileWizardFormValues } from '@/src/schemas/childProfileWizardSchema';
 import {
   computeEndTimeFromStart,
+  SUBJECT_LABEL_MAP,
   SUBJECT_OPTIONS,
   WEEKDAY_OPTIONS,
 } from '@/src/utils/childProfileWizard';
 import type { SubjectKey, WeekdayKey } from '@/types/child';
+
+type ScheduleMode = ChildProfileWizardFormValues['schedule']['mode'];
+
+const DEFAULT_DAILY_CAP = 30;
+const DEFAULT_START_TIME = '08:00';
+const EMPTY_SUBJECTS: SubjectKey[] = [];
+const EMPTY_WEEK_SCHEDULE: ChildProfileWizardFormValues['schedule']['weekSchedule'] = {
+  monday: { enabled: false, subjects: [], durationMinutes: null, startTime: null, endTime: null },
+  tuesday: { enabled: false, subjects: [], durationMinutes: null, startTime: null, endTime: null },
+  wednesday: { enabled: false, subjects: [], durationMinutes: null, startTime: null, endTime: null },
+  thursday: { enabled: false, subjects: [], durationMinutes: null, startTime: null, endTime: null },
+  friday: { enabled: false, subjects: [], durationMinutes: null, startTime: null, endTime: null },
+  saturday: { enabled: false, subjects: [], durationMinutes: null, startTime: null, endTime: null },
+  sunday: { enabled: false, subjects: [], durationMinutes: null, startTime: null, endTime: null },
+};
 
 function toMinuteLabel(value: number | null): string {
   if (value === null || Number.isNaN(value)) {
@@ -18,6 +42,20 @@ function toMinuteLabel(value: number | null): string {
   return `${value}`;
 }
 
+function areSameSubjects(left: SubjectKey[], right: SubjectKey[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((subject) => right.includes(subject));
+}
+
+function toTimeRangeLabel(startTime: string | null, endTime: string | null): string {
+  const start = startTime ?? '--:--';
+  const end = endTime ?? '--:--';
+  return `${start} - ${end}`;
+}
+
 export function WeekScheduleStep() {
   const {
     control,
@@ -25,14 +63,181 @@ export function WeekScheduleStep() {
     setValue,
   } = useFormContext<ChildProfileWizardFormValues>();
 
-  const allowedSubjects = useWatch({ control, name: 'schedule.allowedSubjects' });
+  const allowedSubjects = useWatch({ control, name: 'schedule.allowedSubjects' }) ?? EMPTY_SUBJECTS;
+  const modeValue = useWatch({ control, name: 'schedule.mode' });
   const dailyLimitMinutes = useWatch({ control, name: 'schedule.dailyLimitMinutes' });
-  const weekSchedule = useWatch({ control, name: 'schedule.weekSchedule' });
+  const weekSchedule = useWatch({ control, name: 'schedule.weekSchedule' }) ?? EMPTY_WEEK_SCHEDULE;
+
+  const scheduleMode: ScheduleMode = modeValue ?? 'simple';
 
   const enabledDays = useMemo(
-    () => WEEKDAY_OPTIONS.filter((day) => weekSchedule?.[day.key]?.enabled),
+    () => WEEKDAY_OPTIONS.filter((day) => weekSchedule[day.key].enabled),
     [weekSchedule],
   );
+
+  const enabledDayKeys = useMemo(
+    () => enabledDays.map((day) => day.key),
+    [enabledDays],
+  );
+
+  const firstEnabledDayKey = enabledDayKeys[0] ?? null;
+  const firstEnabledDayErrors = firstEnabledDayKey
+    ? errors.schedule?.weekSchedule?.[firstEnabledDayKey]
+    : undefined;
+  const canUseAdvancedMode = enabledDayKeys.length > 1;
+
+  const [expandedDay, setExpandedDay] = useState<WeekdayKey | null>(null);
+  const [switchWidth, setSwitchWidth] = useState(0);
+  const modeProgress = useSharedValue(scheduleMode === 'advanced' ? 1 : 0);
+
+  const indicatorStyle = useAnimatedStyle(() => {
+    const segmentWidth = switchWidth > 0 ? switchWidth / 2 : 0;
+
+    return {
+      width: Math.max(segmentWidth - 4, 0),
+      transform: [{ translateX: segmentWidth * modeProgress.value + 2 }],
+    };
+  }, [switchWidth]);
+
+  const simpleConfig = useMemo(() => {
+    const fallbackDuration = Math.max(1, dailyLimitMinutes || DEFAULT_DAILY_CAP);
+    const referenceDay = firstEnabledDayKey ? weekSchedule[firstEnabledDayKey] : null;
+
+    const durationMinutes =
+      referenceDay?.durationMinutes && referenceDay.durationMinutes > 0
+        ? referenceDay.durationMinutes
+        : fallbackDuration;
+    const startTime = referenceDay?.startTime ?? DEFAULT_START_TIME;
+    const endTime = referenceDay?.endTime ?? computeEndTimeFromStart(startTime, durationMinutes);
+
+    return {
+      durationMinutes,
+      startTime,
+      endTime,
+    };
+  }, [dailyLimitMinutes, firstEnabledDayKey, weekSchedule]);
+
+  useEffect(() => {
+    modeProgress.value = withTiming(scheduleMode === 'advanced' ? 1 : 0, {
+      duration: 220,
+    });
+  }, [modeProgress, scheduleMode]);
+
+  useEffect(() => {
+    if (scheduleMode === 'advanced' && !canUseAdvancedMode) {
+      setValue('schedule.mode', 'simple', {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    }
+  }, [canUseAdvancedMode, scheduleMode, setValue]);
+
+  useEffect(() => {
+    if (expandedDay && !enabledDayKeys.includes(expandedDay)) {
+      setExpandedDay(enabledDayKeys[0] ?? null);
+      return;
+    }
+
+    if (!expandedDay && enabledDayKeys.length > 0) {
+      setExpandedDay(enabledDayKeys[0]);
+    }
+  }, [enabledDayKeys, expandedDay]);
+
+  useEffect(() => {
+    if (scheduleMode !== 'advanced' || allowedSubjects.length !== 1) {
+      return;
+    }
+
+    const singleSubject = allowedSubjects[0];
+
+    for (const dayKey of enabledDayKeys) {
+      const currentSubjects = weekSchedule[dayKey].subjects;
+      if (currentSubjects.length === 1 && currentSubjects[0] === singleSubject) {
+        continue;
+      }
+
+      setValue(`schedule.weekSchedule.${dayKey}.subjects` as any, [singleSubject], {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    }
+  }, [allowedSubjects, enabledDayKeys, scheduleMode, setValue, weekSchedule]);
+
+  function syncGlobalDailyLimit(nextWeekSchedule: ChildProfileWizardFormValues['schedule']['weekSchedule']) {
+    const enabledDurations = WEEKDAY_OPTIONS
+      .map((day) => nextWeekSchedule[day.key])
+      .filter((day) => day.enabled && day.durationMinutes && day.durationMinutes > 0)
+      .map((day) => day.durationMinutes as number);
+
+    if (enabledDurations.length === 0) {
+      return;
+    }
+
+    const nextDailyLimit = Math.max(...enabledDurations);
+    if (nextDailyLimit !== dailyLimitMinutes) {
+      setValue('schedule.dailyLimitMinutes', nextDailyLimit, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    }
+  }
+
+  function applySimpleConfig(
+    targetDays: WeekdayKey[],
+    config: {
+      durationMinutes: number;
+      startTime: string | null;
+      endTime: string | null;
+    },
+    recomputeEndTime: boolean,
+  ) {
+    const nextDuration = config.durationMinutes;
+    const nextStart = config.startTime;
+    const nextEnd = recomputeEndTime
+      ? computeEndTimeFromStart(nextStart, nextDuration)
+      : config.endTime;
+
+    for (const dayKey of targetDays) {
+      setValue(`schedule.weekSchedule.${dayKey}.subjects` as any, [...allowedSubjects], {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+      setValue(`schedule.weekSchedule.${dayKey}.durationMinutes` as any, nextDuration, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+      setValue(`schedule.weekSchedule.${dayKey}.startTime` as any, nextStart, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+      setValue(`schedule.weekSchedule.${dayKey}.endTime` as any, nextEnd, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    }
+
+    setValue('schedule.dailyLimitMinutes', nextDuration, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+  }
+
+  function handleModeChange(nextMode: ScheduleMode) {
+    if (nextMode === scheduleMode) {
+      return;
+    }
+
+    if (nextMode === 'advanced' && !canUseAdvancedMode) {
+      return;
+    }
+
+    setValue('schedule.mode', nextMode, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+
+    applySimpleConfig(enabledDayKeys, simpleConfig, false);
+  }
 
   function toggleAllowedSubject(subject: SubjectKey) {
     const exists = allowedSubjects.includes(subject);
@@ -46,11 +251,18 @@ export function WeekScheduleStep() {
     });
 
     for (const weekday of WEEKDAY_OPTIONS) {
-      const currentSubjects = weekSchedule[weekday.key].subjects;
-      const filteredSubjects = currentSubjects.filter((entry) => nextAllowedSubjects.includes(entry));
+      const dayState = weekSchedule[weekday.key];
+      const filteredSubjects = dayState.subjects.filter((entry) => nextAllowedSubjects.includes(entry));
 
-      if (filteredSubjects.length !== currentSubjects.length) {
-        setValue(`schedule.weekSchedule.${weekday.key}.subjects` as any, filteredSubjects, {
+      const nextDaySubjects =
+        scheduleMode === 'simple' && dayState.enabled
+          ? [...nextAllowedSubjects]
+          : scheduleMode === 'advanced' && nextAllowedSubjects.length === 1 && dayState.enabled
+            ? [...nextAllowedSubjects]
+            : filteredSubjects;
+
+      if (!areSameSubjects(dayState.subjects, nextDaySubjects)) {
+        setValue(`schedule.weekSchedule.${weekday.key}.subjects` as any, nextDaySubjects, {
           shouldDirty: true,
           shouldValidate: true,
         });
@@ -59,50 +271,82 @@ export function WeekScheduleStep() {
   }
 
   function toggleDay(day: WeekdayKey) {
-    const nextEnabled = !weekSchedule[day].enabled;
+    const currentDay = weekSchedule[day];
+    const nextEnabled = !currentDay.enabled;
+
     setValue(`schedule.weekSchedule.${day}.enabled` as any, nextEnabled, {
       shouldDirty: true,
       shouldValidate: true,
     });
 
     if (!nextEnabled) {
-      setValue(`schedule.weekSchedule.${day}.durationMinutes` as any, null, {
-        shouldDirty: true,
-        shouldValidate: true,
-      });
-      setValue(`schedule.weekSchedule.${day}.startTime` as any, null, {
-        shouldDirty: true,
-        shouldValidate: true,
-      });
-      setValue(`schedule.weekSchedule.${day}.endTime` as any, null, {
-        shouldDirty: true,
-        shouldValidate: true,
-      });
+      if (scheduleMode === 'advanced') {
+        syncGlobalDailyLimit({
+          ...weekSchedule,
+          [day]: {
+            ...currentDay,
+            enabled: false,
+          },
+        });
+      }
+
       return;
     }
 
-    const nextSubjects = weekSchedule[day].subjects.filter((subject) => allowedSubjects.includes(subject));
+    if (scheduleMode === 'simple') {
+      applySimpleConfig(
+        [day],
+        {
+          durationMinutes: simpleConfig.durationMinutes,
+          startTime: simpleConfig.startTime,
+          endTime: simpleConfig.endTime,
+        },
+        false,
+      );
+
+      return;
+    }
+
+    const filteredSubjects = currentDay.subjects.filter((entry) => allowedSubjects.includes(entry));
+    const nextSubjects =
+      allowedSubjects.length === 1
+        ? [...allowedSubjects]
+        : filteredSubjects;
+    const nextDuration =
+      currentDay.durationMinutes && currentDay.durationMinutes > 0
+        ? currentDay.durationMinutes
+        : Math.max(1, dailyLimitMinutes || DEFAULT_DAILY_CAP);
+    const nextStart = currentDay.startTime ?? DEFAULT_START_TIME;
+    const nextEnd = currentDay.endTime ?? computeEndTimeFromStart(nextStart, nextDuration);
+
     setValue(`schedule.weekSchedule.${day}.subjects` as any, nextSubjects, {
       shouldDirty: true,
       shouldValidate: true,
     });
+    setValue(`schedule.weekSchedule.${day}.durationMinutes` as any, nextDuration, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+    setValue(`schedule.weekSchedule.${day}.startTime` as any, nextStart, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+    setValue(`schedule.weekSchedule.${day}.endTime` as any, nextEnd, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
 
-    const nextDuration = weekSchedule[day].durationMinutes ?? Math.min(30, dailyLimitMinutes);
-    if (!weekSchedule[day].durationMinutes) {
-      setValue(`schedule.weekSchedule.${day}.durationMinutes` as any, nextDuration, {
-        shouldDirty: true,
-        shouldValidate: true,
-      });
-    }
-
-    setValue(
-      `schedule.weekSchedule.${day}.endTime` as any,
-      computeEndTimeFromStart(weekSchedule[day].startTime, nextDuration),
-      {
-        shouldDirty: true,
-        shouldValidate: true,
+    syncGlobalDailyLimit({
+      ...weekSchedule,
+      [day]: {
+        ...currentDay,
+        enabled: true,
+        subjects: nextSubjects,
+        durationMinutes: nextDuration,
+        startTime: nextStart,
+        endTime: nextEnd,
       },
-    );
+    });
   }
 
   function toggleDaySubject(day: WeekdayKey, subject: SubjectKey) {
@@ -117,14 +361,309 @@ export function WeekScheduleStep() {
     });
   }
 
+  function onSimpleDurationChange(nextValue: string) {
+    const parsed = parseInt(nextValue.replace(/\D/g, ''), 10);
+    const nextDuration = Number.isNaN(parsed) ? 0 : parsed;
+
+    applySimpleConfig(
+      enabledDayKeys,
+      {
+        durationMinutes: nextDuration,
+        startTime: simpleConfig.startTime,
+        endTime: simpleConfig.endTime,
+      },
+      true,
+    );
+  }
+
+  function onSimpleStartChange(nextValue: string) {
+    const nextStart = nextValue.trim().length > 0 ? nextValue.trim() : null;
+
+    applySimpleConfig(
+      enabledDayKeys,
+      {
+        durationMinutes: simpleConfig.durationMinutes,
+        startTime: nextStart,
+        endTime: simpleConfig.endTime,
+      },
+      true,
+    );
+  }
+
+  function onSimpleEndChange(nextValue: string) {
+    const nextEnd = nextValue.trim().length > 0 ? nextValue.trim() : null;
+
+    applySimpleConfig(
+      enabledDayKeys,
+      {
+        durationMinutes: simpleConfig.durationMinutes,
+        startTime: simpleConfig.startTime,
+        endTime: nextEnd,
+      },
+      false,
+    );
+  }
+
+  function onAdvancedDurationChange(dayKey: WeekdayKey, nextValue: string) {
+    const dayState = weekSchedule[dayKey];
+    const parsed = parseInt(nextValue.replace(/\D/g, ''), 10);
+    const nextDuration = Number.isNaN(parsed) ? null : parsed;
+    const nextEnd = computeEndTimeFromStart(dayState.startTime, nextDuration);
+
+    setValue(`schedule.weekSchedule.${dayKey}.durationMinutes` as any, nextDuration, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+    setValue(`schedule.weekSchedule.${dayKey}.endTime` as any, nextEnd, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+
+    syncGlobalDailyLimit({
+      ...weekSchedule,
+      [dayKey]: {
+        ...dayState,
+        durationMinutes: nextDuration,
+        endTime: nextEnd,
+      },
+    });
+  }
+
+  function onAdvancedStartChange(dayKey: WeekdayKey, nextValue: string) {
+    const dayState = weekSchedule[dayKey];
+    const nextStart = nextValue.trim().length > 0 ? nextValue.trim() : null;
+    const nextEnd = computeEndTimeFromStart(nextStart, dayState.durationMinutes);
+
+    setValue(`schedule.weekSchedule.${dayKey}.startTime` as any, nextStart, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+    setValue(`schedule.weekSchedule.${dayKey}.endTime` as any, nextEnd, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+  }
+
+  function onAdvancedEndChange(dayKey: WeekdayKey, nextValue: string) {
+    const nextEnd = nextValue.trim().length > 0 ? nextValue.trim() : null;
+
+    setValue(`schedule.weekSchedule.${dayKey}.endTime` as any, nextEnd, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+  }
+
+  function renderSimpleMode() {
+    return (
+      <Animated.View
+        entering={FadeInDown.duration(220)}
+        exiting={FadeOutUp.duration(160)}
+        layout={LinearTransition.springify().damping(20)}
+        style={styles.modePanel}
+      >
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Daily Cap (minutes)</Text>
+          <TextInput
+            value={`${simpleConfig.durationMinutes}`}
+            onChangeText={onSimpleDurationChange}
+            keyboardType="number-pad"
+            inputMode="numeric"
+            maxLength={3}
+            style={styles.numericInput}
+            accessibilityLabel="Simple mode daily cap in minutes"
+          />
+          {errors.schedule?.dailyLimitMinutes?.message ? (
+            <Text style={styles.errorText}>{errors.schedule.dailyLimitMinutes.message}</Text>
+          ) : null}
+        </View>
+
+        <View style={styles.rowInputs}>
+          <View style={styles.halfField}>
+            <Text style={styles.sectionTitle}>Start (HH:MM)</Text>
+            <TextInput
+              value={simpleConfig.startTime ?? ''}
+              onChangeText={onSimpleStartChange}
+              placeholder="08:00"
+              keyboardType="numbers-and-punctuation"
+              style={styles.numericInput}
+              accessibilityLabel="Simple mode start time"
+            />
+          </View>
+
+          <View style={styles.halfField}>
+            <Text style={styles.sectionTitle}>End (HH:MM)</Text>
+            <TextInput
+              value={simpleConfig.endTime ?? ''}
+              onChangeText={onSimpleEndChange}
+              placeholder="08:30"
+              keyboardType="numbers-and-punctuation"
+              style={styles.numericInput}
+              accessibilityLabel="Simple mode end time"
+            />
+          </View>
+        </View>
+
+        {firstEnabledDayErrors?.startTime?.message ? (
+          <Text style={styles.errorText}>{firstEnabledDayErrors.startTime.message}</Text>
+        ) : null}
+        {firstEnabledDayErrors?.endTime?.message ? (
+          <Text style={styles.errorText}>{firstEnabledDayErrors.endTime.message}</Text>
+        ) : null}
+        {firstEnabledDayErrors?.durationMinutes?.message ? (
+          <Text style={styles.errorText}>{firstEnabledDayErrors.durationMinutes.message}</Text>
+        ) : null}
+
+        {enabledDays.map((day) => (
+          <View key={`simple-${day.key}`} style={styles.simpleDayRow}>
+            <Text style={styles.simpleDayLabel}>{day.fullLabel}</Text>
+            <Text style={styles.simpleDayValue}>
+              {simpleConfig.durationMinutes}m • {toTimeRangeLabel(simpleConfig.startTime, simpleConfig.endTime)}
+            </Text>
+          </View>
+        ))}
+      </Animated.View>
+    );
+  }
+
+  function renderAdvancedMode() {
+    return (
+      <Animated.View
+        entering={FadeInDown.duration(220)}
+        exiting={FadeOutUp.duration(160)}
+        layout={LinearTransition.springify().damping(20)}
+        style={styles.modePanel}
+      >
+        <Text style={styles.sectionSubtitle}>Customize each selected day. Tap a day to edit details.</Text>
+
+        {enabledDays.map((day) => {
+          const dayState = weekSchedule[day.key];
+          const isExpanded = expandedDay === day.key;
+          const daySubjectLabel = dayState.subjects
+            .map((subject) => SUBJECT_LABEL_MAP[subject])
+            .join(', ');
+
+          return (
+            <Animated.View key={day.key} layout={LinearTransition.springify().damping(20)} style={styles.dayCard}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Edit ${day.fullLabel} details`}
+                onPress={() => setExpandedDay((current) => (current === day.key ? null : day.key))}
+                style={({ pressed }) => [styles.dayCardHeader, pressed ? styles.chipPressed : null]}
+              >
+                <View style={styles.dayCardHeaderContent}>
+                  <Text style={styles.dayTitle}>{day.fullLabel}</Text>
+                  <Text style={styles.daySummary}>
+                    {toMinuteLabel(dayState.durationMinutes) || '0'}m • {toTimeRangeLabel(dayState.startTime, dayState.endTime)}
+                  </Text>
+                  <Text style={styles.daySummarySecondary}>{daySubjectLabel || 'No subjects selected'}</Text>
+                </View>
+                <Text style={styles.dayToggleLabel}>{isExpanded ? 'Hide' : 'Edit'}</Text>
+              </Pressable>
+
+              {isExpanded ? (
+                <Animated.View
+                  entering={FadeInDown.duration(180)}
+                  exiting={FadeOutUp.duration(140)}
+                  style={styles.dayCardBody}
+                >
+                  <View style={styles.rowInputs}>
+                    <View style={styles.halfField}>
+                      <Text style={styles.dayLabel}>Daily Cap (minutes)</Text>
+                      <TextInput
+                        value={toMinuteLabel(dayState.durationMinutes)}
+                        onChangeText={(nextValue) => onAdvancedDurationChange(day.key, nextValue)}
+                        keyboardType="number-pad"
+                        inputMode="numeric"
+                        maxLength={3}
+                        style={styles.numericInput}
+                        accessibilityLabel={`${day.fullLabel} daily cap in minutes`}
+                      />
+                    </View>
+
+                    <View style={styles.halfField}>
+                      <Text style={styles.dayLabel}>Start (HH:MM)</Text>
+                      <TextInput
+                        value={dayState.startTime ?? ''}
+                        onChangeText={(nextValue) => onAdvancedStartChange(day.key, nextValue)}
+                        placeholder="08:00"
+                        keyboardType="numbers-and-punctuation"
+                        style={styles.numericInput}
+                        accessibilityLabel={`${day.fullLabel} start time`}
+                      />
+                    </View>
+                  </View>
+
+                  <View style={styles.section}>
+                    <Text style={styles.dayLabel}>End (editable)</Text>
+                    <TextInput
+                      value={dayState.endTime ?? ''}
+                      onChangeText={(nextValue) => onAdvancedEndChange(day.key, nextValue)}
+                      placeholder="08:30"
+                      keyboardType="numbers-and-punctuation"
+                      style={styles.numericInput}
+                      accessibilityLabel={`${day.fullLabel} end time`}
+                    />
+                  </View>
+
+                  <View style={styles.section}>
+                    <Text style={styles.dayLabel}>Subjects for this day</Text>
+                    <View style={styles.chipRow}>
+                      {SUBJECT_OPTIONS.filter((subject) => allowedSubjects.includes(subject.value)).map((subject) => {
+                        const selected = dayState.subjects.includes(subject.value);
+
+                        return (
+                          <Pressable
+                            key={`${day.key}-${subject.value}`}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Toggle ${subject.label} for ${day.fullLabel}`}
+                            accessibilityState={{ selected }}
+                            onPress={() => toggleDaySubject(day.key, subject.value)}
+                            style={({ pressed }) => [
+                              styles.subjectChip,
+                              selected ? styles.subjectChipSelected : null,
+                              pressed ? styles.chipPressed : null,
+                            ]}
+                          >
+                            <Text style={[styles.subjectChipText, selected ? styles.subjectChipTextSelected : null]}>
+                              {subject.label}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+
+                  {errors.schedule?.weekSchedule?.[day.key]?.subjects?.message ? (
+                    <Text style={styles.errorText}>{errors.schedule.weekSchedule[day.key]?.subjects?.message}</Text>
+                  ) : null}
+                  {errors.schedule?.weekSchedule?.[day.key]?.durationMinutes?.message ? (
+                    <Text style={styles.errorText}>{errors.schedule.weekSchedule[day.key]?.durationMinutes?.message}</Text>
+                  ) : null}
+                  {errors.schedule?.weekSchedule?.[day.key]?.startTime?.message ? (
+                    <Text style={styles.errorText}>{errors.schedule.weekSchedule[day.key]?.startTime?.message}</Text>
+                  ) : null}
+                  {errors.schedule?.weekSchedule?.[day.key]?.endTime?.message ? (
+                    <Text style={styles.errorText}>{errors.schedule.weekSchedule[day.key]?.endTime?.message}</Text>
+                  ) : null}
+                  {errors.schedule?.weekSchedule?.[day.key]?.message ? (
+                    <Text style={styles.errorText}>{errors.schedule.weekSchedule[day.key]?.message}</Text>
+                  ) : null}
+                </Animated.View>
+              ) : null}
+            </Animated.View>
+          );
+        })}
+      </Animated.View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Week Schedule</Text>
-      <Text style={styles.subtitle}>Set the subject list, daily cap, and day-by-day study plan.</Text>
+      <Text style={styles.subtitle}>Choose days, subjects, and study windows with simple or advanced setup.</Text>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Subject Master List</Text>
-        <Text style={styles.sectionSubtitle}>These subjects are available for per-day assignment.</Text>
+        <Text style={styles.sectionTitle}>Subjects</Text>
         <View style={styles.chipRow}>
           {SUBJECT_OPTIONS.map((subject) => {
             const selected = allowedSubjects.includes(subject.value);
@@ -151,28 +690,6 @@ export function WeekScheduleStep() {
         </View>
         {errors.schedule?.allowedSubjects?.message ? (
           <Text style={styles.errorText}>{errors.schedule.allowedSubjects.message}</Text>
-        ) : null}
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Global Daily Limit (minutes)</Text>
-        <TextInput
-          value={`${dailyLimitMinutes}`}
-          onChangeText={(nextValue) => {
-            const parsed = parseInt(nextValue.replace(/\D/g, ''), 10);
-            setValue('schedule.dailyLimitMinutes', Number.isNaN(parsed) ? 0 : parsed, {
-              shouldDirty: true,
-              shouldValidate: true,
-            });
-          }}
-          keyboardType="number-pad"
-          inputMode="numeric"
-          maxLength={3}
-          style={styles.numericInput}
-          accessibilityLabel="Global daily limit in minutes"
-        />
-        {errors.schedule?.dailyLimitMinutes?.message ? (
-          <Text style={styles.errorText}>{errors.schedule.dailyLimitMinutes.message}</Text>
         ) : null}
       </View>
 
@@ -204,122 +721,59 @@ export function WeekScheduleStep() {
         </View>
       </View>
 
-      {enabledDays.map((day) => {
-        const dayState = weekSchedule[day.key];
-
-        return (
-          <View key={day.key} style={styles.dayCard}>
-            <Text style={styles.dayTitle}>{day.fullLabel}</Text>
-
-            <Text style={styles.dayLabel}>Duration (minutes)</Text>
-            <TextInput
-              value={toMinuteLabel(dayState.durationMinutes)}
-              onChangeText={(nextValue) => {
-                const parsed = parseInt(nextValue.replace(/\D/g, ''), 10);
-                const nextDuration = Number.isNaN(parsed) ? null : parsed;
-                setValue(
-                  `schedule.weekSchedule.${day.key}.durationMinutes` as any,
-                  nextDuration,
-                  {
-                    shouldDirty: true,
-                    shouldValidate: true,
-                  },
-                );
-
-                setValue(
-                  `schedule.weekSchedule.${day.key}.endTime` as any,
-                  computeEndTimeFromStart(dayState.startTime, nextDuration),
-                  {
-                    shouldDirty: true,
-                    shouldValidate: true,
-                  },
-                );
-              }}
-              keyboardType="number-pad"
-              inputMode="numeric"
-              maxLength={3}
-              style={styles.numericInput}
-              accessibilityLabel={`${day.fullLabel} duration in minutes`}
-            />
-
-            <Text style={styles.dayLabel}>Start Time (HH:MM)</Text>
-            <TextInput
-              value={dayState.startTime ?? ''}
-              onChangeText={(nextValue) => {
-                const nextStartTime = nextValue.trim().length > 0 ? nextValue.trim() : null;
-                setValue(`schedule.weekSchedule.${day.key}.startTime` as any, nextStartTime, {
-                  shouldDirty: true,
-                  shouldValidate: true,
-                });
-
-                setValue(
-                  `schedule.weekSchedule.${day.key}.endTime` as any,
-                  computeEndTimeFromStart(nextStartTime, dayState.durationMinutes),
-                  {
-                    shouldDirty: true,
-                    shouldValidate: true,
-                  },
-                );
-              }}
-              placeholder="08:00"
-              keyboardType="numbers-and-punctuation"
-              style={styles.numericInput}
-              accessibilityLabel={`${day.fullLabel} start time`}
-            />
-
-            <Text style={styles.dayLabel}>End Time (auto)</Text>
-            <TextInput
-              value={dayState.endTime ?? ''}
-              editable={false}
-              selectTextOnFocus={false}
-              placeholder="Calculated automatically"
-              style={[styles.numericInput, styles.readOnlyInput]}
-              accessibilityLabel={`${day.fullLabel} end time`}
-            />
-
-            <Text style={styles.dayLabel}>Subjects for this day</Text>
-            <View style={styles.chipRow}>
-              {SUBJECT_OPTIONS.filter((subject) => allowedSubjects.includes(subject.value)).map((subject) => {
-                const selected = dayState.subjects.includes(subject.value);
-
-                return (
-                  <Pressable
-                    key={`${day.key}-${subject.value}`}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Toggle ${subject.label} for ${day.fullLabel}`}
-                    accessibilityState={{ selected }}
-                    onPress={() => toggleDaySubject(day.key, subject.value)}
-                    style={({ pressed }) => [
-                      styles.subjectChip,
-                      selected ? styles.subjectChipSelected : null,
-                      pressed ? styles.chipPressed : null,
-                    ]}
-                  >
-                    <Text style={[styles.subjectChipText, selected ? styles.subjectChipTextSelected : null]}>
-                      {subject.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            {errors.schedule?.weekSchedule?.[day.key]?.subjects?.message ? (
-              <Text style={styles.errorText}>{errors.schedule.weekSchedule[day.key]?.subjects?.message}</Text>
-            ) : null}
-            {errors.schedule?.weekSchedule?.[day.key]?.durationMinutes?.message ? (
-              <Text style={styles.errorText}>
-                {errors.schedule.weekSchedule[day.key]?.durationMinutes?.message}
-              </Text>
-            ) : null}
-            {errors.schedule?.weekSchedule?.[day.key]?.startTime?.message ? (
-              <Text style={styles.errorText}>{errors.schedule.weekSchedule[day.key]?.startTime?.message}</Text>
-            ) : null}
-            {errors.schedule?.weekSchedule?.[day.key]?.endTime?.message ? (
-              <Text style={styles.errorText}>{errors.schedule.weekSchedule[day.key]?.endTime?.message}</Text>
+      {enabledDayKeys.length > 0 ? (
+        <View style={styles.modeSection}>
+          <View style={styles.modeHeader}>
+            <Text style={styles.sectionTitle}>Mode</Text>
+            {!canUseAdvancedMode ? (
+              <Text style={styles.modeHint}>Advanced unlocks when 2+ days are selected</Text>
             ) : null}
           </View>
-        );
-      })}
+
+          <View
+            style={styles.modeSwitchTrack}
+            onLayout={(event) => setSwitchWidth(event.nativeEvent.layout.width)}
+          >
+            <Animated.View style={[styles.modeSwitchIndicator, indicatorStyle]} />
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Switch to simple mode"
+              onPress={() => handleModeChange('simple')}
+              style={styles.modeSwitchButton}
+            >
+              <Text
+                style={[
+                  styles.modeSwitchLabel,
+                  scheduleMode === 'simple' ? styles.modeSwitchLabelActive : null,
+                ]}
+              >
+                Simple
+              </Text>
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Switch to advanced mode"
+              onPress={() => handleModeChange('advanced')}
+              disabled={!canUseAdvancedMode}
+              style={styles.modeSwitchButton}
+            >
+              <Text
+                style={[
+                  styles.modeSwitchLabel,
+                  scheduleMode === 'advanced' ? styles.modeSwitchLabelActive : null,
+                  !canUseAdvancedMode ? styles.modeSwitchLabelDisabled : null,
+                ]}
+              >
+                Advanced
+              </Text>
+            </Pressable>
+          </View>
+
+          {scheduleMode === 'simple' ? renderSimpleMode() : renderAdvancedMode()}
+        </View>
+      ) : null}
 
       {errors.schedule?.weekSchedule?.message ? (
         <Text style={styles.errorText}>{errors.schedule.weekSchedule.message}</Text>
@@ -348,6 +802,75 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
   sectionSubtitle: {
+    ...Typography.caption,
+    color: Colors.textSecondary,
+  },
+  modeSection: {
+    gap: Spacing.sm,
+  },
+  modeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  modeHint: {
+    ...Typography.caption,
+    color: Colors.textSecondary,
+  },
+  modeSwitchTrack: {
+    position: 'relative',
+    flexDirection: 'row',
+    borderRadius: Radii.full,
+    backgroundColor: Colors.surfaceContainer,
+    padding: 2,
+  },
+  modeSwitchIndicator: {
+    position: 'absolute',
+    top: 2,
+    bottom: 2,
+    borderRadius: Radii.full,
+    backgroundColor: Colors.primary,
+  },
+  modeSwitchButton: {
+    flex: 1,
+    minHeight: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
+  },
+  modeSwitchLabel: {
+    ...Typography.captionMedium,
+    color: Colors.textSecondary,
+  },
+  modeSwitchLabelActive: {
+    color: Colors.white,
+  },
+  modeSwitchLabelDisabled: {
+    color: Colors.textTertiary,
+  },
+  modePanel: {
+    gap: Spacing.sm,
+  },
+  rowInputs: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  halfField: {
+    flex: 1,
+    gap: Spacing.xs,
+  },
+  simpleDayRow: {
+    borderRadius: Radii.md,
+    backgroundColor: Colors.surfaceContainerLow,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    gap: Spacing.xs,
+  },
+  simpleDayLabel: {
+    ...Typography.captionMedium,
+    color: Colors.text,
+  },
+  simpleDayValue: {
     ...Typography.caption,
     color: Colors.textSecondary,
   },
@@ -404,12 +927,42 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.outline,
     backgroundColor: Colors.surfaceContainerLowest,
-    padding: Spacing.md,
+    overflow: 'hidden',
+  },
+  dayCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    backgroundColor: Colors.surfaceContainerLow,
+  },
+  dayCardHeaderContent: {
+    flex: 1,
+    gap: Spacing.xs,
+    paddingRight: Spacing.sm,
+  },
+  dayCardBody: {
+    paddingHorizontal: Spacing.md,
+    paddingBottom: Spacing.md,
+    paddingTop: Spacing.sm,
     gap: Spacing.sm,
   },
   dayTitle: {
     ...Typography.bodySemiBold,
     color: Colors.text,
+  },
+  daySummary: {
+    ...Typography.caption,
+    color: Colors.textSecondary,
+  },
+  daySummarySecondary: {
+    ...Typography.caption,
+    color: Colors.textTertiary,
+  },
+  dayToggleLabel: {
+    ...Typography.captionMedium,
+    color: Colors.primary,
   },
   dayLabel: {
     ...Typography.captionMedium,
@@ -424,10 +977,6 @@ const styles = StyleSheet.create({
     ...Typography.body,
     height: 44,
     paddingHorizontal: Spacing.sm,
-  },
-  readOnlyInput: {
-    backgroundColor: Colors.surfaceContainerLow,
-    color: Colors.textSecondary,
   },
   errorText: {
     ...Typography.caption,

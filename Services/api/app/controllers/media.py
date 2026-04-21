@@ -1,9 +1,9 @@
 """
 media
 
-Responsibility: Coordinates media operations between routers and service layer.
+Responsibility: Coordinates avatar media operations between routers and service layer.
 Layer: Controller
-Domain: Media
+Domain: Media / Avatars
 """
 
 from uuid import UUID
@@ -15,13 +15,9 @@ from redis.exceptions import RedisError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from models.media_asset import MediaAsset, MediaType
+from models.avatar import Avatar
 from models.user import User
-from schemas.media_schema import (
-    AvatarTierThresholdItem,
-    MediaUpdateRequest,
-    MediaUploadFormData,
-)
+from schemas.media_schema import AvatarTierUpdateItem, AvatarUpdateRequest, AvatarUploadFormData
 from services.media_cache_service import invalidate_base_avatar_cache
 from services.media_service import MediaService
 from utils.logger import logger
@@ -56,11 +52,11 @@ def _raise_mapped_media_error(
 async def upload_media_controller(
     *,
     file: UploadFile,
-    payload: MediaUploadFormData,
+    payload: AvatarUploadFormData,
     current_user: User,
     db: Session,
     redis,
-) -> MediaAsset:
+) -> Avatar:
     try:
         media_service = MediaService(db=db, redis=redis)
         asset = await run_in_threadpool(
@@ -69,7 +65,7 @@ async def upload_media_controller(
             payload=payload,
             actor_user_id=current_user.id,
         )
-        if asset.media_type == MediaType.AVATAR and asset.is_base_avatar:
+        if asset.xp_threshold == 0:
             await invalidate_base_avatar_cache(redis)
         return asset
     except HTTPException:
@@ -90,7 +86,7 @@ async def upload_media_controller(
 
 async def download_media_controller(
     *,
-    media_id: int,
+    media_id: UUID,
     current_user: User,
     child_id: UUID | None,
     db: Session,
@@ -108,53 +104,48 @@ async def download_media_controller(
         _raise_mapped_media_error(
             exc=exc,
             operation="download_media",
-            context={"media_id": media_id},
+            context={"media_id": str(media_id)},
         )
     except Exception:
         logger.exception(
             "Unexpected error generating media download URL",
-            extra={"media_id": media_id},
+            extra={"media_id": str(media_id)},
         )
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
 async def list_media_controller(
     *,
-    media_type: MediaType,
     include_inactive: bool,
     db: Session,
-) -> list[MediaAsset]:
+) -> list[Avatar]:
     try:
         media_service = MediaService(db=db)
-        return media_service.list_media_assets(
-            media_type=media_type,
-            include_inactive=include_inactive,
-        )
+        return media_service.list_media_assets(include_inactive=include_inactive)
     except HTTPException:
         raise
     except (S3Error, RedisError, SQLAlchemyError, ValueError) as exc:
         _raise_mapped_media_error(
             exc=exc,
             operation="list_media",
-            context={"media_type": media_type.value},
         )
     except Exception:
-        logger.exception("Unexpected error listing media", extra={"media_type": media_type.value})
+        logger.exception("Unexpected error listing media")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
 async def update_media_controller(
     *,
-    media_id: int,
-    payload: MediaUpdateRequest,
+    media_id: UUID,
+    payload: AvatarUpdateRequest,
     current_user: User,
     db: Session,
     redis,
-) -> MediaAsset:
+) -> Avatar:
     try:
         media_service = MediaService(db=db, redis=redis)
         existing = await run_in_threadpool(media_service.get_media_asset_or_404, media_id)
-        was_base = bool(existing.is_base_avatar)
+        was_base = int(existing.xp_threshold or 0) == 0
 
         updated = await run_in_threadpool(
             media_service.update_media_asset,
@@ -163,7 +154,7 @@ async def update_media_controller(
             actor_user_id=current_user.id,
         )
 
-        if updated.media_type == MediaType.AVATAR and (was_base or updated.is_base_avatar):
+        if was_base or int(updated.xp_threshold or 0) == 0:
             await invalidate_base_avatar_cache(redis)
 
         return updated
@@ -173,29 +164,29 @@ async def update_media_controller(
         _raise_mapped_media_error(
             exc=exc,
             operation="update_media",
-            context={"media_id": media_id, "actor_user_id": current_user.id},
+            context={"media_id": str(media_id), "actor_user_id": current_user.id},
         )
     except Exception:
         logger.exception(
             "Unexpected error updating media",
-            extra={"media_id": media_id, "actor_user_id": current_user.id},
+            extra={"media_id": str(media_id), "actor_user_id": current_user.id},
         )
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
 async def delete_media_controller(
     *,
-    media_id: int,
+    media_id: UUID,
     db: Session,
     redis,
 ) -> None:
     try:
         media_service = MediaService(db=db, redis=redis)
         existing = await run_in_threadpool(media_service.get_media_asset_or_404, media_id)
-        was_base = bool(existing.is_base_avatar)
+        was_base = int(existing.xp_threshold or 0) == 0
 
         deleted = await run_in_threadpool(media_service.delete_media_asset, media_id=media_id)
-        if deleted.media_type == MediaType.AVATAR and (was_base or deleted.is_base_avatar):
+        if was_base or int(deleted.xp_threshold or 0) == 0:
             await invalidate_base_avatar_cache(redis)
     except HTTPException:
         raise
@@ -203,16 +194,16 @@ async def delete_media_controller(
         _raise_mapped_media_error(
             exc=exc,
             operation="delete_media",
-            context={"media_id": media_id},
+            context={"media_id": str(media_id)},
         )
     except Exception:
-        logger.exception("Unexpected error deleting media", extra={"media_id": media_id})
+        logger.exception("Unexpected error deleting media", extra={"media_id": str(media_id)})
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
 async def update_avatar_thresholds_controller(
     *,
-    thresholds: list[AvatarTierThresholdItem],
+    thresholds: list[AvatarTierUpdateItem],
     db: Session,
     redis,
 ):

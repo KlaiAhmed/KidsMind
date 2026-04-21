@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect, useMemo, useState } from 'react';
-import { Controller, FormProvider, useForm } from 'react-hook-form';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Controller, FormProvider, useForm, useWatch } from 'react-hook-form';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -14,6 +14,14 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import Animated, {
+  Easing,
+  interpolateColor,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withTiming,
+} from 'react-native-reanimated';
 import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
 import { toApiErrorMessage } from '@/contexts/AuthContext';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
@@ -34,12 +42,82 @@ import {
   deriveAgeGroupFromBirthDate,
   deriveTimeWindowFromWeekSchedule,
   educationLevelToBackendStage,
+  isChildProfileAgeInRange,
+  parseIsoDateOnly,
 } from '@/src/utils/childProfileWizard';
 import { patchChildRules } from '@/services/childService';
 
 const TOTAL_STEPS = 5;
 
 type WizardStep = 1 | 2 | 3 | 4 | 5;
+
+// --- 3. Nickname Animation ---
+const NICKNAME_COLORS = {
+  from: '#A78BFA',
+  mid: '#60A5FA',
+  to: '#34D399',
+} as const;
+
+interface NicknameCharProps {
+  char: string;
+  index: number;
+  total: number;
+}
+
+function NicknameChar({ char, index, total }: NicknameCharProps) {
+  const progress = useSharedValue(0);
+
+  const delayMs = total > 0 ? 500 + index * 100 : 0;
+
+  useEffect(() => {
+    progress.value = withDelay(
+      delayMs,
+      withTiming(1, {
+        duration: 1000,
+        easing: Easing.out(Easing.cubic),
+      }),
+    );
+  }, [delayMs, progress]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    color: interpolateColor(
+      progress.value,
+      [0, 0.5, 1],
+      [NICKNAME_COLORS.from, NICKNAME_COLORS.mid, NICKNAME_COLORS.to],
+    ),
+  }));
+
+  return (
+    <Animated.Text
+      style={[
+        styles.nicknameChar,
+        char === ' ' ? styles.nicknameSpace : null,
+        animatedStyle,
+      ]}
+    >
+      {char}
+    </Animated.Text>
+  );
+}
+
+function validateStepOne(childInfo: ChildProfileWizardFormValues['childInfo'] | undefined): boolean {
+  if (!childInfo) {
+    return false;
+  }
+
+  const hasNickname = childInfo.nickname.trim().length > 0;
+  const hasEducationLevel = !!childInfo.educationLevel;
+  const birthDate = parseIsoDateOnly(childInfo.birthDateIso);
+  const hasValidAge = !!birthDate && isChildProfileAgeInRange(birthDate);
+
+  const hasValidOverrideState =
+    !childInfo.educationLevel ||
+    !childInfo.derivedEducationLevel ||
+    childInfo.educationLevel === childInfo.derivedEducationLevel ||
+    childInfo.mismatchAcknowledged;
+
+  return hasNickname && hasEducationLevel && hasValidAge && hasValidOverrideState;
+}
 
 export default function ChildProfileWizard() {
   const router = useRouter();
@@ -69,12 +147,19 @@ export default function ChildProfileWizard() {
     mode: 'onChange',
   });
 
+  const methodsRef = useRef(methods);
+  methodsRef.current = methods;
+
+  const childInfo = useWatch({ control: methods.control, name: 'childInfo' });
+  const isStepOneValid = useMemo(() => validateStepOne(childInfo), [childInfo]);
+
   useEffect(() => {
-    methods.reset(defaultValues);
-  }, [defaultValues, methods]);
+    methodsRef.current.reset(defaultValues);
+  }, [defaultValues]);
 
   const showBackButton = isEditMode || step > 1;
   const nextLabel = step === 5 ? (isEditMode ? 'Save Changes' : 'Start Learning') : 'Next';
+  const isNextDisabled = isSubmitting || (step === 1 && !isStepOneValid);
 
   function handleBack() {
     if (step > 1) {
@@ -112,6 +197,11 @@ export default function ChildProfileWizard() {
       5: [],
     };
 
+    if (step === 1 && !isStepOneValid) {
+      await methods.trigger(fieldsByStep[1] as any, { shouldFocus: true });
+      return;
+    }
+
     const valid = await methods.trigger(fieldsByStep[step] as any, { shouldFocus: true });
     if (!valid) {
       return;
@@ -134,8 +224,8 @@ export default function ChildProfileWizard() {
     setIsSubmitting(true);
 
     try {
-      const birthDate = new Date(values.childInfo.birthDateIso);
-      const ageGroup = deriveAgeGroupFromBirthDate(birthDate) ?? undefined;
+      const parsedBirthDate = parseIsoDateOnly(values.childInfo.birthDateIso);
+      const ageGroup = parsedBirthDate ? (deriveAgeGroupFromBirthDate(parsedBirthDate) ?? undefined) : undefined;
       const blockedSubjects = deriveBlockedSubjects(values.schedule.allowedSubjects);
       const { timeWindowStart, timeWindowEnd } = deriveTimeWindowFromWeekSchedule(
         values.schedule.weekSchedule,
@@ -185,10 +275,30 @@ export default function ChildProfileWizard() {
     }
 
     if (step === 2) {
+      // --- 1. Header Text Logic ---
+      const nickname = (childInfo?.nickname ?? '').trim();
+      // Short nicknames stay personal; longer ones use the safe fallback label.
+      const headerText = 'Choose your child avatar';
+      const avatarSubtitle =
+        nickname.length > 0
+          ? `${nickname}'s journey starts here. Build brainpower, earn points, and unlock epic looks.`
+          : 'Your journey starts here. Build brainpower, earn points, and unlock epic looks.';
+
       return (
         <View style={[styles.section, styles.sectionFill]}>
-          <Text style={styles.sectionTitle}>Choose your avatar</Text>
-          <Text style={styles.sectionSubtitle}>This buddy appears on your dashboard.</Text>
+          {nickname.length < 7  && nickname.length > 0 ? (
+            <View style={styles.nicknameRow} accessibilityRole="text" accessibilityLabel={headerText}>
+              <Text style={styles.sectionTitle}>{"Choose "}</Text>
+              {nickname.split('').map((char, index) => (
+                <NicknameChar key={index} char={char} index={index} total={nickname.length} />
+              ))}
+              <Text style={styles.sectionTitle}>{"'s avatar"}</Text>
+            </View>
+          ) : (
+            <Text style={styles.sectionTitle}>{headerText}</Text>
+          )}
+
+          <Text style={styles.sectionSubtitle}>{avatarSubtitle}</Text>
 
           <Controller
             control={methods.control}
@@ -273,13 +383,13 @@ export default function ChildProfileWizard() {
           </FormProvider>
         </View>
 
-        <PrimaryButton
-          label={nextLabel}
-          loading={isSubmitting}
-          disabled={isSubmitting}
-          onPress={onNextPress}
-          style={styles.nextButton}
-        />
+      <PrimaryButton
+        label={nextLabel}
+        loading={isSubmitting}
+        disabled={isNextDisabled}
+        onPress={onNextPress}
+        style={styles.nextButton}
+      />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -363,9 +473,27 @@ const styles = StyleSheet.create({
     ...Typography.headline,
     color: Colors.text,
   },
+  nicknameRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  nicknameChar: {
+    ...Typography.headline,
+    color: Colors.text,
+  },
+  nicknameSpace: {
+    minWidth: 6,
+  },
+  // --- 2. Paragraph Styles ---
+  // Paragraph — refined typography for readability
   sectionSubtitle: {
     ...Typography.body,
-    color: Colors.textSecondary,
+    fontWeight: '400',
+    lineHeight: 26,
+    color: 'rgba(74, 74, 104, 0.6)',
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.lg,
+    letterSpacing: 0.2,
   },
   pickerList: {
     flex: 1,

@@ -2,6 +2,8 @@
 CRUD operations for child profiles.
 """
 
+from uuid import UUID
+
 from sqlalchemy.orm import Session
 
 from models.child_profile import ChildProfile
@@ -14,7 +16,7 @@ def create_child_profile(
     parent_id: int,
     nickname: str,
     languages: list[str],
-    avatar: str | None,
+    avatar_id: UUID | None,
     derivation: StudentProfileDerivation,
 ) -> ChildProfile:
     child_profile = ChildProfile(
@@ -25,7 +27,7 @@ def create_child_profile(
         is_accelerated=derivation.is_accelerated,
         is_below_expected_stage=derivation.is_below_expected_stage,
         languages=languages,
-        avatar=avatar,
+        avatar_id=avatar_id,
     )
     db.add(child_profile)
     db.flush()

@@ -27,7 +27,7 @@ class ChildProfile(Base):
         is_accelerated: Whether child is in an advanced stage for their age.
         is_below_expected_stage: Whether child's education stage is below the expected stage for age.
         languages: JSON array of language codes.
-        avatar: Optional avatar identifier.
+        avatar_id: Optional foreign key to an avatar row.
         xp: Current accumulated experience points used for progression gates.
     """
 
@@ -42,10 +42,11 @@ class ChildProfile(Base):
     is_accelerated = Column(Boolean, nullable=False, default=False)
     is_below_expected_stage = Column(Boolean, nullable=False, default=False)
     languages = Column(JSON, nullable=False)
-    avatar = Column(String(64), nullable=True)
+    avatar_id = Column(UUID(as_uuid=True), ForeignKey("avatars.id", ondelete="SET NULL"), nullable=True, index=True)
     xp = Column(Integer, nullable=False, default=0)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     parent = relationship("User", back_populates="child_profiles")
+    avatar = relationship("Avatar", back_populates="child_profiles")

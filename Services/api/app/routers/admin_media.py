@@ -1,10 +1,12 @@
 """
 Admin Media Router
 
-Responsibility: Exposes admin avatar and badge management endpoints.
+Responsibility: Exposes admin avatar management endpoints.
 Layer: Router
 Domain: Media / Administration
 """
+
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from redis.asyncio import Redis
@@ -18,55 +20,44 @@ from controllers.media import (
 )
 from dependencies.auth import get_current_admin_or_super_admin
 from dependencies.infrastructure import get_db, get_redis
-from models.media_asset import MediaType
 from models.user import User
 from schemas.media_schema import (
-    AvatarTierThresholdResponse,
-    AvatarTierThresholdUpdateRequest,
-    MediaAssetResponse,
-    MediaListResponse,
-    MediaUpdateRequest,
+    AvatarListResponse,
+    AvatarResponse,
+    AvatarTierResponse,
+    AvatarTierUpdateRequest,
+    AvatarUpdateRequest,
 )
-from services.media_service import MediaService
 
 
 router = APIRouter(dependencies=[Depends(get_current_admin_or_super_admin)])
 
 
-def _ensure_media_type(*, db: Session, media_id: int, expected: MediaType) -> None:
-    media_service = MediaService(db=db)
-    asset = media_service.get_media_asset_or_404(media_id)
-    if asset.media_type != expected:
-        raise HTTPException(status_code=400, detail=f"Media asset is not of type {expected.value}")
-
-
-@router.get("/avatars", response_model=MediaListResponse)
+@router.get("/avatars", response_model=AvatarListResponse)
 async def list_avatars(
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
-) -> MediaListResponse:
+) -> AvatarListResponse:
     items = await list_media_controller(
-        media_type=MediaType.AVATAR,
         include_inactive=True,
         db=db,
     )
-    return MediaListResponse(items=items)
+    return AvatarListResponse(items=items)
 
 
-@router.patch("/avatars/{media_id}", response_model=MediaAssetResponse)
+@router.patch("/avatars/{avatar_id}", response_model=AvatarResponse)
 async def update_avatar(
-    media_id: int,
-    payload: MediaUpdateRequest,
+    avatar_id: UUID,
+    payload: AvatarUpdateRequest,
     request: Request,
     response: Response,
     current_user: User = Depends(get_current_admin_or_super_admin),
     db: Session = Depends(get_db),
     redis: Redis = Depends(get_redis),
 ):
-    _ensure_media_type(db=db, media_id=media_id, expected=MediaType.AVATAR)
     return await update_media_controller(
-        media_id=media_id,
+        media_id=avatar_id,
         payload=payload,
         current_user=current_user,
         db=db,
@@ -74,83 +65,59 @@ async def update_avatar(
     )
 
 
-@router.delete("/avatars/{media_id}", status_code=204)
+@router.delete("/avatars/{avatar_id}", status_code=204)
 async def delete_avatar(
-    media_id: int,
+    avatar_id: UUID,
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
     redis: Redis = Depends(get_redis),
 ):
-    _ensure_media_type(db=db, media_id=media_id, expected=MediaType.AVATAR)
-    await delete_media_controller(media_id=media_id, db=db, redis=redis)
+    await delete_media_controller(media_id=avatar_id, db=db, redis=redis)
 
 
-@router.patch("/avatar-thresholds", response_model=list[AvatarTierThresholdResponse])
+@router.patch("/avatar-thresholds", response_model=list[AvatarTierResponse])
 async def update_avatar_thresholds(
-    payload: AvatarTierThresholdUpdateRequest,
+    payload: AvatarTierUpdateRequest,
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
     redis: Redis = Depends(get_redis),
-) -> list[AvatarTierThresholdResponse]:
+) -> list[AvatarTierResponse]:
     rows = await update_avatar_thresholds_controller(
-        thresholds=payload.thresholds,
+        thresholds=payload.tiers,
         db=db,
         redis=redis,
     )
-    return [
-        AvatarTierThresholdResponse(
-            id=row.id,
-            tier_name=row.tier_name,
-            min_xp=row.min_xp,
-            sort_order=row.sort_order,
-        )
-        for row in rows
-    ]
+    return [AvatarTierResponse.model_validate(row) for row in rows]
 
 
-@router.get("/badges", response_model=MediaListResponse)
+# TODO: Badge management must be redesigned because media_assets was replaced by avatars.
+@router.get("/badges")
 async def list_badges(
     request: Request,
     response: Response,
-    db: Session = Depends(get_db),
-) -> MediaListResponse:
-    items = await list_media_controller(
-        media_type=MediaType.BADGE,
-        include_inactive=True,
-        db=db,
-    )
-    return MediaListResponse(items=items)
+):
+    raise HTTPException(status_code=501, detail="Badge management endpoint requires schema redesign")
 
 
-@router.patch("/badges/{media_id}", response_model=MediaAssetResponse)
+# TODO: Badge management must be redesigned because media_assets was replaced by avatars.
+@router.patch("/badges/{media_id}")
 async def update_badge(
     media_id: int,
-    payload: MediaUpdateRequest,
     request: Request,
     response: Response,
-    current_user: User = Depends(get_current_admin_or_super_admin),
-    db: Session = Depends(get_db),
-    redis: Redis = Depends(get_redis),
 ):
-    _ensure_media_type(db=db, media_id=media_id, expected=MediaType.BADGE)
-    return await update_media_controller(
-        media_id=media_id,
-        payload=payload,
-        current_user=current_user,
-        db=db,
-        redis=redis,
-    )
+    del media_id
+    raise HTTPException(status_code=501, detail="Badge management endpoint requires schema redesign")
 
 
-@router.delete("/badges/{media_id}", status_code=204)
+# TODO: Badge management must be redesigned because media_assets was replaced by avatars.
+@router.delete("/badges/{media_id}", status_code=501)
 async def delete_badge(
     media_id: int,
     request: Request,
     response: Response,
-    db: Session = Depends(get_db),
-    redis: Redis = Depends(get_redis),
 ):
-    _ensure_media_type(db=db, media_id=media_id, expected=MediaType.BADGE)
-    await delete_media_controller(media_id=media_id, db=db, redis=redis)
+    del media_id
+    raise HTTPException(status_code=501, detail="Badge management endpoint requires schema redesign")

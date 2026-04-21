@@ -2,9 +2,7 @@ import type {
   AgeGroup,
   ChildProfile,
   ChildRules,
-  ContentSafetyLevel,
   CreateChildProfileInput,
-  DaySchedule,
   SubjectKey,
   UpdateChildProfileInput,
   UpdateChildRulesInput,
@@ -14,41 +12,29 @@ import type {
 import type { Badge, BadgeApiItem } from '@/types/badge';
 import { apiRequest } from '@/services/apiClient';
 
-interface DayScheduleApiResponse {
-  enabled: boolean;
-  subjects?: SubjectKey[];
-  duration_minutes?: number | null;
-  start_time?: string | null;
-  end_time?: string | null;
-}
-
-interface WeekScheduleApiResponse {
-  monday?: DayScheduleApiResponse;
-  tuesday?: DayScheduleApiResponse;
-  wednesday?: DayScheduleApiResponse;
-  thursday?: DayScheduleApiResponse;
-  friday?: DayScheduleApiResponse;
-  saturday?: DayScheduleApiResponse;
-  sunday?: DayScheduleApiResponse;
-}
-
 interface ChildRulesApiResponse {
-  default_language: string;
-  daily_limit_minutes: number | null;
-  allowed_subjects: SubjectKey[];
-  blocked_subjects: SubjectKey[];
-  week_schedule: WeekScheduleApiResponse;
-  time_window_start: string | null;
-  time_window_end: string | null;
+  id: string;
+  child_profile_id: string;
+  default_language: string | null;
   homework_mode_enabled: boolean;
   voice_mode_enabled: boolean;
   audio_storage_enabled: boolean;
   conversation_history_enabled: boolean;
-  content_safety_level: ContentSafetyLevel;
+  created_at: string;
+  updated_at: string;
+}
+
+interface ChildWeekScheduleApiResponse {
+  id: string;
+  day_of_week: number;
+  access_window_start: string;
+  access_window_end: string;
+  daily_cap_seconds: number;
+  subjects: string[];
 }
 
 interface ChildProfileApiResponse {
-  id: number;
+  id: string;
   parent_id: number;
   nickname: string;
   birth_date: string;
@@ -58,10 +44,20 @@ interface ChildProfileApiResponse {
   languages: string[];
   avatar: string | null;
   rules: ChildRulesApiResponse | null;
+  allowed_subjects: string[];
+  week_schedule: ChildWeekScheduleApiResponse[];
   created_at: string;
   updated_at: string;
   age: number;
   age_group: string;
+}
+
+interface ChildWeekScheduleUpdatePayload {
+  day_of_week: number;
+  access_window_start: string;
+  access_window_end: string;
+  daily_cap_seconds: number;
+  subjects: Array<{ subject: SubjectKey }>;
 }
 
 function normalizeEducationStage(value: string): 'KINDERGARTEN' | 'PRIMARY' | 'SECONDARY' {
@@ -158,88 +154,224 @@ function normalizeSubjectKeys(value: unknown): SubjectKey[] {
   return value.filter(isSubjectKey);
 }
 
+function normalizeChildId(childId: string | number): string {
+  // Fixed: aligned with API field 'child_id' (UUID path parameter).
+  const normalized = `${childId}`.trim();
+  if (!normalized) {
+    throw new Error(`Invalid child ID: ${childId}`);
+  }
+  return normalized;
+}
+
+function parseTimeToMinutes(value: string): number | null {
+  const match = value.match(/^([01]\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?$/);
+  if (!match) {
+    return null;
+  }
+
+  return parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
+}
+
+function formatMinutesToTime(value: number): string {
+  const hours = Math.floor(value / 60);
+  const minutes = value % 60;
+  return `${`${hours}`.padStart(2, '0')}:${`${minutes}`.padStart(2, '0')}`;
+}
+
+function toHourMinute(value: string | null | undefined): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  const minutes = parseTimeToMinutes(trimmed);
+  if (minutes === null) {
+    return null;
+  }
+
+  return formatMinutesToTime(minutes);
+}
+
 function defaultWeekSchedule(): WeekSchedule {
   return {
-    monday: { enabled: true, subjects: ['math'], durationMinutes: 30, startTime: null, endTime: null },
-    tuesday: { enabled: true, subjects: ['reading'], durationMinutes: 30, startTime: null, endTime: null },
-    wednesday: {
-      enabled: true,
-      subjects: ['science'],
-      durationMinutes: 30,
-      startTime: null,
-      endTime: null,
-    },
-    thursday: {
-      enabled: true,
-      subjects: ['english'],
-      durationMinutes: 30,
-      startTime: null,
-      endTime: null,
-    },
-    friday: { enabled: true, subjects: ['art'], durationMinutes: 30, startTime: null, endTime: null },
+    monday: { enabled: false, subjects: [], durationMinutes: null, startTime: null, endTime: null },
+    tuesday: { enabled: false, subjects: [], durationMinutes: null, startTime: null, endTime: null },
+    wednesday: { enabled: false, subjects: [], durationMinutes: null, startTime: null, endTime: null },
+    thursday: { enabled: false, subjects: [], durationMinutes: null, startTime: null, endTime: null },
+    friday: { enabled: false, subjects: [], durationMinutes: null, startTime: null, endTime: null },
     saturday: { enabled: false, subjects: [], durationMinutes: null, startTime: null, endTime: null },
     sunday: { enabled: false, subjects: [], durationMinutes: null, startTime: null, endTime: null },
   };
 }
 
-function normalizeDaySchedule(value: DayScheduleApiResponse | undefined): DaySchedule {
-  const enabled = Boolean(value?.enabled);
-  const subjects = normalizeSubjectKeys(value?.subjects);
-  const duration = typeof value?.duration_minutes === 'number' && value.duration_minutes > 0
-    ? value.duration_minutes
-    : null;
+function normalizeWeekSchedule(value: ChildWeekScheduleApiResponse[] | undefined): WeekSchedule {
+  const fallback = defaultWeekSchedule();
+
+  if (!Array.isArray(value)) {
+    return fallback;
+  }
+
+  for (const day of value) {
+    const dayOfWeek = Number.isInteger(day.day_of_week) ? day.day_of_week : -1;
+    if (dayOfWeek < 0 || dayOfWeek >= WEEKDAY_KEYS.length) {
+      continue;
+    }
+
+    const key = WEEKDAY_KEYS[dayOfWeek];
+    const durationMinutes =
+      typeof day.daily_cap_seconds === 'number' && day.daily_cap_seconds > 0
+        ? Math.max(1, Math.round(day.daily_cap_seconds / 60))
+        : null;
+
+    fallback[key] = {
+      enabled: true,
+      subjects: normalizeSubjectKeys(day.subjects),
+      durationMinutes,
+      startTime: toHourMinute(day.access_window_start),
+      endTime: toHourMinute(day.access_window_end),
+    };
+  }
+
+  return fallback;
+}
+
+function deriveDailyLimitMinutes(weekSchedule: WeekSchedule): number | null {
+  const durations = WEEKDAY_KEYS
+    .map((key) => weekSchedule[key])
+    .filter((day) => day.enabled && typeof day.durationMinutes === 'number' && day.durationMinutes > 0)
+    .map((day) => day.durationMinutes as number);
+
+  if (durations.length === 0) {
+    return null;
+  }
+
+  return Math.max(...durations);
+}
+
+function deriveBlockedSubjectsFromAllowedSubjects(allowedSubjects: SubjectKey[]): SubjectKey[] {
+  return SUBJECT_VALUES.filter((subject) => !allowedSubjects.includes(subject));
+}
+
+function deriveTimeWindowFromWeekSchedule(
+  weekSchedule: WeekSchedule,
+): { timeWindowStart: string | null; timeWindowEnd: string | null } {
+  let minStart: number | null = null;
+  let maxEnd: number | null = null;
+
+  for (const key of WEEKDAY_KEYS) {
+    const day = weekSchedule[key];
+    if (!day.enabled || !day.startTime || !day.endTime) {
+      continue;
+    }
+
+    const start = parseTimeToMinutes(day.startTime);
+    const end = parseTimeToMinutes(day.endTime);
+
+    if (start === null || end === null || end <= start) {
+      continue;
+    }
+
+    minStart = minStart === null ? start : Math.min(minStart, start);
+    maxEnd = maxEnd === null ? end : Math.max(maxEnd, end);
+  }
+
+  if (minStart === null || maxEnd === null || maxEnd <= minStart) {
+    return {
+      timeWindowStart: null,
+      timeWindowEnd: null,
+    };
+  }
 
   return {
-    enabled,
-    subjects,
-    durationMinutes: enabled ? duration : null,
-    startTime: typeof value?.start_time === 'string' ? value.start_time : null,
-    endTime: typeof value?.end_time === 'string' ? value.end_time : null,
+    timeWindowStart: formatMinutesToTime(minStart),
+    timeWindowEnd: formatMinutesToTime(maxEnd),
   };
 }
 
-function normalizeWeekSchedule(value: WeekScheduleApiResponse | undefined): WeekSchedule {
-  const fallback = defaultWeekSchedule();
-
-  return WEEKDAY_KEYS.reduce((acc, key) => {
-    const rawDay = value?.[key];
-    const day = rawDay ? normalizeDaySchedule(rawDay) : fallback[key];
-    acc[key] = day;
-    return acc;
-  }, {} as WeekSchedule);
-}
-
-function normalizeRules(value: ChildRulesApiResponse | null): ChildRules | null {
+function normalizeRules(
+  value: ChildRulesApiResponse | null,
+  allowedSubjects: SubjectKey[],
+  weekSchedule: WeekSchedule,
+): ChildRules | null {
   if (!value) {
     return null;
   }
 
+  const timeWindow = deriveTimeWindowFromWeekSchedule(weekSchedule);
+
   return {
-    defaultLanguage: value.default_language,
-    dailyLimitMinutes: typeof value.daily_limit_minutes === 'number' ? value.daily_limit_minutes : null,
-    allowedSubjects: normalizeSubjectKeys(value.allowed_subjects),
-    blockedSubjects: normalizeSubjectKeys(value.blocked_subjects),
-    weekSchedule: normalizeWeekSchedule(value.week_schedule),
-    timeWindowStart: value.time_window_start,
-    timeWindowEnd: value.time_window_end,
+    defaultLanguage: value.default_language ?? 'en',
+    dailyLimitMinutes: deriveDailyLimitMinutes(weekSchedule),
+    allowedSubjects,
+    blockedSubjects: deriveBlockedSubjectsFromAllowedSubjects(allowedSubjects),
+    weekSchedule,
+    timeWindowStart: timeWindow.timeWindowStart,
+    timeWindowEnd: timeWindow.timeWindowEnd,
     homeworkModeEnabled: Boolean(value.homework_mode_enabled),
     voiceModeEnabled: Boolean(value.voice_mode_enabled),
     audioStorageEnabled: Boolean(value.audio_storage_enabled),
     conversationHistoryEnabled: Boolean(value.conversation_history_enabled),
-    contentSafetyLevel: value.content_safety_level === 'moderate' ? 'moderate' : 'strict',
+    contentSafetyLevel: 'strict',
   };
+}
+
+function buildWeekSchedulePatchPayload(
+  weekSchedule: WeekSchedule,
+): ChildWeekScheduleUpdatePayload[] {
+  return WEEKDAY_KEYS.flatMap((dayKey, dayOfWeek) => {
+    const day = weekSchedule[dayKey];
+    if (!day.enabled) {
+      return [];
+    }
+
+    if (!day.startTime) {
+      throw new Error(`Missing start time for ${dayKey}`);
+    }
+
+    if (!day.durationMinutes || day.durationMinutes <= 0) {
+      throw new Error(`Invalid duration for ${dayKey}`);
+    }
+
+    const startMinutes = parseTimeToMinutes(day.startTime);
+    if (startMinutes === null) {
+      throw new Error(`Invalid start time for ${dayKey}`);
+    }
+
+    const explicitEndMinutes = day.endTime ? parseTimeToMinutes(day.endTime) : null;
+    const fallbackEndMinutes = startMinutes + day.durationMinutes;
+    const endMinutes = explicitEndMinutes ?? fallbackEndMinutes;
+
+    if (endMinutes <= startMinutes || endMinutes >= 24 * 60) {
+      throw new Error(`Invalid end time for ${dayKey}`);
+    }
+
+    return [
+      {
+        day_of_week: dayOfWeek,
+        access_window_start: formatMinutesToTime(startMinutes),
+        access_window_end: formatMinutesToTime(endMinutes),
+        daily_cap_seconds: day.durationMinutes * 60,
+        subjects: day.subjects.map((subject) => ({ subject })),
+      },
+    ];
+  });
 }
 
 function normalizeChildProfile(data: ChildProfileApiResponse): ChildProfile {
   const resolvedAge = typeof data.age === 'number' ? data.age : 7;
   const resolvedAgeGroup = isAgeGroup(data.age_group) ? data.age_group : toAgeGroup(resolvedAge);
   const educationStage = normalizeEducationStage(data.education_stage);
-  const normalizedRules = normalizeRules(data.rules);
-  const subjectIds = normalizedRules?.allowedSubjects ?? [];
-  const dailyGoalMinutes = normalizedRules?.dailyLimitMinutes ?? 25;
+  const normalizedAllowedSubjects = normalizeSubjectKeys(data.allowed_subjects);
+  const normalizedWeekSchedule = normalizeWeekSchedule(data.week_schedule);
+  const normalizedRules = normalizeRules(data.rules, normalizedAllowedSubjects, normalizedWeekSchedule);
+  const subjectIds = normalizedAllowedSubjects;
+  const dailyGoalMinutes =
+    normalizedRules?.dailyLimitMinutes
+    ?? deriveDailyLimitMinutes(normalizedWeekSchedule)
+    ?? 25;
 
   return {
-    id: String(data.id),
+    id: data.id,
     name: data.nickname,
     nickname: data.nickname,
     birthDate: data.birth_date,
@@ -279,11 +411,11 @@ function normalizeBadge(item: BadgeApiItem, index: number): Badge {
 }
 
 export async function createChildProfile(input: CreateChildProfileInput): Promise<ChildProfile> {
+  // Fixed: aligned with API field set for ChildProfileCreateIn ('age_group' removed).
   const body = {
     nickname: input.nickname,
     birth_date: input.birthDate,
     education_stage: input.educationStage,
-    age_group: input.ageGroup,
     languages: input.languages,
     avatar: input.avatarId,
   };
@@ -300,22 +432,18 @@ export async function patchChildProfile(
   childId: string | number,
   input: UpdateChildProfileInput,
 ): Promise<ChildProfile> {
-  const numericId = typeof childId === 'number' ? childId : parseInt(childId, 10);
+  const resolvedChildId = normalizeChildId(childId);
 
-  if (Number.isNaN(numericId)) {
-    throw new Error(`Invalid child ID: ${childId}`);
-  }
-
+  // Fixed: aligned with API field set for ChildProfileUpdateIn ('age_group' removed).
   const body = {
     nickname: input.nickname,
     birth_date: input.birthDate,
     education_stage: input.educationStage,
-    age_group: input.ageGroup,
     languages: input.languages,
     avatar: input.avatarId,
   };
 
-  const response = await apiRequest<ChildProfileApiResponse>(`/api/v1/children/${numericId}`, {
+  const response = await apiRequest<ChildProfileApiResponse>(`/api/v1/children/${resolvedChildId}`, {
     method: 'PATCH',
     body,
   });
@@ -327,46 +455,40 @@ export async function patchChildRules(
   childId: string | number,
   input: UpdateChildRulesInput,
 ): Promise<ChildRules> {
-  const numericId = typeof childId === 'number' ? childId : parseInt(childId, 10);
+  const resolvedChildId = normalizeChildId(childId);
 
-  if (Number.isNaN(numericId)) {
-    throw new Error(`Invalid child ID: ${childId}`);
-  }
-
+  // Fixed: aligned with API field set for ChildRulesUpdateIn.
   const body = {
     default_language: input.defaultLanguage,
-    daily_limit_minutes: input.dailyLimitMinutes,
-    allowed_subjects: input.allowedSubjects,
-    blocked_subjects: input.blockedSubjects,
-    week_schedule: WEEKDAY_KEYS.reduce((acc, key) => {
-      const day = input.weekSchedule[key];
-      acc[key] = {
-        enabled: day.enabled,
-        subjects: day.subjects,
-        duration_minutes: day.enabled ? day.durationMinutes : null,
-      };
-      return acc;
-    }, {} as Record<WeekdayKey, { enabled: boolean; subjects: SubjectKey[]; duration_minutes: number | null }>),
-    time_window_start: input.timeWindowStart,
-    time_window_end: input.timeWindowEnd,
     homework_mode_enabled: input.homeworkModeEnabled,
     voice_mode_enabled: input.voiceModeEnabled,
     audio_storage_enabled: input.audioStorageEnabled,
     conversation_history_enabled: input.conversationHistoryEnabled,
-    content_safety_level: input.contentSafetyLevel,
+    // Fixed: aligned with API field 'allowed_subjects' (list of { subject }).
+    allowed_subjects: input.allowedSubjects.map((subject) => ({ subject })),
+    // Fixed: aligned with API field 'week_schedule' (list of day objects).
+    week_schedule: buildWeekSchedulePatchPayload(input.weekSchedule),
   };
 
-  const response = await apiRequest<ChildRulesApiResponse>(`/api/v1/children/${numericId}/rules`, {
+  const response = await apiRequest<ChildRulesApiResponse>(`/api/v1/children/${resolvedChildId}/rules`, {
     method: 'PATCH',
     body,
   });
 
-  const normalized = normalizeRules(response);
-  if (!normalized) {
-    throw new Error('Unexpected empty rules payload');
-  }
-
-  return normalized;
+  return {
+    defaultLanguage: response.default_language ?? input.defaultLanguage,
+    dailyLimitMinutes: input.dailyLimitMinutes,
+    allowedSubjects: [...input.allowedSubjects],
+    blockedSubjects: [...input.blockedSubjects],
+    weekSchedule: input.weekSchedule,
+    timeWindowStart: input.timeWindowStart,
+    timeWindowEnd: input.timeWindowEnd,
+    homeworkModeEnabled: Boolean(response.homework_mode_enabled),
+    voiceModeEnabled: Boolean(response.voice_mode_enabled),
+    audioStorageEnabled: Boolean(response.audio_storage_enabled),
+    conversationHistoryEnabled: Boolean(response.conversation_history_enabled),
+    contentSafetyLevel: input.contentSafetyLevel,
+  };
 }
 
 export async function listChildProfiles(): Promise<ChildProfile[]> {
@@ -378,13 +500,9 @@ export async function listChildProfiles(): Promise<ChildProfile[]> {
 }
 
 export async function getChildProfile(childId: string | number): Promise<ChildProfile> {
-  const numericId = typeof childId === 'number' ? childId : parseInt(childId, 10);
+  const resolvedChildId = normalizeChildId(childId);
 
-  if (Number.isNaN(numericId)) {
-    throw new Error(`Invalid child ID: ${childId}`);
-  }
-
-  const response = await apiRequest<ChildProfileApiResponse>(`/api/v1/children/${numericId}`, {
+  const response = await apiRequest<ChildProfileApiResponse>(`/api/v1/children/${resolvedChildId}`, {
     method: 'GET',
   });
 
@@ -392,13 +510,9 @@ export async function getChildProfile(childId: string | number): Promise<ChildPr
 }
 
 export async function getChildBadges(childId: string | number): Promise<Badge[]> {
-  const numericId = typeof childId === 'number' ? childId : parseInt(childId, 10);
+  const resolvedChildId = normalizeChildId(childId);
 
-  if (Number.isNaN(numericId)) {
-    throw new Error(`Invalid child ID: ${childId}`);
-  }
-
-  const response = await apiRequest<BadgeApiItem[]>(`/api/v1/children/${numericId}/badges`, {
+  const response = await apiRequest<BadgeApiItem[]>(`/api/v1/children/${resolvedChildId}/badges`, {
     method: 'GET',
   });
 

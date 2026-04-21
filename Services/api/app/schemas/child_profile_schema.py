@@ -13,6 +13,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
+from schemas.media_schema import AvatarResponse
 from utils.child_profile_logic import (
     MAX_PROFILE_AGE,
     MIN_PROFILE_AGE,
@@ -197,7 +198,7 @@ class ChildProfileCreateIn(BaseModel):
     is_accelerated: bool = False
     is_below_expected_stage: bool = False
     languages: list[str] = Field(default_factory=list)
-    avatar: str | None = Field(default=None, max_length=64)
+    avatar_id: UUID | None = None
     rules: ChildRulesIn = Field(default_factory=ChildRulesIn)
     allowed_subjects: list[ChildAllowedSubjectIn] = Field(default_factory=list)
     week_schedule: list[ChildWeekScheduleIn] = Field(default_factory=list)
@@ -255,7 +256,7 @@ class ChildProfileUpdateIn(BaseModel):
     is_accelerated: bool | None = None
     is_below_expected_stage: bool | None = None
     languages: list[str] | None = None
-    avatar: str | None = Field(default=None, max_length=64)
+    avatar_id: UUID | None = None
 
     @field_validator("nickname")
     @classmethod
@@ -329,7 +330,8 @@ class ChildProfileOut(BaseModel):
     is_accelerated: bool
     is_below_expected_stage: bool
     languages: list[str]
-    avatar: str | None
+    avatar_id: UUID | None
+    avatar: AvatarResponse | None = None
     xp: int
     rules: ChildRulesOut | None = None
     allowed_subjects: list[str] = Field(default_factory=list)

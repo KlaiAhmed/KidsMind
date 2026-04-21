@@ -83,8 +83,9 @@ def init_db() -> None:
         import models.child_allowed_subject  # noqa: F401
         import models.child_week_schedule  # noqa: F401
         import models.child_schedule_subject  # noqa: F401
-        import models.media_asset  # noqa: F401
         import models.avatar_tier_threshold  # noqa: F401
+        import models.avatar  # noqa: F401
+        import models.media_asset  # noqa: F401
         import models.refresh_token_session  # noqa: F401
 
         Base.metadata.create_all(bind=engine)

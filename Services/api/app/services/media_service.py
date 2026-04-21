@@ -1,40 +1,36 @@
 """
 Media Service
 
-Responsibility: Handles media upload/download/admin operations across DB, MinIO, and Redis.
+Responsibility: Handles avatar upload/download/admin operations across DB, MinIO, and Redis.
 Layer: Service
-Domain: Media
+Domain: Media / Avatars
 """
 
 from datetime import timedelta
+from pathlib import Path
+import re
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException, UploadFile
-from minio.commonconfig import CopySource
 from minio.error import S3Error
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from core.config import settings
 from core.storage import minio_client
-from models.avatar_tier_threshold import AvatarTierThreshold
+from models.avatar import Avatar
+from models.avatar_tier_threshold import AvatarTier
 from models.child_profile import ChildProfile
-from models.media_asset import AvatarTier, MediaAsset, MediaType
 from models.user import User, UserRole
-from schemas.media_schema import AvatarTierThresholdItem, MediaUpdateRequest, MediaUploadFormData
+from schemas.media_schema import AvatarCreate, AvatarTierUpdateItem, AvatarUpdateRequest, AvatarUploadFormData
 from services.media_cache_service import get_base_avatar_cache
-from utils.avatar_tier import (
-    AvatarTierThresholdValue,
-    build_default_avatar_tier_threshold_values,
-    derive_avatar_tier,
-)
 from utils.logger import logger
-from utils.media_key_builder import build_media_object_key, media_category_for_type
 
 
 MEDIA_PUBLIC_BUCKET = "media-public"
 SIGNED_URL_EXPIRY_SECONDS = 900
+IMAGE_CONTENT_TYPES = {"image/webp", "image/png", "image/jpeg"}
+SLUG_SANITIZER = re.compile(r"[^a-z0-9_]+")
 
 
 def _file_size_bytes(upload_file: UploadFile) -> int:
@@ -44,32 +40,13 @@ def _file_size_bytes(upload_file: UploadFile) -> int:
     return int(size)
 
 
-def _allowed_image_content_types() -> set[str]:
-    value = getattr(settings, "MEDIA_ALLOWED_IMAGE_CONTENT_TYPES", None)
-    if value:
-        return set(value)
-    return {"image/webp", "image/png", "image/jpeg"}
-
-
-def _allowed_audio_content_types() -> set[str]:
-    value = getattr(settings, "MEDIA_ALLOWED_AUDIO_CONTENT_TYPES", None)
-    if value:
-        return set(value)
-    return set(settings.ALLOWED_CONTENT_TYPES)
-
-
-def _max_image_size_bytes() -> int:
-    value = getattr(settings, "MEDIA_MAX_IMAGE_SIZE_BYTES", None)
-    if value:
-        return int(value)
-    return int(settings.MAX_SIZE)
-
-
-def _max_audio_size_bytes() -> int:
-    value = getattr(settings, "MEDIA_MAX_AUDIO_SIZE_BYTES", None)
-    if value:
-        return int(value)
-    return int(settings.MAX_SIZE)
+def _slugify(value: str) -> str:
+    normalized = value.strip().lower().replace("-", "_").replace(" ", "_")
+    normalized = SLUG_SANITIZER.sub("", normalized)
+    normalized = re.sub(r"_+", "_", normalized).strip("_")
+    if not normalized:
+        raise ValueError("Unable to build avatar file path from empty name")
+    return normalized
 
 
 class MediaService:
@@ -77,272 +54,150 @@ class MediaService:
         self.db = db
         self.redis = redis
 
-    def _validate_file(self, *, file: UploadFile, media_type: MediaType, file_size: int) -> None:
-        if media_type in (MediaType.AVATAR, MediaType.BADGE):
-            if file.content_type not in _allowed_image_content_types():
-                raise HTTPException(status_code=415, detail="Unsupported image media type")
-            if file_size > _max_image_size_bytes():
-                raise HTTPException(status_code=413, detail="Image file too large")
-            return
-
-        if file.content_type not in _allowed_audio_content_types():
-            raise HTTPException(status_code=415, detail="Unsupported audio media type")
-        if file_size > _max_audio_size_bytes():
-            raise HTTPException(status_code=413, detail="Audio file too large")
-
-    def _load_avatar_thresholds(self) -> list[AvatarTierThresholdValue]:
-        rows = (
-            self.db.query(AvatarTierThreshold)
-            .order_by(AvatarTierThreshold.sort_order.asc())
-            .all()
-        )
-
-        if not rows:
-            return build_default_avatar_tier_threshold_values()
-
-        return [
-            AvatarTierThresholdValue(
-                tier_name=row.tier_name,
-                min_xp=row.min_xp,
-                sort_order=row.sort_order,
-            )
-            for row in rows
-        ]
-
-    def _derive_avatar_tier(
-        self,
-        xp_threshold: int,
-        *,
-        thresholds: list[AvatarTierThresholdValue] | None = None,
-    ) -> AvatarTier:
-        tier_name = derive_avatar_tier(
-            xp_threshold=xp_threshold,
-            thresholds=thresholds if thresholds is not None else self._load_avatar_thresholds(),
-        )
-        return AvatarTier(tier_name)
-
-    def _next_avatar_sequence(self) -> int:
-        max_sequence = (
-            self.db.query(func.max(MediaAsset.avatar_sequence))
-            .filter(MediaAsset.media_type == MediaType.AVATAR)
-            .scalar()
-        )
-        return int(max_sequence or 0) + 1
+    @staticmethod
+    def _validate_avatar_file(*, file: UploadFile, file_size: int) -> None:
+        max_size = int(getattr(settings, "MEDIA_MAX_IMAGE_SIZE_BYTES", settings.MAX_SIZE))
+        if file.content_type not in IMAGE_CONTENT_TYPES:
+            raise HTTPException(status_code=415, detail="Unsupported image media type")
+        if file_size > max_size:
+            raise HTTPException(status_code=413, detail="Image file too large")
 
     @staticmethod
-    def _resolve_sub_category(
-        *,
-        media_type: MediaType,
-        payload: MediaUploadFormData,
-        avatar_tier: AvatarTier | None,
-    ) -> str:
-        if media_type == MediaType.AVATAR:
-            if avatar_tier is None:
-                raise ValueError("avatar_tier is required for avatar uploads")
-            return avatar_tier.value
+    def _build_avatar_file_path(*, name: str, original_filename: str) -> str:
+        extension = Path(original_filename).suffix.lower()
+        if not extension:
+            raise HTTPException(status_code=422, detail="Uploaded file must have a valid extension")
+        if not re.fullmatch(r"\.[a-z0-9]+", extension):
+            raise HTTPException(status_code=422, detail="Uploaded file has an invalid extension")
 
-        if media_type == MediaType.BADGE:
-            if not payload.badge_group:
-                raise ValueError("badge_group is required for badge uploads")
-            return payload.badge_group
+        slug = _slugify(name)
+        return f"avatars/{slug}_{uuid4().hex}{extension}"
 
-        if media_type == MediaType.AUDIO_TRACK:
-            return "tracks"
-
-        return "effects"
+    def _get_avatar_tier_or_404(self, tier_id: UUID) -> AvatarTier:
+        row = self.db.query(AvatarTier).filter(AvatarTier.id == tier_id).first()
+        if not row:
+            raise HTTPException(status_code=404, detail="Avatar tier not found")
+        return row
 
     @staticmethod
-    def _is_locked_avatar(asset: MediaAsset) -> bool:
-        if asset.media_type != MediaType.AVATAR:
-            return False
-        if asset.is_base_avatar:
-            return False
-        return bool((asset.xp_threshold or 0) > 0)
+    def _is_locked_avatar(avatar: Avatar) -> bool:
+        return int(avatar.xp_threshold or 0) > 0
 
-    def create_media_asset(self, *, file: UploadFile, payload: MediaUploadFormData, actor_user_id: int) -> MediaAsset:
+    def create_media_asset(self, *, file: UploadFile, payload: AvatarUploadFormData, actor_user_id: int) -> Avatar:
+        del actor_user_id
+
+        self._get_avatar_tier_or_404(payload.tier_id)
+
         file_size = _file_size_bytes(file)
-        self._validate_file(file=file, media_type=payload.media_type, file_size=file_size)
+        self._validate_avatar_file(file=file, file_size=file_size)
 
-        xp_threshold: int | None = None
-        avatar_sequence: int | None = None
-        avatar_tier: AvatarTier | None = None
-
-        if payload.media_type == MediaType.AVATAR:
-            xp_threshold = int(payload.xp_threshold or 0)
-            avatar_tier = self._derive_avatar_tier(xp_threshold)
-            avatar_sequence = self._next_avatar_sequence()
-
-        sub_category = self._resolve_sub_category(
-            media_type=payload.media_type,
-            payload=payload,
-            avatar_tier=avatar_tier,
+        file_path = self._build_avatar_file_path(
+            name=payload.name,
+            original_filename=file.filename or payload.name,
         )
-
-        object_key = build_media_object_key(
-            media_type=payload.media_type,
-            sub_category=sub_category,
-            title=payload.title,
-            original_filename=file.filename or payload.title,
-            avatar_sequence=avatar_sequence,
-        )
-
-        is_base_avatar = False
-        if payload.media_type == MediaType.AVATAR:
-            if payload.is_base_avatar is not None:
-                is_base_avatar = bool(payload.is_base_avatar)
-            else:
-                is_base_avatar = bool(xp_threshold == 0)
 
         try:
             minio_client.put_object(
                 bucket_name=MEDIA_PUBLIC_BUCKET,
-                object_name=object_key,
+                object_name=file_path,
                 data=file.file,
                 length=file_size,
                 content_type=file.content_type,
             )
         except S3Error:
             logger.exception("MinIO upload failed")
-            raise HTTPException(status_code=500, detail="Failed to upload media file")
+            raise HTTPException(status_code=500, detail="Failed to upload avatar file")
 
-        asset = MediaAsset(
-            media_type=payload.media_type,
-            title=payload.title,
+        avatar_payload = AvatarCreate(
+            tier_id=payload.tier_id,
+            name=payload.name,
             description=payload.description,
-            bucket_name=MEDIA_PUBLIC_BUCKET,
-            object_key=object_key,
-            mime_type=file.content_type or "application/octet-stream",
-            file_size_bytes=file_size,
-            duration_seconds=payload.duration_seconds,
-            is_active=True,
-            xp_threshold=xp_threshold,
-            is_base_avatar=is_base_avatar,
+            file_path=file_path,
+            xp_threshold=payload.xp_threshold,
+            is_active=payload.is_active,
             sort_order=payload.sort_order,
-            avatar_sequence=avatar_sequence,
-            avatar_tier=avatar_tier,
-            badge_group=payload.badge_group,
-            criteria_description=payload.criteria_description,
-            created_by_user_id=actor_user_id,
-            updated_by_user_id=actor_user_id,
         )
 
-        self.db.add(asset)
+        avatar = Avatar(**avatar_payload.model_dump())
+        self.db.add(avatar)
         try:
             self.db.commit()
         except Exception:
             self.db.rollback()
-            logger.exception("Failed to persist media metadata")
-            raise HTTPException(status_code=500, detail="Failed to persist media metadata")
+            logger.exception("Failed to persist avatar metadata")
+            raise HTTPException(status_code=500, detail="Failed to persist avatar metadata")
 
-        self.db.refresh(asset)
-        return asset
+        self.db.refresh(avatar)
+        return avatar
 
-    def get_media_asset_or_404(self, media_id: int) -> MediaAsset:
-        asset = self.db.query(MediaAsset).filter(MediaAsset.id == media_id).first()
-        if not asset:
-            raise HTTPException(status_code=404, detail="Media asset not found")
-        return asset
-
-    def _move_object_key(self, *, asset: MediaAsset, new_sub_category: str) -> None:
-        filename = asset.object_key.rsplit("/", 1)[-1]
-        category = media_category_for_type(asset.media_type)
-        new_key = f"{category}/{new_sub_category}/{filename}"
-
-        if new_key == asset.object_key:
-            return
-
-        try:
-            minio_client.copy_object(
-                asset.bucket_name,
-                new_key,
-                CopySource(asset.bucket_name, asset.object_key),
-            )
-            minio_client.remove_object(asset.bucket_name, asset.object_key)
-        except S3Error:
-            logger.exception("Failed to move media object")
-            raise HTTPException(status_code=500, detail="Failed to move media object")
-
-        asset.object_key = new_key
+    def get_media_asset_or_404(self, media_id: UUID) -> Avatar:
+        avatar = self.db.query(Avatar).filter(Avatar.id == media_id).first()
+        if not avatar:
+            raise HTTPException(status_code=404, detail="Avatar not found")
+        return avatar
 
     def update_media_asset(
         self,
         *,
-        media_id: int,
-        payload: MediaUpdateRequest,
+        media_id: UUID,
+        payload: AvatarUpdateRequest,
         actor_user_id: int,
-    ) -> MediaAsset:
-        asset = self.get_media_asset_or_404(media_id)
-        was_base_avatar = bool(asset.is_base_avatar)
+    ) -> Avatar:
+        del actor_user_id
 
+        avatar = self.get_media_asset_or_404(media_id)
         update_data = payload.model_dump(exclude_unset=True)
         if not update_data:
-            return asset
+            return avatar
 
-        if "title" in update_data:
-            asset.title = update_data["title"]
+        if "tier_id" in update_data:
+            self._get_avatar_tier_or_404(update_data["tier_id"])
+            avatar.tier_id = update_data["tier_id"]
+        if "name" in update_data:
+            avatar.name = update_data["name"]
         if "description" in update_data:
-            asset.description = update_data["description"]
+            avatar.description = update_data["description"]
+        if "file_path" in update_data:
+            avatar.file_path = update_data["file_path"]
+        if "xp_threshold" in update_data:
+            avatar.xp_threshold = int(update_data["xp_threshold"])
         if "is_active" in update_data:
-            asset.is_active = update_data["is_active"]
-        if "duration_seconds" in update_data:
-            asset.duration_seconds = update_data["duration_seconds"]
-
-        if asset.media_type == MediaType.AVATAR:
-            if "sort_order" in update_data:
-                asset.sort_order = update_data["sort_order"]
-            if "is_base_avatar" in update_data:
-                asset.is_base_avatar = bool(update_data["is_base_avatar"])
-            if "xp_threshold" in update_data:
-                new_xp_threshold = int(update_data["xp_threshold"])
-                new_tier = self._derive_avatar_tier(new_xp_threshold)
-                asset.xp_threshold = new_xp_threshold
-                if asset.avatar_tier != new_tier:
-                    self._move_object_key(asset=asset, new_sub_category=new_tier.value)
-                    asset.avatar_tier = new_tier
-
-        if asset.media_type == MediaType.BADGE and "badge_group" in update_data:
-            new_group = update_data["badge_group"]
-            if new_group:
-                self._move_object_key(asset=asset, new_sub_category=new_group)
-            asset.badge_group = new_group
-
-        if asset.media_type == MediaType.BADGE and "criteria_description" in update_data:
-            asset.criteria_description = update_data["criteria_description"]
-
-        asset.updated_by_user_id = actor_user_id
+            avatar.is_active = bool(update_data["is_active"])
+        if "sort_order" in update_data:
+            avatar.sort_order = int(update_data["sort_order"])
 
         try:
             self.db.commit()
         except Exception:
             self.db.rollback()
-            logger.exception("Failed to update media metadata")
-            raise HTTPException(status_code=500, detail="Failed to update media metadata")
+            logger.exception("Failed to update avatar metadata")
+            raise HTTPException(status_code=500, detail="Failed to update avatar metadata")
 
-        self.db.refresh(asset)
-        return asset
+        self.db.refresh(avatar)
+        return avatar
 
-    def delete_media_asset(self, *, media_id: int) -> MediaAsset:
-        asset = self.get_media_asset_or_404(media_id)
+    def delete_media_asset(self, *, media_id: UUID) -> Avatar:
+        avatar = self.get_media_asset_or_404(media_id)
         try:
-            minio_client.remove_object(asset.bucket_name, asset.object_key)
+            minio_client.remove_object(MEDIA_PUBLIC_BUCKET, avatar.file_path)
         except S3Error:
-            logger.exception("Failed to delete media object from MinIO")
-            raise HTTPException(status_code=500, detail="Failed to delete media object")
+            logger.exception("Failed to delete avatar object from MinIO")
+            raise HTTPException(status_code=500, detail="Failed to delete avatar object")
 
-        self.db.delete(asset)
+        self.db.delete(avatar)
         try:
             self.db.commit()
         except Exception:
             self.db.rollback()
-            logger.exception("Failed to delete media metadata")
-            raise HTTPException(status_code=500, detail="Failed to delete media metadata")
+            logger.exception("Failed to delete avatar metadata")
+            raise HTTPException(status_code=500, detail="Failed to delete avatar metadata")
 
-        return asset
+        return avatar
 
     def _enforce_locked_avatar_access(
         self,
         *,
-        asset: MediaAsset,
+        avatar: Avatar,
         current_user: User,
         child_id: UUID | None,
     ) -> None:
@@ -356,105 +211,77 @@ class MediaService:
         if current_user.role == UserRole.PARENT and child_profile.parent_id != current_user.id:
             raise HTTPException(status_code=403, detail="Child profile does not belong to authenticated parent")
 
-        if (child_profile.xp or 0) < int(asset.xp_threshold or 0):
+        if (child_profile.xp or 0) < int(avatar.xp_threshold or 0):
             raise HTTPException(status_code=403, detail="Avatar is locked for this child profile")
 
     def build_download_response(
         self,
         *,
-        media_id: int,
+        media_id: UUID,
         current_user: User,
         child_id: UUID | None,
     ) -> dict[str, Any]:
-        asset = self.get_media_asset_or_404(media_id)
+        avatar = self.get_media_asset_or_404(media_id)
 
-        if asset.media_type == MediaType.AVATAR and self._is_locked_avatar(asset):
-            self._enforce_locked_avatar_access(asset=asset, current_user=current_user, child_id=child_id)
+        if self._is_locked_avatar(avatar):
+            self._enforce_locked_avatar_access(avatar=avatar, current_user=current_user, child_id=child_id)
 
         try:
             url = minio_client.presigned_get_object(
-                asset.bucket_name,
-                asset.object_key,
+                MEDIA_PUBLIC_BUCKET,
+                avatar.file_path,
                 expires=timedelta(seconds=SIGNED_URL_EXPIRY_SECONDS),
             )
         except S3Error:
-            logger.exception("Failed to generate media download URL")
-            raise HTTPException(status_code=500, detail="Failed to generate media download URL")
+            logger.exception("Failed to generate avatar download URL")
+            raise HTTPException(status_code=500, detail="Failed to generate avatar download URL")
 
         return {
-            "media_id": asset.id,
-            "media_type": asset.media_type,
-            "title": asset.title,
-            "object_key": asset.object_key,
+            "avatar_id": avatar.id,
+            "name": avatar.name,
+            "file_path": avatar.file_path,
             "url": url,
             "expires_in_seconds": SIGNED_URL_EXPIRY_SECONDS,
         }
 
-    def list_media_assets(
-        self,
-        *,
-        media_type: MediaType,
-        include_inactive: bool,
-    ) -> list[MediaAsset]:
-        query = self.db.query(MediaAsset).filter(MediaAsset.media_type == media_type)
+    def list_media_assets(self, *, include_inactive: bool) -> list[Avatar]:
+        query = self.db.query(Avatar)
         if not include_inactive:
-            query = query.filter(MediaAsset.is_active.is_(True))
-
-        if media_type == MediaType.AVATAR:
-            query = query.order_by(MediaAsset.sort_order.asc().nullslast(), MediaAsset.id.asc())
-        else:
-            query = query.order_by(MediaAsset.id.asc())
-
-        return query.all()
+            query = query.filter(Avatar.is_active.is_(True))
+        return query.order_by(Avatar.sort_order.asc(), Avatar.id.asc()).all()
 
     def update_avatar_tier_thresholds(
         self,
         *,
-        thresholds: list[AvatarTierThresholdItem],
-    ) -> list[AvatarTierThreshold]:
-        existing_rows = self.db.query(AvatarTierThreshold).all()
-        existing_by_name = {row.tier_name: row for row in existing_rows}
+        thresholds: list[AvatarTierUpdateItem],
+    ) -> list[AvatarTier]:
+        existing_rows = self.db.query(AvatarTier).all()
+        existing_by_name = {row.name.lower(): row for row in existing_rows}
 
         for threshold in thresholds:
-            row = existing_by_name.get(threshold.tier_name)
+            key = threshold.name.lower()
+            row = existing_by_name.get(key)
             if row:
+                row.name = threshold.name
                 row.min_xp = threshold.min_xp
                 row.sort_order = threshold.sort_order
             else:
                 self.db.add(
-                    AvatarTierThreshold(
-                        tier_name=threshold.tier_name,
+                    AvatarTier(
+                        name=threshold.name,
                         min_xp=threshold.min_xp,
                         sort_order=threshold.sort_order,
                     )
                 )
 
-        self.db.flush()
-
-        threshold_values = self._load_avatar_thresholds()
-        avatars = self.db.query(MediaAsset).filter(MediaAsset.media_type == MediaType.AVATAR).all()
-        for avatar in avatars:
-            xp_threshold = int(avatar.xp_threshold or 0)
-            recalculated_tier = self._derive_avatar_tier(
-                xp_threshold,
-                thresholds=threshold_values,
-            )
-            if avatar.avatar_tier != recalculated_tier:
-                self._move_object_key(asset=avatar, new_sub_category=recalculated_tier.value)
-                avatar.avatar_tier = recalculated_tier
-
         try:
             self.db.commit()
         except Exception:
             self.db.rollback()
-            logger.exception("Failed to update avatar tier thresholds")
-            raise HTTPException(status_code=500, detail="Failed to update avatar tier thresholds")
+            logger.exception("Failed to update avatar tiers")
+            raise HTTPException(status_code=500, detail="Failed to update avatar tiers")
 
-        return (
-            self.db.query(AvatarTierThreshold)
-            .order_by(AvatarTierThreshold.sort_order.asc())
-            .all()
-        )
+        return self.db.query(AvatarTier).order_by(AvatarTier.sort_order.asc()).all()
 
     async def get_cached_base_avatars(self) -> list[dict[str, Any]]:
         if not self.redis:

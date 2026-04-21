@@ -70,6 +70,9 @@ export const WEEKDAY_OPTIONS: { key: WeekdayKey; shortLabel: string; fullLabel: 
   { key: 'sunday', shortLabel: 'Sun', fullLabel: 'Sunday' },
 ];
 
+export const CHILD_PROFILE_MIN_AGE = 3;
+export const CHILD_PROFILE_MAX_AGE = 15;
+
 export function educationLevelToBackendStage(level: EducationLevel): BackendEducationStage {
   if (level === 'kindergarten') {
     return 'KINDERGARTEN';
@@ -94,22 +97,61 @@ export function backendStageToEducationLevel(stage: string | null | undefined): 
   return 'secondary_school';
 }
 
-export function calculateAgeFromBirthDate(birthDate: Date): number {
-  const today = new Date();
-  let age = today.getFullYear() - birthDate.getFullYear();
-  const monthDiff = today.getMonth() - birthDate.getMonth();
+export function parseIsoDateOnly(value: string | null | undefined): Date | null {
+  if (!value) {
+    return null;
+  }
 
-  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    return null;
+  }
+
+  const year = parseInt(match[1], 10);
+  const month = parseInt(match[2], 10);
+  const day = parseInt(match[3], 10);
+  const parsed = new Date(year, month - 1, day);
+
+  if (
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month - 1 ||
+    parsed.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return parsed;
+}
+
+export function calculateAgeFromDateOfBirth(
+  birthDate: Date,
+  referenceDate: Date = new Date(),
+): number {
+  let age = referenceDate.getFullYear() - birthDate.getFullYear();
+  const hasHadBirthdayThisYear =
+    referenceDate.getMonth() > birthDate.getMonth() ||
+    (referenceDate.getMonth() === birthDate.getMonth() &&
+      referenceDate.getDate() >= birthDate.getDate());
+
+  if (!hasHadBirthdayThisYear) {
     age -= 1;
   }
 
   return age;
 }
 
-export function deriveAgeGroupFromBirthDate(birthDate: Date): AgeGroup | null {
-  const age = calculateAgeFromBirthDate(birthDate);
+export function isChildProfileAgeInRange(
+  birthDate: Date,
+  referenceDate: Date = new Date(),
+): boolean {
+  const age = calculateAgeFromDateOfBirth(birthDate, referenceDate);
+  return age >= CHILD_PROFILE_MIN_AGE && age <= CHILD_PROFILE_MAX_AGE;
+}
 
-  if (age < 3 || age > 15) {
+export function deriveAgeGroupFromBirthDate(birthDate: Date): AgeGroup | null {
+  const age = calculateAgeFromDateOfBirth(birthDate);
+
+  if (age < CHILD_PROFILE_MIN_AGE || age > CHILD_PROFILE_MAX_AGE) {
     return null;
   }
 
@@ -242,7 +284,7 @@ export function deriveTimeWindowFromWeekSchedule(
 
   for (const weekday of WEEKDAY_OPTIONS) {
     const day = weekSchedule[weekday.key];
-    if (!day.enabled || !day.startTime || !day.durationMinutes || day.durationMinutes <= 0) {
+    if (!day.enabled || !day.startTime) {
       continue;
     }
 
@@ -251,7 +293,17 @@ export function deriveTimeWindowFromWeekSchedule(
       continue;
     }
 
-    const endMinutes = Math.min(startMinutes + day.durationMinutes, (24 * 60) - 1);
+    const explicitEndMinutes = day.endTime ? parseTimeToMinutes(day.endTime) : null;
+    const fallbackEndMinutes =
+      day.durationMinutes && day.durationMinutes > 0
+        ? startMinutes + day.durationMinutes
+        : null;
+    const endMinutes = explicitEndMinutes ?? fallbackEndMinutes;
+
+    if (endMinutes === null || endMinutes <= startMinutes) {
+      continue;
+    }
+
     minStart = minStart === null ? startMinutes : Math.min(minStart, startMinutes);
     maxEnd = maxEnd === null ? endMinutes : Math.max(maxEnd, endMinutes);
   }

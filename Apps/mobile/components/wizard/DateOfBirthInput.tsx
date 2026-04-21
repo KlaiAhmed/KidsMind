@@ -1,13 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
-import { calculateAgeFromBirthDate } from '@/src/utils/childProfileWizard';
+import { Colors, Radii, Sizing, Spacing, Typography } from '@/constants/theme';
 
 export interface DateOfBirthValue {
   day: string;
@@ -34,29 +32,8 @@ function sanitizeDigits(value: string, maxLength: number): string {
   return value.replace(/\D/g, '').slice(0, maxLength);
 }
 
-function isValidDay(value: string): boolean {
-  const parsed = parseInt(value, 10);
-  return !Number.isNaN(parsed) && parsed >= 1 && parsed <= 31;
-}
-
-function isValidMonth(value: string): boolean {
-  const parsed = parseInt(value, 10);
-  return !Number.isNaN(parsed) && parsed >= 1 && parsed <= 12;
-}
-
-function expandTwoDigitYear(yearValue: string): number {
-  const parsed = parseInt(yearValue, 10);
-  const currentYear = new Date().getFullYear();
-  const cutoff = currentYear - 20;
-  const twoDigitCandidate = 2000 + parsed;
-
-  return twoDigitCandidate <= cutoff ? twoDigitCandidate : 1900 + parsed;
-}
-
 function validateDateParts(value: DateOfBirthValue): DateValidationResult {
-  const result: DateValidationResult = {
-    validDate: null,
-  };
+  const result: DateValidationResult = { validDate: null };
 
   const dayValue = value.day.trim();
   const monthValue = value.month.trim();
@@ -65,14 +42,14 @@ function validateDateParts(value: DateOfBirthValue): DateValidationResult {
   if (dayValue.length > 0) {
     const day = parseInt(dayValue, 10);
     if (Number.isNaN(day) || day < 1 || day > 31) {
-      result.dayError = 'Day must be between 1 and 31';
+      result.dayError = 'Day must be 1–31';
     }
   }
 
   if (monthValue.length > 0) {
     const month = parseInt(monthValue, 10);
     if (Number.isNaN(month) || month < 1 || month > 12) {
-      result.monthError = 'Month must be between 1 and 12';
+      result.monthError = 'Month must be 1–12';
     }
   }
 
@@ -81,9 +58,7 @@ function validateDateParts(value: DateOfBirthValue): DateValidationResult {
     const currentYear = new Date().getFullYear();
 
     if (Number.isNaN(year)) {
-      result.yearError = 'Year must be a valid number';
-    } else if (year < 1900) {
-      result.yearError = 'Year must be 1900 or later';
+      result.yearError = 'Enter a valid year';
     } else if (year > currentYear) {
       result.yearError = 'Year cannot be in the future';
     }
@@ -123,40 +98,41 @@ function validateDateParts(value: DateOfBirthValue): DateValidationResult {
     return result;
   }
 
-  const age = calculateAgeFromBirthDate(date);
-  if (age < 3) {
-    result.dateError = 'Child must be at least 3 years old';
-    return result;
-  }
-
-  if (age > 15) {
-    result.dateError = 'Child must be 15 years old or younger';
-    return result;
-  }
-
   result.validDate = date;
   return result;
 }
 
 export function DateOfBirthInput({ value, onChange, onValidChange, externalError }: DateOfBirthInputProps) {
+  const dayRef = useRef<TextInput>(null);
   const monthRef = useRef<TextInput>(null);
   const yearRef = useRef<TextInput>(null);
 
-  const [expandedYearFrom, setExpandedYearFrom] = useState<string | null>(null);
+  const [focusedField, setFocusedField] = useState<keyof DateOfBirthValue | null>(null);
 
-  const validation = useMemo(() => validateDateParts(value), [value]);
+  const onValidChangeRef = useRef(onValidChange);
+  onValidChangeRef.current = onValidChange;
+
+  const prevValidDateRef = useRef<Date | null>(null);
+  const validation = useMemo(
+    () => validateDateParts(value),
+    [value.day, value.month, value.year],
+  );
+  const validDateTimestamp = validation.validDate ? validation.validDate.getTime() : null;
 
   useEffect(() => {
-    onValidChange(validation.validDate);
-  }, [onValidChange, validation.validDate]);
+    const prevTimestamp = prevValidDateRef.current ? prevValidDateRef.current.getTime() : null;
+
+    if (prevTimestamp === validDateTimestamp) {
+      return;
+    }
+
+    prevValidDateRef.current = validation.validDate;
+    onValidChangeRef.current(validation.validDate);
+  }, [validDateTimestamp, validation.validDate]);
 
   function setDatePart(part: keyof DateOfBirthValue, nextRawValue: string) {
     const maxLength = part === 'year' ? 4 : 2;
     const sanitized = sanitizeDigits(nextRawValue, maxLength);
-
-    if (part === 'year' && sanitized.length !== 4) {
-      setExpandedYearFrom(null);
-    }
 
     const nextValue: DateOfBirthValue = {
       ...value,
@@ -165,26 +141,19 @@ export function DateOfBirthInput({ value, onChange, onValidChange, externalError
 
     onChange(nextValue);
 
-    if (part === 'day' && sanitized.length === 2 && isValidDay(sanitized)) {
+    if (part === 'day' && sanitized.length === 2) {
       monthRef.current?.focus();
     }
 
-    if (part === 'month' && sanitized.length === 2 && isValidMonth(sanitized)) {
+    if (part === 'month' && sanitized.length === 2) {
       yearRef.current?.focus();
     }
   }
 
-  function handleYearEndEditing() {
-    if (value.year.length !== 2) {
-      return;
-    }
-
-    const expandedYear = expandTwoDigitYear(value.year);
-    setExpandedYearFrom(value.year);
-    onChange({
-      ...value,
-      year: `${expandedYear}`,
-    });
+  function getFieldBorderColor(part: keyof DateOfBirthValue, hasError: boolean): string {
+    if (hasError) return Colors.errorText;
+    if (focusedField === part) return Colors.inputBorderFocused;
+    return Colors.inputBorder;
   }
 
   const helperError =
@@ -199,76 +168,80 @@ export function DateOfBirthInput({ value, onChange, onValidChange, externalError
       <Text style={styles.groupLabel}>Date of Birth</Text>
       <View style={styles.row}>
         <View style={styles.fieldWrap}>
-          <Text style={styles.fieldLabel}>Day (DD)</Text>
+          <Text style={styles.fieldLabel}>Day</Text>
           <TextInput
+            ref={dayRef}
             value={value.day}
             onChangeText={(next) => setDatePart('day', next)}
+            onFocus={() => setFocusedField('day')}
+            onBlur={() => setFocusedField((prev) => prev === 'day' ? null : prev)}
             keyboardType="number-pad"
             inputMode="numeric"
             maxLength={2}
+            returnKeyType="next"
             autoComplete="birthdate-day"
             textContentType="birthdate"
             accessibilityLabel="Day of birth"
-            style={[styles.input, styles.dayInput, validation.dayError ? styles.inputError : null]}
-            placeholder="DD"
+            style={[
+              styles.input,
+              styles.dayInput,
+              { borderColor: getFieldBorderColor('day', !!validation.dayError) },
+            ]}
             placeholderTextColor={Colors.placeholder}
+            selectionColor={Colors.primary}
           />
         </View>
 
         <View style={styles.fieldWrap}>
-          <Text style={styles.fieldLabel}>Month (MM)</Text>
+          <Text style={styles.fieldLabel}>Month</Text>
           <TextInput
             ref={monthRef}
             value={value.month}
             onChangeText={(next) => setDatePart('month', next)}
+            onFocus={() => setFocusedField('month')}
+            onBlur={() => setFocusedField((prev) => prev === 'month' ? null : prev)}
             keyboardType="number-pad"
             inputMode="numeric"
             maxLength={2}
+            returnKeyType="next"
             autoComplete="birthdate-month"
             textContentType="birthdate"
             accessibilityLabel="Month of birth"
-            style={[styles.input, styles.monthInput, validation.monthError ? styles.inputError : null]}
-            placeholder="MM"
+            style={[
+              styles.input,
+              styles.monthInput,
+              { borderColor: getFieldBorderColor('month', !!validation.monthError) },
+            ]}
             placeholderTextColor={Colors.placeholder}
+            selectionColor={Colors.primary}
           />
         </View>
 
         <View style={styles.fieldWrap}>
-          <Text style={styles.fieldLabel}>Year (YYYY)</Text>
+          <Text style={styles.fieldLabel}>Year</Text>
           <TextInput
             ref={yearRef}
             value={value.year}
             onChangeText={(next) => setDatePart('year', next)}
-            onEndEditing={handleYearEndEditing}
+            onFocus={() => setFocusedField('year')}
+            onBlur={() => setFocusedField((prev) => prev === 'year' ? null : prev)}
             keyboardType="number-pad"
             inputMode="numeric"
             maxLength={4}
+            returnKeyType="done"
             autoComplete="birthdate-year"
             textContentType="birthdate"
             accessibilityLabel="Year of birth"
-            style={[styles.input, styles.yearInput, validation.yearError ? styles.inputError : null]}
-            placeholder="YYYY"
+            style={[
+              styles.input,
+              styles.yearInput,
+              { borderColor: getFieldBorderColor('year', !!validation.yearError) },
+            ]}
             placeholderTextColor={Colors.placeholder}
+            selectionColor={Colors.primary}
           />
         </View>
       </View>
-
-      {expandedYearFrom ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Undo year expansion"
-          onPress={() => {
-            onChange({ ...value, year: expandedYearFrom });
-            setExpandedYearFrom(null);
-            yearRef.current?.focus();
-          }}
-          style={({ pressed }) => [styles.correctionChip, pressed ? styles.correctionChipPressed : null]}
-        >
-          <Text style={styles.correctionChipText}>
-            Year expanded from {expandedYearFrom} to {value.year}. Tap to edit.
-          </Text>
-        </Pressable>
-      ) : null}
 
       {helperError ? <Text style={styles.errorText}>{helperError}</Text> : null}
     </View>
@@ -286,52 +259,33 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: Spacing.sm,
+    gap: Spacing.md,
   },
   fieldWrap: {
     gap: Spacing.xs,
   },
   fieldLabel: {
     ...Typography.captionMedium,
-    color: Colors.textSecondary,
+    color: Colors.inputLabel,
   },
   input: {
     borderWidth: 1,
-    borderColor: Colors.inputBorder,
     borderRadius: Radii.md,
     backgroundColor: Colors.surfaceContainerLowest,
     color: Colors.text,
     ...Typography.body,
     paddingHorizontal: Spacing.sm,
-    height: 44,
+    height: Sizing.inputHeight,
+    textAlign: 'center',
   },
   dayInput: {
-    width: 48,
+    width: 72,
   },
   monthInput: {
-    width: 56,
+    width: 88,
   },
   yearInput: {
-    width: 80,
-  },
-  inputError: {
-    borderColor: Colors.errorText,
-  },
-  correctionChip: {
-    alignSelf: 'flex-start',
-    borderRadius: Radii.full,
-    borderWidth: 1,
-    borderColor: Colors.primary,
-    backgroundColor: Colors.primaryFixed,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xs,
-  },
-  correctionChipPressed: {
-    transform: [{ scale: 0.98 }],
-  },
-  correctionChipText: {
-    ...Typography.caption,
-    color: Colors.primaryDark,
+    width: 120,
   },
   errorText: {
     ...Typography.caption,

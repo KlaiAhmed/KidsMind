@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from crud.crud_child_profiles import create_child_profile, list_children_for_parent
 from crud.crud_child_rules import upsert_child_rules
+from models.avatar import Avatar
 from models.child_allowed_subject import ChildAllowedSubject
 from models.child_profile import ChildProfile
 from models.child_schedule_subject import ChildScheduleSubject
@@ -33,6 +34,7 @@ from schemas.child_profile_schema import (
     ChildWeekScheduleIn,
     ChildWeekScheduleOut,
 )
+from schemas.media_schema import AvatarResponse
 from utils.child_profile_logic import derive_student_profile_fields
 from utils.manage_pwd import hash_password
 
@@ -74,6 +76,13 @@ class ChildProfileService:
             raise HTTPException(status_code=404, detail="Child profile not found")
         self._require_parent_ownership(child_profile, parent_id)
         return child_profile
+
+    def _ensure_avatar_exists(self, avatar_id: UUID | None) -> None:
+        if avatar_id is None:
+            return
+        avatar_exists = self.db.query(Avatar.id).filter(Avatar.id == avatar_id).first()
+        if not avatar_exists:
+            raise HTTPException(status_code=422, detail="avatar_id does not reference an existing avatar")
 
     @staticmethod
     def _extract_unique_subjects(
@@ -295,7 +304,8 @@ class ChildProfileService:
                     is_accelerated=profile.is_accelerated,
                     is_below_expected_stage=profile.is_below_expected_stage,
                     languages=profile.languages,
-                    avatar=profile.avatar,
+                    avatar_id=profile.avatar_id,
+                    avatar=AvatarResponse.model_validate(profile.avatar) if profile.avatar else None,
                     xp=profile.xp,
                     rules=ChildRulesRead.model_validate(rules_row) if rules_row else None,
                     allowed_subjects=allowed_subjects_by_child_id.get(profile.id, []),
@@ -334,13 +344,15 @@ class ChildProfileService:
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+        self._ensure_avatar_exists(payload.avatar_id)
+
         try:
             child_profile = create_child_profile(
                 self.db,
                 parent_id=parent_user.id,
                 nickname=payload.nickname,
                 languages=payload.languages,
-                avatar=payload.avatar,
+                avatar_id=payload.avatar_id,
                 derivation=derived,
             )
 
@@ -395,8 +407,9 @@ class ChildProfileService:
             child_profile.nickname = update_data["nickname"]
         if "languages" in update_data:
             child_profile.languages = update_data["languages"]
-        if "avatar" in update_data:
-            child_profile.avatar = update_data["avatar"]
+        if "avatar_id" in update_data:
+            self._ensure_avatar_exists(update_data["avatar_id"])
+            child_profile.avatar_id = update_data["avatar_id"]
 
         has_profile_derivation_input = any(
             key in update_data
@@ -449,8 +462,9 @@ class ChildProfileService:
             child_profile.nickname = update_data["nickname"]
         if "languages" in update_data:
             child_profile.languages = update_data["languages"]
-        if "avatar" in update_data:
-            child_profile.avatar = update_data["avatar"]
+        if "avatar_id" in update_data:
+            self._ensure_avatar_exists(update_data["avatar_id"])
+            child_profile.avatar_id = update_data["avatar_id"]
 
         has_profile_derivation_input = any(
             key in update_data

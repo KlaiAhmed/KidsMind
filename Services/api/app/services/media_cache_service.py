@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from core.cache_client import get_cache_client
 from core.database import SessionLocal
-from models.media_asset import MediaAsset, MediaType
+from models.avatar import Avatar
 from utils.logger import logger
 
 
@@ -21,27 +21,25 @@ BASE_AVATAR_CACHE_KEY = "media:avatars:base:v1"
 BASE_AVATAR_CACHE_TTL_SECONDS = 3600
 
 
-def _serialize_base_avatar(asset: MediaAsset) -> dict[str, Any]:
+def _serialize_base_avatar(asset: Avatar) -> dict[str, Any]:
     return {
-        "id": asset.id,
-        "title": asset.title,
-        "bucket_name": asset.bucket_name,
-        "object_key": asset.object_key,
-        "avatar_tier": asset.avatar_tier.value if asset.avatar_tier else None,
+        "id": str(asset.id),
+        "name": asset.name,
+        "file_path": asset.file_path,
+        "tier_id": str(asset.tier_id),
         "sort_order": asset.sort_order,
-        "is_base_avatar": asset.is_base_avatar,
+        "xp_threshold": asset.xp_threshold,
     }
 
 
-def load_base_avatars_from_db(db: Session) -> list[MediaAsset]:
+def load_base_avatars_from_db(db: Session) -> list[Avatar]:
     return (
-        db.query(MediaAsset)
+        db.query(Avatar)
         .filter(
-            MediaAsset.media_type == MediaType.AVATAR,
-            MediaAsset.is_base_avatar.is_(True),
-            MediaAsset.is_active.is_(True),
+            Avatar.xp_threshold == 0,
+            Avatar.is_active.is_(True),
         )
-        .order_by(MediaAsset.sort_order.asc().nullslast(), MediaAsset.id.asc())
+        .order_by(Avatar.sort_order.asc(), Avatar.id.asc())
         .all()
     )
 
