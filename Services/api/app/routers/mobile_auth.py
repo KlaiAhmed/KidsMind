@@ -96,7 +96,7 @@ async def logout(
     logger.info(f"Mobile logout request received for user_id={current_user.id}")
 
     service = MobileAuthService(db)
-    result = await service.logout(current_user, payload.refresh_token)
+    result = await service.logout(current_user, payload.refresh_token, request=request)
 
     timer = time.perf_counter() - timer
     logger.info(f"Mobile logout request processed in {timer:.3f} seconds")

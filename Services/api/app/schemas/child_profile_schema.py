@@ -9,6 +9,7 @@ Domain: Children
 
 import re
 from datetime import date, datetime, time
+from enum import Enum
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
@@ -22,6 +23,25 @@ from utils.child_profile_logic import (
     get_age,
     get_age_group,
 )
+
+
+class ChildSubject(str, Enum):
+    MATH = "math"
+    FRENCH = "french"
+    ENGLISH = "english"
+    SCIENCE = "science"
+    HISTORY = "history"
+    ART = "art"
+
+
+class ChildWeekday(str, Enum):
+    MONDAY = "monday"
+    TUESDAY = "tuesday"
+    WEDNESDAY = "wednesday"
+    THURSDAY = "thursday"
+    FRIDAY = "friday"
+    SATURDAY = "saturday"
+    SUNDAY = "sunday"
 
 
 ALLOWED_LANGUAGE_CODES = {

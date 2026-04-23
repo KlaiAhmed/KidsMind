@@ -19,6 +19,10 @@ from utils.logger import logger
 
 SLOW_CALL_THRESHOLD_SECONDS = 3.0
 
+TEXT_CHUNK_FIELD = "text_chunk"
+TEXT_FIELD = "text"
+EXPLANATION_FIELD = "explanation"
+
 
 def _merge_text_chunks(previous: str, incoming: str) -> str:
     """Merge streamed text that can arrive as either delta or cumulative chunks."""
@@ -61,7 +65,7 @@ async def generate_content(
     timeout: int = 30
 ):
 
-    url = f"{settings.AI_SERVICE_ENDPOINT}/v1/ai/chat/{user_id}/{child_id}/{session_id}"
+    url = f"{settings.AI_SERVICE_URL}/v1/ai/chat/{user_id}/{child_id}/{session_id}"
 
     logger.info(
         "Calling AI service",
@@ -127,7 +131,7 @@ async def stream_content(
     is_below_expected_stage: bool = False,
     timeout: int = 30,
 ) -> AsyncGenerator[bytes, None]:
-    url = f"{settings.AI_SERVICE_ENDPOINT}/v1/ai/chat/stream/{user_id}/{child_id}/{session_id}"
+    url = f"{settings.AI_SERVICE_URL}/v1/ai/chat/stream/{user_id}/{child_id}/{session_id}"
 
     logger.info(
         "Starting AI service stream",
@@ -156,8 +160,10 @@ async def stream_content(
     ) as res:
         res.raise_for_status()
 
-        # Upstream emits SSE `data:` lines; accumulate chunk payloads so clients
-        # (including Swagger) can always see the progressively built full object.
+        # Upstream emits SSE `data:` lines with two formats:
+        # 1. {"text_chunk": "..."} - raw text chunks for incremental display
+        # 2. {"explanation": "...", ...} - final structured JSON object
+        accumulated_text = ""
         accumulated_payload: dict = {}
 
         async for line in res.aiter_lines():
@@ -183,9 +189,13 @@ async def stream_content(
                 continue
 
             if isinstance(parsed, dict):
-                merged = _merge_chunk_payload(accumulated_payload, parsed)
-                payload_text = json.dumps(merged, ensure_ascii=False)
+                if TEXT_CHUNK_FIELD in parsed:
+                    accumulated_text += parsed[TEXT_CHUNK_FIELD]
+                    yield f"data: {json.dumps({TEXT_FIELD: accumulated_text}, ensure_ascii=False)}\n\n".encode("utf-8")
+                else:
+                    merged = _merge_chunk_payload(accumulated_payload, parsed)
+                    payload_text = json.dumps(merged, ensure_ascii=False)
+                    yield f"data: {payload_text}\n\n".encode("utf-8")
             else:
                 payload_text = json.dumps(parsed, ensure_ascii=False)
-
-            yield f"data: {payload_text}\n\n".encode("utf-8")
+                yield f"data: {payload_text}\n\n".encode("utf-8")

@@ -16,11 +16,11 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from models.child_profile import ChildProfile
+from core.config import settings
 from utils.child_profile_logic import evaluate_stage_alignment, get_age_group
 from utils.logger import logger
 
-# Cache TTL in seconds (1 hour)
-CHILD_PROFILE_CONTEXT_TTL_SECONDS = 3600
+# Cache TTL in seconds (24 hours)
 
 
 def _child_profile_cache_key(child_id: UUID) -> str:
@@ -135,7 +135,7 @@ async def get_child_profile_context(child_id: str | UUID, redis: Any, db: Sessio
     await redis.set(
         cache_key,
         json.dumps(profile_context),
-        ex=CHILD_PROFILE_CONTEXT_TTL_SECONDS,
+        ex=settings.CHILD_PROFILE_CONTEXT_TTL_SECONDS,
     )
     cache_write_ms = (time.perf_counter() - timer_cache_write_start) * 1000
     total_ms = (time.perf_counter() - timer_total_start) * 1000
