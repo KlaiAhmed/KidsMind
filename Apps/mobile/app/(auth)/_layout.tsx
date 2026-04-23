@@ -35,7 +35,7 @@ export default function AuthLayout() {
       return <Redirect href="/(auth)/child-profile-wizard" />;
     }
 
-    if (childProfileStatus === 'exists') {
+    if (childProfileStatus === 'exists' && !inChildProfileWizard) {
       return <Redirect href="/(tabs)" />;
     }
   }

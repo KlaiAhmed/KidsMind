@@ -325,11 +325,13 @@ function validateStepOne(childInfo: ChildProfileWizardFormValues['childInfo'] | 
 
 export default function ChildProfileWizard() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ mode?: string }>();
+  const params = useLocalSearchParams<{ mode?: string; source?: string }>();
   const isEditMode = params.mode === 'edit';
+  const launchedFromParentDashboard = params.source === 'parent-dashboard';
 
   const {
     profile,
+    profiles,
     avatars,
     defaultAvatarId,
     saveChildProfile,
@@ -364,7 +366,9 @@ export default function ChildProfileWizard() {
     methodsRef.current.reset(defaultValues);
   }, [defaultValues]);
 
-  const showBackButton = isEditMode || step > 1;
+  const hasChildProfiles = profiles.length > 0;
+  const showStepOneBackButton = launchedFromParentDashboard && hasChildProfiles;
+  const showBackButton = isEditMode || step > 1 || showStepOneBackButton;
   const nextLabel = step === 5 ? (isEditMode ? 'Save Changes' : 'Start Learning') : 'Next';
   const isNextDisabled =
     isSubmitting ||
@@ -379,6 +383,11 @@ export default function ChildProfileWizard() {
 
     if (isEditMode) {
       router.back();
+      return;
+    }
+
+    if (showStepOneBackButton) {
+      router.replace('/(tabs)' as never);
       return;
     }
 

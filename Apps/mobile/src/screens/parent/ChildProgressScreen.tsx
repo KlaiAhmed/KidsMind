@@ -275,7 +275,7 @@ export default function ChildProgressScreen({
         <View style={styles.surfaceCard}>
           <Text style={styles.sectionTitle}>Weekly Insight</Text>
           <View style={styles.unsupportedState}>
-            <MaterialCommunityIcons color={Colors.textSecondary} name="sparkles" size={24} />
+            <MaterialCommunityIcons color={Colors.textSecondary} name="star-four-points-outline" size={24} />
             <Text style={styles.unsupportedTitle}>No live insight feed yet</Text>
             <Text style={styles.unsupportedBody}>
               The current API does not expose generated parent insights yet, so this section stays empty instead of showing mock analysis.

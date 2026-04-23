@@ -33,7 +33,7 @@ export function ParentChildSwitcher({
           />
         ))}
 
-        {onAddChild ? <ChildAvatarChip label="+ Add" onPress={onAddChild} variant="add" /> : null}
+        {onAddChild ? <ChildAvatarChip label="Add" onPress={onAddChild} variant="add" /> : null}
       </ScrollView>
     </View>
   );

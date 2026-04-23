@@ -206,7 +206,7 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
   }).format(new Date());
 
   function handleAddChild() {
-    void router.push('/(auth)/child-profile-wizard' as never);
+    void router.push('/(auth)/child-profile-wizard?source=parent-dashboard' as never);
   }
 
   function handleManageRules() {
@@ -427,7 +427,7 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
               start={Gradients.indigoDepth.start}
               style={styles.primaryActionGradient}
             >
-              <MaterialCommunityIcons color={Colors.white} name="message-search-outline" size={20} />
+              <MaterialCommunityIcons color={Colors.white} name="message-text-outline" size={20} />
               <Text style={styles.primaryActionLabel}>Review Conversation History</Text>
             </LinearGradient>
           </Pressable>
