@@ -1,0 +1,41 @@
+services:
+  ai-service:
+    ports:
+      - "127.0.0.1:${AI_PORT:-8001}:8000"
+
+  stt-service:
+    ports:
+      - "127.0.0.1:${STT_PORT:-8002}:8000"
+
+  database:
+    ports:
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
+
+  file-storage:
+    ports:
+      - "127.0.0.1:${STORAGE_API_PORT:-9000}:9000"
+      - "127.0.0.1:${STORAGE_CONSOLE_PORT:-9001}:9001"
+
+  cache:
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  prometheus:
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+
+  grafana:
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+
+  loki:
+    ports:
+      - "127.0.0.1:${LOKI_PORT:-3100}:3100"
+
+  postgres-exporter:
+    ports:
+      - "127.0.0.1:${POSTGRES_EXPORTER_PORT:-9187}:9187"
+
+  redis-exporter:
+    ports:
+      - "127.0.0.1:${REDIS_EXPORTER_PORT:-9121}:9121"
