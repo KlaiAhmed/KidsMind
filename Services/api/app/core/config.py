@@ -27,7 +27,8 @@ class Settings(BaseSettings):
 
     # App State
     ENV: str = "development"
-    IS_PROD: bool = False
+    IS_PROD: bool = True
+    EXPLICIT_DEV_MODE: str = "false"
 
     # CORS configuration
     CORS_ORIGINS: list[str] 
@@ -45,10 +46,10 @@ class Settings(BaseSettings):
     COOKIE_SECURE: bool | None = None
     CSRF_TOKEN_EXPIRE_SECONDS: int = 604800
 
-    # Service Endpoints
-    STT_SERVICE_ENDPOINT: str = "http://stt-service:8000"
-    STORAGE_SERVICE_ENDPOINT: str = "http://storage-service:9000"
-    AI_SERVICE_ENDPOINT: str = "http://ai-service:8000"
+    # Service URLs
+    STT_SERVICE_URL: str = "http://stt-service:8000"
+    STORAGE_SERVICE_ENDPOINT: str = "http://file-storage:9000"
+    AI_SERVICE_URL: str = "http://ai-service:8000"
     DB_SERVICE_ENDPOINT: str = "http://database:5432"
     CACHE_SERVICE_ENDPOINT: str = "redis://cache:6379"
 
@@ -82,12 +83,12 @@ class Settings(BaseSettings):
 
     # Credentials :
     # Database credentials
-    DB_USERNAME: str = "admin"
+    DB_USER: str = "admin"
     DB_PASSWORD: str
     DB_NAME: str = "kidsmind_db"
     
     # Storage credentials
-    STORAGE_ROOT_USERNAME: str = "admin"
+    STORAGE_ROOT_USER: str = "admin"
     STORAGE_ROOT_PASSWORD: str
 
     # Cache credentials
@@ -160,6 +161,7 @@ class Settings(BaseSettings):
     SECRET_KEY: str | None = None
     SECRET_ACCESS_KEY: str
     SECRET_REFRESH_KEY: str
+    CHILD_PROFILE_CONTEXT_TTL_SECONDS: int = 24 * 3600
 
     # Initial super admin bootstrap
     SUPER_ADMIN_EMAIL: str | None = None
@@ -192,8 +194,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def derive_cookie_secure_from_prod(self):
-        if "IS_PROD" not in self.model_fields_set:
-            self.IS_PROD = self.ENV.lower() in {"production", "prod"}
+        if self.CACHE_PASSWORD and "@" not in self.CACHE_SERVICE_ENDPOINT:
+            self.CACHE_SERVICE_ENDPOINT = f"redis://:{self.CACHE_PASSWORD}@cache:6379"
 
         if not self.RATE_LIMIT:
             self.RATE_LIMIT = "5/minute" if self.IS_PROD else "100/minute"
