@@ -51,6 +51,7 @@ function RootNavigator() {
     <Stack initialRouteName="(tabs)" screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="(auth)" />
+      <Stack.Screen name="child-home" />
       <Stack.Screen name="badges" />
       <Stack.Screen name="modal" options={{ presentation: 'modal', headerShown: true, title: 'Modal' }} />
       <Stack.Screen name="splash" />

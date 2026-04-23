@@ -209,6 +209,11 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
     void router.push('/(auth)/child-profile-wizard?source=parent-dashboard' as never);
   }
 
+  function handleOpenChildDashboard(childId: string) {
+    selectChild(childId);
+    void router.push(`/child-home?childId=${encodeURIComponent(childId)}` as never);
+  }
+
   function handleManageRules() {
     if (!activeChild) {
       return;
@@ -326,7 +331,7 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
           profiles={children}
           getAvatarSource={getChildAvatarSource}
           onAddChild={handleAddChild}
-          onSelectChild={selectChild}
+          onSelectChild={handleOpenChildDashboard}
         />
 
         <View style={styles.heroCard}>
