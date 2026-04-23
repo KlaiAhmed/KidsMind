@@ -21,7 +21,11 @@ from slowapi.errors import RateLimitExceeded
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from core.config import settings
-from core.error_handlers import http_exception_handler, request_validation_exception_handler
+from core.error_handlers import (
+    http_exception_handler,
+    request_validation_exception_handler,
+    unhandled_exception_handler,
+)
 from core.database import init_db
 from core.logging_setup import setup_logging, RequestTracingMiddleware
 from core.cache_client import get_cache_client, close_cache_client
@@ -86,6 +90,7 @@ async def lifespan(app: FastAPI):
         },
     )
 
+
     async with httpx.AsyncClient(timeout=HTTPX_TIMEOUT, headers=build_service_headers()) as client:
         app.state.http_client = client
         logger.info("HTTP client initialized")
@@ -140,7 +145,13 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="Core API", lifespan=lifespan)
 
-    # CORS middleware
+    # Middleware registration — order matters due to Starlette's reverse-wrap behaviour:
+    # middleware added LAST is outermost (executes first on ingress, last on egress).
+    # CORS must be outermost so that preflight OPTIONS requests and 429 responses
+    # include Access-Control-Allow-Origin. Do NOT move CORSMiddleware earlier.
+    app.add_middleware(RateLimitMiddleware)
+    app.add_middleware(CSRFMiddleware)
+    app.add_middleware(RequestTracingMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.CORS_ORIGINS,
@@ -149,20 +160,12 @@ def create_app() -> FastAPI:
         allow_headers=["Authorization", "Content-Type", "X-CSRF-Token", "X-Device-Info"],
     )
 
-    # CSRF protection middleware
-    app.add_middleware(CSRFMiddleware)
-
-    # Request tracing middleware
-    app.add_middleware(RequestTracingMiddleware)
-
-    # Centralized endpoint-aware rate limiting
-    app.add_middleware(RateLimitMiddleware)
-
     # Rate limiting
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     app.add_exception_handler(RequestValidationError, request_validation_exception_handler)
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)
+    app.add_exception_handler(Exception, unhandled_exception_handler)
 
     # Mount routers
     app.include_router(health_router, prefix="", tags=["Health"])
