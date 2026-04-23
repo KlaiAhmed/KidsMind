@@ -8,7 +8,13 @@ import {
   type ReactNode,
 } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { clearRefreshToken, getRefreshToken, saveRefreshToken } from '@/auth/tokenStorage';
+import {
+  clearOnboardingFlag,
+  clearRefreshToken,
+  getRefreshToken,
+  saveOnboardingFlag,
+  saveRefreshToken,
+} from '@/auth/tokenStorage';
 import type {
   AuthState as SessionAuthState,
   AuthTokenResponse,
@@ -49,7 +55,12 @@ export interface User {
   pinConfigured: boolean;
 }
 
+const BOOTSTRAP_TIMEOUT_MS = 15000;
+const MAX_LOADING_DURATION_MS = 20000;
+
 export type LoginFormValues = LoginRequest;
+
+export type ChildProfileStatus = 'unknown' | 'exists' | 'missing';
 
 export type RegisterFormValues = RegisterRequest;
 
@@ -65,6 +76,7 @@ interface ChildState {
 
 interface AuthContextValue extends SessionAuthState, ChildState {
   user: User | null;
+  childProfileStatus: ChildProfileStatus;
   loading: boolean;
   error: string | null;
   login: (values: LoginFormValues) => Promise<void>;
@@ -357,6 +369,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     recentActivity: buildRecentActivity(seededTopics),
   });
 
+  const [childProfileStatus, setChildProfileStatus] = useState<ChildProfileStatus>('unknown');
+  const [bootstrapTimeoutReached, setBootstrapTimeoutReached] = useState(false);
+
   const setLoading = useCallback((nextLoading: boolean) => {
     setStoreLoading(nextLoading);
   }, [setStoreLoading]);
@@ -365,6 +380,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthenticatedFromTokenResponse(payload);
   }, [setAuthenticatedFromTokenResponse]);
 
+  const applyResolvedChildProfiles = useCallback((profiles: ChildProfile[]) => {
+    const nextProfile = profiles[0] ?? null;
+    const nextStatus: ChildProfileStatus = nextProfile ? 'exists' : 'missing';
+
+    setChildState((current) => ({
+      ...current,
+      childProfile: nextProfile,
+      childDataError: null,
+    }));
+    setChildProfileStatus(nextStatus);
+
+    return nextStatus;
+  }, []);
+
   const setUnauthenticated = useCallback(() => {
     clearAuth();
     setChildState((current) => ({
@@ -372,10 +401,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       childProfile: null,
       childDataError: null,
     }));
+    setChildProfileStatus('unknown');
   }, [clearAuth]);
 
   const clearError = useCallback(() => {
     setAuthError(null);
+    setBootstrapTimeoutReached(false);
   }, [setAuthError]);
 
   const pinConfiguredFromLocal = useRef(false);
@@ -443,13 +474,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const bootstrapSessionQuery = useQuery({
     queryKey: ['auth', 'bootstrap-session'],
     queryFn: async (): Promise<AuthTokenResponse | null> => {
-      const storedRefreshToken = await getRefreshToken();
+      const storedRefreshToken = await Promise.race([
+        getRefreshToken(),
+        new Promise<null>((_, reject) =>
+          setTimeout(() => reject(new Error('Token retrieval timed out')), BOOTSTRAP_TIMEOUT_MS)
+        ),
+      ]);
 
       if (!storedRefreshToken) {
         return null;
       }
 
-      const refreshed = await refreshTokenRequest({ refreshToken: storedRefreshToken });
+      const refreshed = await Promise.race([
+        refreshTokenRequest({ refreshToken: storedRefreshToken }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Refresh request timed out')), BOOTSTRAP_TIMEOUT_MS)
+        ),
+      ]);
       await saveRefreshToken(refreshed.refresh_token);
 
       return refreshed;
@@ -464,6 +505,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setLoading(bootstrapSessionQuery.isPending);
   }, [bootstrapSessionQuery.isPending, setLoading]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (bootstrapSessionQuery.isPending) {
+        setBootstrapTimeoutReached(true);
+        setLoading(false);
+        setAuthError('Connection timed out. Please check your network and try again.');
+      }
+    }, MAX_LOADING_DURATION_MS);
+
+    return () => clearTimeout(timer);
+  }, [bootstrapSessionQuery.isPending, setLoading, setAuthError]);
 
   useEffect(() => {
     if (!bootstrapSessionQuery.isSuccess) {
@@ -486,13 +539,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   ]);
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function hydrateChildProfiles() {
+      try {
+        const profiles = await listChildProfiles();
+        if (cancelled) {
+          return;
+        }
+
+        const nextStatus = applyResolvedChildProfiles(profiles);
+        await saveOnboardingFlag(nextStatus === 'exists');
+      } catch {
+        if (!cancelled) {
+          setChildState((current) => ({
+            ...current,
+            childDataError: 'Unable to refresh progress right now.',
+          }));
+          setChildProfileStatus(childState.childProfile?.id ? 'exists' : 'missing');
+        }
+      }
+    }
+
+    void hydrateChildProfiles();
+    return () => { cancelled = true; };
+  }, [applyResolvedChildProfiles, childState.childProfile?.id, isAuthenticated]);
+
+  useEffect(() => {
     if (!bootstrapSessionQuery.isError) {
       return;
     }
 
     void clearRefreshToken();
     setUnauthenticated();
-    setAuthError(toApiErrorMessage(bootstrapSessionQuery.error));
+    const errorMessage = toApiErrorMessage(bootstrapSessionQuery.error);
+    if (errorMessage.includes('timed out') || errorMessage.includes('Could not connect')) {
+      setAuthError('Unable to connect to the server. Please check your internet connection and try again.');
+    } else {
+      setAuthError(errorMessage);
+    }
   }, [bootstrapSessionQuery.error, bootstrapSessionQuery.isError, setAuthError, setUnauthenticated]);
 
   const currentUserSummaryQuery = useQuery({
@@ -545,6 +634,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAuthenticated(authPayload);
       setAuthError(null);
       void queryClient.invalidateQueries({ queryKey: ['auth', 'current-user-summary'] });
+
+      try {
+        const profiles = await listChildProfiles();
+        const nextStatus = applyResolvedChildProfiles(profiles);
+        await saveOnboardingFlag(nextStatus === 'exists');
+      } catch {
+        setChildProfileStatus('missing');
+      }
     },
     onError: (error) => {
       setAuthError(toApiErrorMessage(error));
@@ -558,6 +655,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAuthenticated(authPayload);
       setAuthError(null);
       void queryClient.invalidateQueries({ queryKey: ['auth', 'current-user-summary'] });
+      setChildProfileStatus('missing');
+      await saveOnboardingFlag(false);
     },
     onError: (error) => {
       setAuthError(toApiErrorMessage(error));
@@ -575,6 +674,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     onSettled: async () => {
       await clearRefreshToken();
+      await clearOnboardingFlag();
       setUnauthenticated();
       queryClient.removeQueries({ queryKey: ['auth'] });
     },
@@ -608,6 +708,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         childProfile: profile,
         childDataError: null,
       }));
+      setChildProfileStatus('exists');
+      await saveOnboardingFlag(true);
       return profile;
     } catch (err) {
       const message = toApiErrorMessage(err);
@@ -644,11 +746,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     try {
       const profiles = await listChildProfiles();
+      const nextStatus = applyResolvedChildProfiles(profiles);
+      await saveOnboardingFlag(nextStatus === 'exists');
       setChildState((current) => ({
         ...current,
-        childProfile: profiles.length > 0 ? profiles[0] : current.childProfile,
         childDataLoading: false,
-        childDataError: null,
       }));
     } catch {
       setChildState((current) => ({
@@ -657,7 +759,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         childDataError: 'Unable to refresh progress right now.',
       }));
     }
-  }, []);
+  }, [applyResolvedChildProfiles]);
 
   const markSubjectAccess = useCallback((subjectId: string) => {
     setChildState((current) => ({
@@ -745,6 +847,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAuthenticated,
         accessToken,
         user: sessionUser ? toUser(sessionUser) : null,
+        childProfileStatus,
         loading,
         error,
         ...childState,
