@@ -335,7 +335,7 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
         activeChildId={selectedChildId}
         profiles={children}
         getAvatarSource={getChildAvatarSource}
-        onAddChild={handleAddChild}
+        onAddChild={children.length < 5 ? handleAddChild : undefined}
         onSelectChild={handleSelectChild}
       />
 
@@ -452,15 +452,17 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
             <Text style={styles.outlineActionLabel}>Manage Rules</Text>
           </Pressable>
 
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Add a new child profile"
-            onPress={handleAddChild}
-            style={({ pressed }) => [styles.outlineAction, pressed ? styles.pressed : null]}
-          >
-            <MaterialCommunityIcons color={Colors.primary} name="account-plus-outline" size={20} />
-            <Text style={styles.outlineActionLabel}>Add New Child</Text>
-          </Pressable>
+            {children.length < 5 ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Add a new child profile"
+                onPress={handleAddChild}
+                style={({ pressed }) => [styles.outlineAction, pressed ? styles.pressed : null]}
+              >
+                <MaterialCommunityIcons color={Colors.primary} name="account-plus-outline" size={20} />
+                <Text style={styles.outlineActionLabel}>Add New Child</Text>
+              </Pressable>
+            ) : null}
 
           <View style={styles.inlineNote}>
             <MaterialCommunityIcons color={Colors.textSecondary} name="information-outline" size={16} />
