@@ -86,6 +86,12 @@ export function BottomNavItem({
     };
   }, [isDisabled]);
 
+  const iconColor = isDisabled
+    ? BottomNavTokens.colors.disabled
+    : isActive
+      ? BottomNavTokens.colors.active
+      : BottomNavTokens.colors.inactive;
+
   return (
     <Pressable
       accessibilityRole="tab"
@@ -104,8 +110,8 @@ export function BottomNavItem({
         <View style={styles.content}>
           <AnimatedIcon
             name={isActive ? activeIcon : inactiveIcon}
+            color={iconColor}
             size={BottomNavTokens.size.icon}
-            style={tintAnimatedStyle}
           />
           <Animated.Text
             numberOfLines={1}
