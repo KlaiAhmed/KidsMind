@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react';
-import { Animated, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -235,28 +235,6 @@ const recentBadges: RecentBadgeItem[] = [
 
 function Icon({ name, size, color }: { name: string; size: number; color: string }) {
   return <MaterialCommunityIcons name={name as never} size={size} color={color} />;
-}
-
-function ScreenToggle({ activeScreen, onSwitch }: { activeScreen: ChildScreen; onSwitch: (screen: ChildScreen) => void }) {
-  return (
-    <View style={styles.screenToggleWrap}>
-      <Pressable onPress={() => onSwitch('home')} style={styles.screenToggleButton}>
-        <Text style={[styles.screenToggleText, activeScreen === 'home' ? styles.screenToggleTextActive : null]}>Home</Text>
-      </Pressable>
-      <Text style={styles.screenTogglePipe}>|</Text>
-      <Pressable onPress={() => onSwitch('badges')} style={styles.screenToggleButton}>
-        <Text style={[styles.screenToggleText, activeScreen === 'badges' ? styles.screenToggleTextActive : null]}>
-          Badges
-        </Text>
-      </Pressable>
-      <Text style={styles.screenTogglePipe}>|</Text>
-      <Pressable onPress={() => onSwitch('profile')} style={styles.screenToggleButton}>
-        <Text style={[styles.screenToggleText, activeScreen === 'profile' ? styles.screenToggleTextActive : null]}>
-          Profile
-        </Text>
-      </Pressable>
-    </View>
-  );
 }
 
 function HomeDashboardView({ onViewAll, onTalk }: { onViewAll: () => void; onTalk: () => void }) {
@@ -589,43 +567,21 @@ function ProfileHubView() {
 }
 
 export default function KidsMindChildExperience({ initialScreen = 'home' }: KidsMindChildExperienceProps) {
-  const [activeScreen, setActiveScreen] = useState<ChildScreen>(initialScreen);
+  const activeScreen = initialScreen;
   const [activeFilter, setActiveFilter] = useState<BadgeFilter>('all');
-  const fade = useRef(new Animated.Value(1)).current;
   const router = useRouter();
-
-  const switchScreen = (nextScreen: ChildScreen) => {
-    if (nextScreen === activeScreen) {
-      return;
-    }
-
-    Animated.timing(fade, {
-      toValue: 0,
-      duration: 110,
-      useNativeDriver: true,
-    }).start(() => {
-      setActiveScreen(nextScreen);
-      Animated.timing(fade, {
-        toValue: 1,
-        duration: 180,
-        useNativeDriver: true,
-      }).start();
-    });
-  };
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-      <ScreenToggle activeScreen={activeScreen} onSwitch={switchScreen} />
-
-      <Animated.View style={[styles.activeScreenSurface, { opacity: fade }]}> 
+      <View style={styles.activeScreenSurface}>
         {activeScreen === 'home' ? (
-          <HomeDashboardView onViewAll={() => switchScreen('badges')} onTalk={() => router.push('/(tabs)/chat' as never)} />
+          <HomeDashboardView onViewAll={() => router.push('/badges' as never)} onTalk={() => router.push('/(tabs)/chat' as never)} />
         ) : null}
         {activeScreen === 'badges' ? (
           <BadgeGalleryView activeFilter={activeFilter} onFilterChange={setActiveFilter} />
         ) : null}
         {activeScreen === 'profile' ? <ProfileHubView /> : null}
-      </Animated.View>
+      </View>
     </SafeAreaView>
   );
 }
@@ -634,34 +590,6 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: SCREEN_BG,
-  },
-  screenToggleWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingBottom: 10,
-    paddingTop: 8,
-    backgroundColor: SCREEN_BG,
-  },
-  screenToggleButton: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  screenTogglePipe: {
-    color: '#9CA3AF',
-    fontFamily: 'Inter_500Medium',
-    fontSize: 15,
-  },
-  screenToggleText: {
-    color: '#6B7280',
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  screenToggleTextActive: {
-    color: '#4338CA',
   },
   activeScreenSurface: {
     flex: 1,
