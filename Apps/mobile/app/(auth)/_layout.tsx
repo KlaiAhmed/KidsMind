@@ -31,11 +31,10 @@ export default function AuthLayout() {
       return <Redirect href="/(auth)/setup-pin" />;
     }
 
-    if (hasPinConfigured && childProfileStatus === 'missing' && !inChildProfileWizard) {
-      return <Redirect href="/(auth)/child-profile-wizard" />;
-    }
-
-    if (childProfileStatus === 'exists' && !inChildProfileWizard) {
+    if (hasPinConfigured && !inChildProfileWizard && !inSetupPin) {
+      if (childProfileStatus === 'missing') {
+        return <Redirect href="/(auth)/child-profile-wizard" />;
+      }
       return <Redirect href="/(tabs)" />;
     }
   }

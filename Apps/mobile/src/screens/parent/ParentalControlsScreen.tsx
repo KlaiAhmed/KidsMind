@@ -569,16 +569,6 @@ export default function ParentalControlsScreen({
               onValueChange={(nextValue) => updateToggle('homeworkModeEnabled', nextValue)}
               value={homeworkModeEnabled}
             />
-
-            <Pressable accessibilityRole="button" disabled style={[styles.inlineNoticeCard, styles.disabledSection]}>
-              <View style={styles.inlineTitleRow}>
-                <MaterialCommunityIcons color={Colors.primary} name="shield-check-outline" size={18} />
-                <Text style={styles.inlineTitle}>Safety level</Text>
-              </View>
-              <Text style={styles.inlineBody}>
-                Strict filtering is displayed for now. The API does not expose adjustable safety levels yet.
-              </Text>
-            </Pressable>
           </View>
         </View>
 

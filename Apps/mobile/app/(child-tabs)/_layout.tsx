@@ -26,12 +26,7 @@ export default function ChildTabLayout() {
     selectChild(routeChildId);
   }, [routeChildId, selectChild]);
 
-  if (
-    isLoading ||
-    (isAuthenticated &&
-      (childProfileStatus === 'unknown' ||
-        (childProfileStatus === 'exists' && !childProfile)))
-  ) {
+  if (isLoading || (isAuthenticated && childProfileStatus === 'unknown')) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={Colors.primary} />
@@ -43,8 +38,8 @@ export default function ChildTabLayout() {
     return <Redirect href="/splash" />;
   }
 
-  if (childProfileStatus === 'missing') {
-    return <Redirect href="/(auth)/child-profile-wizard" />;
+  if (childProfileStatus === 'missing' && !childProfile) {
+    return <Redirect href="/(tabs)" />;
   }
 
   return (
