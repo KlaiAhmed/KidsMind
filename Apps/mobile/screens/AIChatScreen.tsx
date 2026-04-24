@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useNavigation } from '@react-navigation/native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
@@ -22,6 +22,7 @@ import { SessionHeader } from '@/components/chat/SessionHeader';
 import { useChatSession } from '@/hooks/useChatSession';
 import { useChildProfile } from '@/hooks/useChildProfile';
 import { useSubjects } from '@/hooks/useSubjects';
+import { getChildTabSceneBottomPadding } from '@/components/navigation/bottomNavTokens';
 import type { Message } from '@/types/chat';
 
 interface ChatRouteParams {
@@ -45,9 +46,11 @@ const TYPING_PLACEHOLDER_ID = 'typing-placeholder';
 
 export default function AIChatScreen() {
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams() as ChatRouteParams;
   const { profile } = useChildProfile();
   const { getSubjectById } = useSubjects();
+  const childTabSceneBottomPadding = getChildTabSceneBottomPadding(insets.bottom);
 
   const resolvedSubjectName =
     params.subjectName ??
@@ -156,7 +159,7 @@ export default function AIChatScreen() {
         style={styles.keyboardAvoidingView}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <View style={styles.container}>
+        <View style={[styles.container, { paddingBottom: childTabSceneBottomPadding }]}>
           <SessionHeader
             subjectName={resolvedSubjectName}
             elapsedSeconds={elapsedSeconds}
@@ -210,7 +213,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingHorizontal: Spacing.md,
-    paddingBottom: Spacing.sm,
     gap: Spacing.sm,
   },
   messagesContainer: {

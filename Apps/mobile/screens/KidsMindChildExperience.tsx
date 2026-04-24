@@ -3,7 +3,9 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { getChildTabSceneBottomPadding } from '@/components/navigation/bottomNavTokens';
 
 type ChildScreen = 'home' | 'badges' | 'profile';
 type BadgeFilter = 'all' | 'recent' | 'subjects' | 'special';
@@ -479,8 +481,14 @@ function StatCard({ item }: { item: StatItem }) {
 }
 
 function ProfileHubView() {
+  const insets = useSafeAreaInsets();
+  const childTabSceneBottomPadding = getChildTabSceneBottomPadding(insets.bottom);
+
   return (
-    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.profileScrollContent}>
+    <ScrollView
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={[styles.profileScrollContent, { paddingBottom: childTabSceneBottomPadding }]}
+    >
       <View style={styles.profileHeaderRow}>
         <View style={styles.profileIdentityWrap}>
           <View style={styles.profileAvatarSmall}>
@@ -1138,7 +1146,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   profileScrollContent: {
-    paddingBottom: 40,
+    flexGrow: 1,
     gap: 16,
   },
   profileHero: {

@@ -1,4 +1,4 @@
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'; // FIXED: was `import type` — erased at runtime, causing MaterialCommunityIcons to be undefined when used as a value on line 62
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import type { ComponentProps } from 'react';
 import { useEffect, useMemo, useRef } from 'react';

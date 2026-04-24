@@ -43,3 +43,19 @@ export const BottomNavTokens = {
     elevation: 14,
   },
 } as const;
+
+const CHILD_TAB_ICON_WRAP_HEIGHT = BottomNavTokens.size.icon + 4;
+
+export function getChildTabSceneBottomPadding(bottomInset: number): number {
+  const safeBottomInset = Math.max(bottomInset, BottomNavTokens.spacing.minBottomOffset);
+
+  return (
+    safeBottomInset +
+    BottomNavTokens.spacing.outerTop +
+    BottomNavTokens.spacing.containerVertical * 2 +
+    BottomNavTokens.spacing.itemVertical * 2 +
+    CHILD_TAB_ICON_WRAP_HEIGHT +
+    BottomNavTokens.spacing.iconLabelGap +
+    BottomNavTokens.text.lineHeight
+  );
+}

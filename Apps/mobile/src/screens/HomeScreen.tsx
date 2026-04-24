@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ScrollView, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
 import { useChildProfile } from '@/hooks/useChildProfile';
@@ -10,6 +10,7 @@ import { HomeHeader } from '@/src/components/HomeHeader';
 import { ProgressCard } from '@/src/components/ProgressCard';
 import { StreakCard } from '@/src/components/StreakCard';
 import { SubjectGrid, type SubjectGridItem } from '@/src/components/SubjectGrid';
+import { getChildTabSceneBottomPadding } from '@/components/navigation/bottomNavTokens';
 
 const SUBJECTS: SubjectGridItem[] = [
   {
@@ -58,8 +59,11 @@ const SUBJECTS: SubjectGridItem[] = [
 
 export default function HomeScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { profile, getAvatarById } = useChildProfile();
   const [showBadgeBanner, setShowBadgeBanner] = useState(true);
+
+  const childTabSceneBottomPadding = getChildTabSceneBottomPadding(insets.bottom);
 
   const childName = profile?.nickname?.trim() || profile?.name?.trim() || 'Little Explorer';
   const avatarSource = getAvatarById(profile?.avatarId).asset;
@@ -71,7 +75,7 @@ export default function HomeScreen() {
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <ScrollView
-        contentContainerStyle={styles.contentContainer}
+        contentContainerStyle={[styles.contentContainer, { paddingBottom: childTabSceneBottomPadding }]}
         showsVerticalScrollIndicator={false}
         style={styles.scrollView}
       >
@@ -106,6 +110,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#EEEEF6',
   },
   contentContainer: {
-    paddingBottom: 32,
+    flexGrow: 1,
   },
 });

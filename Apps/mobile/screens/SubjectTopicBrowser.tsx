@@ -10,13 +10,14 @@ import {
   type NativeSyntheticEvent,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
 import { SearchBar } from '@/components/browser/SearchBar';
 import { SubjectCard } from '@/components/browser/SubjectCard';
 import { TopicTile } from '@/components/browser/TopicTile';
 import { useSubjects } from '@/hooks/useSubjects';
+import { getChildTabSceneBottomPadding } from '@/components/navigation/bottomNavTokens';
 import type { Subject, TopicFilter } from '@/types/child';
 
 const FILTER_OPTIONS: Array<{ key: TopicFilter; label: string }> = [
@@ -48,11 +49,13 @@ function subjectMatchesFilter(subject: Subject, filter: TopicFilter): boolean {
 
 export default function SubjectTopicBrowser() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
     subjectId?: string;
     topicId?: string;
     filter?: string;
   }>();
+  const childTabSceneBottomPadding = getChildTabSceneBottomPadding(insets.bottom);
 
   const {
     allSubjects,
@@ -144,7 +147,7 @@ export default function SubjectTopicBrowser() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingBottom: childTabSceneBottomPadding }]}>
         <Text style={styles.pageTitle}>Discover</Text>
 
         <SearchBar
@@ -337,13 +340,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   subjectsContent: {
-    paddingBottom: Spacing.xxl,
+    flexGrow: 1,
     gap: Spacing.sm,
   },
   subjectRow: {
     gap: Spacing.sm,
   },
   topicsContent: {
-    paddingBottom: Spacing.xxl,
+    flexGrow: 1,
   },
 });
