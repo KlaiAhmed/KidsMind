@@ -22,7 +22,7 @@ import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { Colors } from '@/constants/theme';
 import { queryClient } from '@/services/queryClient';
-import { ToastHost } from '@/services/toastClient';
+import { KidsMindToastHost } from '@/components/ui/KidsMindToastHost';
 
 // Prevent the splash screen from auto-hiding while fonts load
 SplashScreen.preventAutoHideAsync();
@@ -95,7 +95,7 @@ export default function RootLayout() {
         <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
           <RootNavigator />
           <StatusBar style="auto" />
-          <ToastHost />
+          <KidsMindToastHost />
         </ThemeProvider>
       </AuthProvider>
     </QueryClientProvider>

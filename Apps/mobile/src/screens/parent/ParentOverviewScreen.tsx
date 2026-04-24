@@ -209,9 +209,14 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
     void router.push('/(auth)/child-profile-wizard?source=parent-dashboard' as never);
   }
 
-  function handleOpenChildDashboard(childId: string) {
+  function handleSelectChild(childId: string) {
     selectChild(childId);
-    void router.push(`/child-home?childId=${encodeURIComponent(childId)}` as never);
+  }
+
+  function handleOpenChildSpace() {
+    if (!selectedChildId) return;
+    selectChild(selectedChildId);
+    void router.push(`/child-home?childId=${encodeURIComponent(selectedChildId)}` as never);
   }
 
   function handleManageRules() {
@@ -316,23 +321,23 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
             </View>
           </View>
 
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Open parental controls for ${activeChild.nickname ?? activeChild.name}`}
-            onPress={handleManageRules}
-            style={({ pressed }) => [styles.headerButton, pressed ? styles.pressed : null]}
-          >
-            <MaterialCommunityIcons color={Colors.text} name="cog-outline" size={20} />
-          </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Open ${activeChild.nickname ?? activeChild.name}'s space`}
+          onPress={handleOpenChildSpace}
+          style={({ pressed }) => [styles.headerButton, pressed ? styles.pressed : null]}
+        >
+          <MaterialCommunityIcons color={Colors.primary} name="rocket-launch-outline" size={20} />
+        </Pressable>
         </View>
 
-        <ParentChildSwitcher
-          activeChildId={selectedChildId}
-          profiles={children}
-          getAvatarSource={getChildAvatarSource}
-          onAddChild={handleAddChild}
-          onSelectChild={handleOpenChildDashboard}
-        />
+      <ParentChildSwitcher
+        activeChildId={selectedChildId}
+        profiles={children}
+        getAvatarSource={getChildAvatarSource}
+        onAddChild={handleAddChild}
+        onSelectChild={handleSelectChild}
+      />
 
         <View style={styles.heroCard}>
           <View style={styles.heroRow}>

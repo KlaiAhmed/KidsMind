@@ -36,7 +36,7 @@ export function ChildAvatarChip({
     <View style={styles.container}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={isAddChip ? label : `Open ${label} progress`}
+        accessibilityLabel={isAddChip ? label : `Switch to ${label}`}
         accessibilityState={{ selected: isActive }}
         onPress={onPress}
         style={({ pressed }) => [
