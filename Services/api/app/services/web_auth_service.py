@@ -122,8 +122,7 @@ class WebAuthService:
                 refresh_jti = payload.get("jti")
                 if refresh_jti:
                     session = find_refresh_session(self.db, refresh_jti)
-                    if session and session.user_id == current_user.id and not session.revoked:
-                        session.revoked = True
+                    if session and session.user_id == current_user.id and session.revoked_at is None:
                         session.revoked_at = datetime.now(timezone.utc)
                         session.last_used_at = datetime.now(timezone.utc)
             except HTTPException:

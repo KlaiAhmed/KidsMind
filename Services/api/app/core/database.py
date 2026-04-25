@@ -81,13 +81,14 @@ def init_db() -> None:
         import models.child_profile
         import models.child_rules
         import models.child_allowed_subject
-        import models.child_week_schedule
-        import models.child_schedule_subject
+        import models.access_window
+        import models.access_window_subject
         import models.avatar_tier_threshold
         import models.avatar
         import models.media_asset
         import models.refresh_token_session
         import models.chat_history
+        import models.chat_session
 
         Base.metadata.create_all(bind=engine)
 

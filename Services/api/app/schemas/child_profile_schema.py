@@ -65,17 +65,6 @@ def _normalize_subject(value: str) -> str:
     return normalized
 
 
-def _dedupe_ordered(values: list[str]) -> list[str]:
-    seen: set[str] = set()
-    deduped: list[str] = []
-    for value in values:
-        if value in seen:
-            continue
-        seen.add(value)
-        deduped.append(value)
-    return deduped
-
-
 class ChildAllowedSubjectIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -87,7 +76,7 @@ class ChildAllowedSubjectIn(BaseModel):
         return _normalize_subject(value)
 
 
-class ChildScheduleSubjectIn(BaseModel):
+class AccessWindowSubjectIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     subject: str = Field(min_length=1, max_length=64)
@@ -98,24 +87,24 @@ class ChildScheduleSubjectIn(BaseModel):
         return _normalize_subject(value)
 
 
-class ChildWeekScheduleIn(BaseModel):
+class AccessWindowIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     day_of_week: int = Field(ge=0, le=6, description="ISO weekday index where 0=Monday and 6=Sunday")
     access_window_start: time
     access_window_end: time
     daily_cap_seconds: int = Field(ge=1)
-    subjects: list[ChildScheduleSubjectIn] = Field(default_factory=list)
+    subjects: list[AccessWindowSubjectIn] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def validate_time_window(self) -> "ChildWeekScheduleIn":
+    def validate_time_window(self) -> "AccessWindowIn":
         if self.access_window_start >= self.access_window_end:
             raise ValueError("access_window_start must be earlier than access_window_end; overnight windows are not supported")
         return self
 
     @field_validator("subjects")
     @classmethod
-    def validate_subjects_unique(cls, value: list[ChildScheduleSubjectIn]) -> list[ChildScheduleSubjectIn]:
+    def validate_subjects_unique(cls, value: list[AccessWindowSubjectIn]) -> list[AccessWindowSubjectIn]:
         normalized_subjects = [_normalize_subject(item.subject) for item in value]
         if len(normalized_subjects) != len(set(normalized_subjects)):
             raise ValueError("subjects cannot contain duplicate values")
@@ -154,7 +143,7 @@ class ChildRulesUpdateIn(BaseModel):
     audio_storage_enabled: bool | None = None
     conversation_history_enabled: bool | None = None
     allowed_subjects: list[ChildAllowedSubjectIn] | None = None
-    week_schedule: list[ChildWeekScheduleIn] | None = None
+    week_schedule: list[AccessWindowIn] | None = None
     parent_pin: str | None = Field(default=None, alias="parentPin", min_length=4, max_length=4)
 
     @field_validator("default_language")
@@ -182,31 +171,13 @@ class ChildRulesUpdateIn(BaseModel):
 
     @field_validator("week_schedule")
     @classmethod
-    def validate_unique_days(cls, value: list[ChildWeekScheduleIn] | None) -> list[ChildWeekScheduleIn] | None:
+    def validate_unique_days(cls, value: list[AccessWindowIn] | None) -> list[AccessWindowIn] | None:
         if value is None:
             return value
         days = [entry.day_of_week for entry in value]
         if len(days) != len(set(days)):
             raise ValueError("week_schedule cannot contain duplicate day_of_week values")
         return value
-
-
-def _normalize_and_validate_languages(value: list[str]) -> list[str]:
-    normalized_languages: list[str] = []
-    for item in value:
-        candidate = item.strip().lower() if item else ""
-        if not candidate:
-            continue
-
-        candidate = LANGUAGE_CODE_ALIASES.get(candidate, candidate)
-        if candidate not in ALLOWED_LANGUAGE_CODES:
-            raise ValueError(
-                f"Unsupported language code '{candidate}'. Allowed values: {', '.join(sorted(ALLOWED_LANGUAGE_CODES))}"
-            )
-
-        normalized_languages.append(candidate)
-
-    return _dedupe_ordered(normalized_languages)
 
 
 class ChildProfileCreateIn(BaseModel):
@@ -217,11 +188,10 @@ class ChildProfileCreateIn(BaseModel):
     education_stage: EducationStage
     is_accelerated: bool = False
     is_below_expected_stage: bool = False
-    languages: list[str] = Field(default_factory=list)
     avatar_id: UUID | None = None
     rules: ChildRulesIn = Field(default_factory=ChildRulesIn)
     allowed_subjects: list[ChildAllowedSubjectIn] = Field(default_factory=list)
-    week_schedule: list[ChildWeekScheduleIn] = Field(default_factory=list)
+    week_schedule: list[AccessWindowIn] = Field(default_factory=list)
 
     @field_validator("nickname")
     @classmethod
@@ -241,14 +211,9 @@ class ChildProfileCreateIn(BaseModel):
             raise ValueError("birth_date must correspond to an age between 3 and 15")
         return value
 
-    @field_validator("languages")
-    @classmethod
-    def validate_languages(cls, value: list[str]) -> list[str]:
-        return _normalize_and_validate_languages(value)
-
     @field_validator("week_schedule")
     @classmethod
-    def validate_unique_days(cls, value: list[ChildWeekScheduleIn]) -> list[ChildWeekScheduleIn]:
+    def validate_unique_days(cls, value: list[AccessWindowIn]) -> list[AccessWindowIn]:
         days = [entry.day_of_week for entry in value]
         if len(days) != len(set(days)):
             raise ValueError("week_schedule cannot contain duplicate day_of_week values")
@@ -275,7 +240,6 @@ class ChildProfileUpdateIn(BaseModel):
     education_stage: EducationStage | None = None
     is_accelerated: bool | None = None
     is_below_expected_stage: bool | None = None
-    languages: list[str] | None = None
     avatar_id: UUID | None = None
 
     @field_validator("nickname")
@@ -300,13 +264,6 @@ class ChildProfileUpdateIn(BaseModel):
             raise ValueError("birth_date must correspond to an age between 3 and 15")
         return value
 
-    @field_validator("languages")
-    @classmethod
-    def validate_languages(cls, value: list[str] | None) -> list[str] | None:
-        if value is None:
-            return value
-        return _normalize_and_validate_languages(value)
-
     @model_validator(mode="after")
     def validate_boolean_exclusivity(self) -> "ChildProfileUpdateIn":
         if self.is_accelerated and self.is_below_expected_stage:
@@ -328,7 +285,7 @@ class ChildRulesOut(BaseModel):
     updated_at: datetime
 
 
-class ChildWeekScheduleOut(BaseModel):
+class AccessWindowOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
@@ -343,19 +300,19 @@ class ChildProfileOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    parent_id: int
+    parent_id: UUID
     nickname: str
     birth_date: date
     education_stage: EducationStage
     is_accelerated: bool
     is_below_expected_stage: bool
-    languages: list[str]
     avatar_id: UUID | None
     avatar: AvatarResponse | None = None
     xp: int
+    is_paused: bool = False
     rules: ChildRulesOut | None = None
     allowed_subjects: list[str] = Field(default_factory=list)
-    week_schedule: list[ChildWeekScheduleOut] = Field(default_factory=list)
+    week_schedule: list[AccessWindowOut] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
@@ -370,7 +327,6 @@ class ChildProfileOut(BaseModel):
         return get_age_group(self.birth_date)
 
 
-# Backward-compatible aliases inside API layer.
 ChildProfileCreate = ChildProfileCreateIn
 ChildProfileUpdate = ChildProfileUpdateIn
 ChildProfileRead = ChildProfileOut

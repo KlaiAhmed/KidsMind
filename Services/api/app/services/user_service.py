@@ -46,12 +46,12 @@ def get_all_users(
     return query.offset(offset).limit(limit).all()
 
 
-def get_user_by_id(db: Session, user_id: int) -> User | None:
+def get_user_by_id(db: Session, user_id: UUID) -> User | None:
     """Retrieve a single user by their primary key.
 
     Args:
         db: Active database session.
-        user_id: The user's numeric identifier.
+        user_id: The user's identifier.
 
     Returns:
         The matching User instance or None if not found.
@@ -110,7 +110,7 @@ def update_user_email(db: Session, user: User, new_email: str) -> datetime:
     """Update email and invalidate all previously issued access tokens."""
     changed_at = datetime.now(timezone.utc)
     user.email = new_email
-    user.email_changed_at = changed_at
+    # REMOVED: email_changed_at dropped in migration 20260422_01
     user.token_valid_after = changed_at
     db.commit()
     db.refresh(user)
@@ -120,9 +120,11 @@ def update_user_email(db: Session, user: User, new_email: str) -> datetime:
 def update_user_mfa_settings(db: Session, user: User, *, mfa_enabled: bool, mfa_secret: str | None = None) -> datetime:
     """Update MFA state and invalidate all previously issued access tokens."""
     changed_at = datetime.now(timezone.utc)
-    user.mfa_enabled = mfa_enabled
-    user.mfa_secret = mfa_secret if mfa_enabled else None
-    user.mfa_changed_at = changed_at
+    del mfa_enabled
+    del mfa_secret
+    # REMOVED: mfa_enabled dropped in migration 20260422_01
+    # REMOVED: mfa_secret dropped in migration 20260422_01
+    # REMOVED: mfa_changed_at dropped in migration 20260422_01
     user.token_valid_after = changed_at
     db.commit()
     db.refresh(user)
@@ -144,7 +146,7 @@ def set_parent_pin(db: Session, user: User, parent_pin: str) -> User:
     return user
 
 
-def hard_delete_user_account_by_id(db: Session, user_id: int) -> dict | None:
+def hard_delete_user_account_by_id(db: Session, user_id: UUID) -> dict | None:
     """Permanently delete a user account by id and owned child profiles.
 
     Args:
@@ -173,21 +175,21 @@ def hard_delete_user_account_by_id(db: Session, user_id: int) -> dict | None:
     }
 
 
-def _revoke_active_refresh_sessions(db: Session, user_id: int, revoked_at: datetime) -> None:
+def _revoke_active_refresh_sessions(db: Session, user_id: UUID, revoked_at: datetime) -> None:
     """Revoke all active refresh sessions for a user account."""
     db.query(RefreshTokenSession).filter(
         RefreshTokenSession.user_id == user_id,
-        RefreshTokenSession.revoked.is_(False),
-    ).update({"revoked": True, "revoked_at": revoked_at}, synchronize_session="fetch")
+        RefreshTokenSession.revoked_at.is_(None),
+    ).update({"revoked_at": revoked_at}, synchronize_session="fetch")
 
 
-def hard_delete_child_by_id(db: Session, parent_id: int, child_id: UUID) -> dict | None:
+def hard_delete_child_by_id(db: Session, parent_id: UUID, child_id: UUID) -> dict | None:
     """Permanently delete a child's profile by id for a specific parent.
 
     Args:
         db: Active database session.
-        parent_id: The parent user numeric identifier.
-        child_id: The child profile numeric identifier to delete.
+        parent_id: The parent user identifier.
+        child_id: The child profile identifier to delete.
 
     Returns:
         A serialized deletion result payload, or None when child does not exist.

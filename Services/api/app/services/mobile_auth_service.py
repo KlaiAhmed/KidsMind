@@ -7,7 +7,7 @@ Domain: Auth
 """
 
 from datetime import datetime, timezone
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException, Request
 from sqlalchemy.orm import Session
@@ -109,12 +109,16 @@ class MobileAuthService:
         if not refresh_jti:
             raise HTTPException(status_code=401, detail="Invalid refresh token")
 
-        if int(payload.get("sub", -1)) != current_user.id:
+        try:
+            token_user_id = UUID(str(payload.get("sub")))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+        if token_user_id != current_user.id:
             raise HTTPException(status_code=401, detail="Invalid refresh token")
 
         session = find_refresh_session(self.db, refresh_jti)
-        if session and session.user_id == current_user.id and not session.revoked:
-            session.revoked = True
+        if session and session.user_id == current_user.id and session.revoked_at is None:
             session.revoked_at = datetime.now(timezone.utc)
             session.last_used_at = datetime.now(timezone.utc)
 
@@ -163,13 +167,13 @@ class MobileAuthService:
             "user": build_user_data(user),
         }
 
-    def _enforce_mobile_session_limit(self, user_id: int) -> None:
+    def _enforce_mobile_session_limit(self, user_id: UUID) -> None:
         active_count = (
             self.db.query(func.count(RefreshTokenSession.id))
             .filter(
                 RefreshTokenSession.user_id == user_id,
                 RefreshTokenSession.client_kind == ClientKind.MOBILE,
-                RefreshTokenSession.revoked.is_(False),
+                RefreshTokenSession.revoked_at.is_(None),
             )
             .scalar()
         )
@@ -183,7 +187,7 @@ class MobileAuthService:
             .filter(
                 RefreshTokenSession.user_id == user_id,
                 RefreshTokenSession.client_kind == ClientKind.MOBILE,
-                RefreshTokenSession.revoked.is_(False),
+                RefreshTokenSession.revoked_at.is_(None),
             )
             .order_by(RefreshTokenSession.created_at.desc(), RefreshTokenSession.id.desc())
             .limit(settings.MOBILE_MAX_ACTIVE_SESSIONS)
@@ -193,6 +197,6 @@ class MobileAuthService:
         self.db.query(RefreshTokenSession).filter(
             RefreshTokenSession.user_id == user_id,
             RefreshTokenSession.client_kind == ClientKind.MOBILE,
-            RefreshTokenSession.revoked.is_(False),
+            RefreshTokenSession.revoked_at.is_(None),
             ~RefreshTokenSession.id.in_(keep_ids),
-        ).update({"revoked": True, "revoked_at": now}, synchronize_session="fetch")
+        ).update({"revoked_at": now}, synchronize_session="fetch")

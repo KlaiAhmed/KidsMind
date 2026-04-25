@@ -7,6 +7,7 @@ mobile bearer auth with audience validation.
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from uuid import UUID
 
 from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
@@ -89,9 +90,14 @@ async def _resolve_authenticated_user(
     if await is_access_token_blocklisted(str(token_jti)):
         raise HTTPException(status_code=401, detail="Token has been revoked")
 
+    try:
+        parsed_user_id = UUID(str(user_id))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=401, detail="Invalid token")
+
     user = (
         db.query(User)
-        .filter(User.id == int(user_id), User.is_active.is_(True), User.deleted_at.is_(None))
+        .filter(User.id == parsed_user_id, User.is_active.is_(True), User.deleted_at.is_(None))
         .first()
     )
     if not user:

@@ -8,6 +8,7 @@ Domain: Auth
 """
 
 import re
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
@@ -81,7 +82,7 @@ class MobileLogoutRequest(BaseModel):
 
 
 class AuthUser(BaseModel):
-    id: int
+    id: UUID
     email: EmailStr
     pin_configured: bool = False
 

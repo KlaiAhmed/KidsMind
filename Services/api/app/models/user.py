@@ -9,8 +9,10 @@ Domain: Users
 
 import enum
 from datetime import datetime, timezone
+from uuid import uuid4
 
-from sqlalchemy import Boolean, Column, DateTime, Enum as SAEnum, Integer, String, func
+from sqlalchemy import Boolean, Column, DateTime, Enum as SAEnum, Integer, String, func, text
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
 from core.database import Base
@@ -35,13 +37,18 @@ class User(Base):
         hashed_password: Argon2 hashed password.
         role: User role (parent, admin, or super_admin).
         is_active: Whether the account is active.
-        is_verified: Whether email has been verified.
     """
 
     __tablename__ = "users"
 
     # Identity
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        index=True,
+        default=uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
     email = Column(String(255), unique=True, nullable=False, index=True)
     username = Column(String(100), unique=True, nullable=False, index=True)
     hashed_password = Column(String(255), nullable=False)
@@ -51,30 +58,17 @@ class User(Base):
 
     # Account status
     is_active = Column(Boolean, default=True, nullable=False)
-    is_verified = Column(Boolean, default=False, nullable=False)
-
-    # Preferences
-    default_language = Column(String(10), default="fr", nullable=False)
     country = Column(String(100), nullable=True)
     timezone = Column(String(100), default="UTC", nullable=False)
 
     # Consents
     consent_terms = Column(Boolean, default=False, nullable=False)
-    consent_data_processing = Column(Boolean, default=False, nullable=False)
-    consent_analytics = Column(Boolean, default=False, nullable=True)
-    consent_given_at = Column(DateTime, nullable=True)
-
-    # Security
-    mfa_enabled = Column(Boolean, default=False, nullable=False)
-    mfa_secret = Column(String(255), nullable=True)
     parent_pin_hash = Column(String(255), nullable=True)
     last_login_at = Column(DateTime, nullable=True)
     failed_login_attempts = Column(Integer, default=0, nullable=False)
     locked_until = Column(DateTime, nullable=True)
     token_valid_after = Column(DateTime(timezone=True), nullable=True)
     password_changed_at = Column(DateTime(timezone=True), nullable=True)
-    email_changed_at = Column(DateTime(timezone=True), nullable=True)
-    mfa_changed_at = Column(DateTime(timezone=True), nullable=True)
 
     # Password reset
     reset_token = Column(String(255), nullable=True)
@@ -88,6 +82,19 @@ class User(Base):
     child_profiles = relationship(
         "ChildProfile",
         back_populates="parent",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    refresh_token_sessions = relationship(
+        "RefreshTokenSession",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    notification_prefs = relationship(
+        "ParentNotificationPrefs",
+        back_populates="parent",
+        uselist=False,
         cascade="all, delete-orphan",
         passive_deletes=True,
     )

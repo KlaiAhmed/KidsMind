@@ -75,10 +75,10 @@ def ensure_super_admin_exists() -> None:
             hashed_password=hash_password(password),
             role=UserRole.ADMIN,
             is_active=True,
-            is_verified=True,
             consent_terms=True,
-            consent_data_processing=True,
-            consent_given_at=datetime.now(timezone.utc),
+            # REMOVED: is_verified dropped in migration 20260422_01
+            # REMOVED: consent_data_processing dropped in migration 20260422_01
+            # REMOVED: consent_given_at dropped in migration 20260422_01
         )
 
         db.add(super_admin)

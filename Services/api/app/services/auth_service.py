@@ -13,7 +13,7 @@ import re
 import hashlib
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import jwt
 from fastapi import HTTPException, Response, status
@@ -80,7 +80,7 @@ def resolved_login_failure_threshold() -> int:
 # ---------------------------------------------------------------------------
 
 def generate_tokens(
-    user_id: int,
+    user_id: UUID,
     role: str,
     family_id: str | None = None,
     *,
@@ -178,7 +178,7 @@ def find_refresh_session(db: Session, refresh_jti: str) -> RefreshTokenSession |
 
 def create_refresh_session(
     db: Session,
-    user_id: int,
+    user_id: UUID,
     refresh_token: str,
     refresh_jti: str,
     family_id: str,
@@ -207,12 +207,11 @@ def create_refresh_session(
         trust_level=trust_level,
         last_used_at=now,
         expires_at=expires_at,
-        revoked=False,
     )
     db.add(session)
 
 
-def _parse_refresh_payload(payload: dict) -> tuple[str, str, int, int]:
+def _parse_refresh_payload(payload: dict) -> tuple[str, str, int, UUID]:
     """Extract and validate lineage claims from a verified refresh payload.
 
     Returns (refresh_jti, family_id, payload_generation, user_id).
@@ -229,7 +228,7 @@ def _parse_refresh_payload(payload: dict) -> tuple[str, str, int, int]:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
     try:
-        user_id = int(payload["sub"])
+        user_id = UUID(str(payload["sub"]))
     except (KeyError, TypeError, ValueError):
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
@@ -253,7 +252,7 @@ def _has_valid_challenge_token(captcha_token: str | None, pow_token: str | None)
     return bool((captcha_token or "").strip() or (pow_token or "").strip())
 
 
-def _build_refresh_replay_event(*, user_id: int, family_id: str) -> dict[str, str]:
+def _build_refresh_replay_event(*, user_id: UUID, family_id: str) -> dict[str, str]:
     return {
         "event": "refresh_replay_detected",
         "user_id": str(user_id),
@@ -270,7 +269,7 @@ async def _publish_security_event(event_payload: dict[str, str]) -> None:
         logger.exception("Failed to publish auth security event", extra={"event": event_payload.get("event")})
 
 
-def emit_refresh_replay_security_event(*, user_id: int, family_id: str) -> None:
+def emit_refresh_replay_security_event(*, user_id: UUID, family_id: str) -> None:
     event_payload = _build_refresh_replay_event(user_id=user_id, family_id=family_id)
     logger.warning("refresh_replay_detected", extra=event_payload)
     try:
@@ -364,7 +363,7 @@ def rotate_refresh_session(
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
     now = datetime.now(timezone.utc)
-    if session.revoked or session.generation != payload_generation:
+    if session.revoked_at is not None or session.generation != payload_generation:
         session.reuse_detected = True
         revoke_refresh_family(db, user_id, family_id)
         db.commit()
@@ -378,7 +377,6 @@ def rotate_refresh_session(
         session_expires_at = session_expires_at.astimezone(timezone.utc)
 
     if session_expires_at <= now:
-        session.revoked = True
         session.revoked_at = now
         db.commit()
         raise HTTPException(status_code=401, detail="Refresh token has expired")
@@ -397,7 +395,6 @@ def rotate_refresh_session(
         refresh_generation=new_generation,
     )
 
-    session.revoked = True
     session.revoked_at = now
     session.last_used_at = now
     session.replaced_by_jti = new_refresh_jti
@@ -421,14 +418,14 @@ def rotate_refresh_session(
     return user, access_token, new_refresh_token
 
 
-def revoke_refresh_family(db: Session, user_id: int, family_id: str) -> None:
+def revoke_refresh_family(db: Session, user_id: UUID, family_id: str) -> None:
     """Revoke every active refresh token session in the same token family."""
     now = datetime.now(timezone.utc)
     db.query(RefreshTokenSession).filter(
         RefreshTokenSession.user_id == user_id,
         RefreshTokenSession.family_id == family_id,
-        RefreshTokenSession.revoked.is_(False),
-    ).update({"revoked": True, "revoked_at": now}, synchronize_session="fetch")
+        RefreshTokenSession.revoked_at.is_(None),
+    ).update({"revoked_at": now}, synchronize_session="fetch")
 
 
 # ---------------------------------------------------------------------------
@@ -615,7 +612,7 @@ def reset_login_security_state(user: User, now: datetime) -> None:
     user.locked_until = None
 
 
-def get_active_user_by_id(db: Session, user_id: int) -> User:
+def get_active_user_by_id(db: Session, user_id: UUID) -> User:
     """Return an active user by id or raise unauthorized."""
     user = db.query(User).filter(User.id == user_id, User.is_active.is_(True), User.deleted_at.is_(None)).first()
     if not user:
@@ -655,21 +652,20 @@ def create_parent_user(db: Session, payload: UserRegister) -> User:
         )
         raise HTTPException(status_code=409, detail="User already exists")
 
-    now = datetime.now(timezone.utc)
     user = User(
         email=payload.email,
         username=generate_unique_username(db, payload.email),
         hashed_password=hash_password(payload.password),
         role=UserRole.PARENT,
         is_active=True,
-        is_verified=False,
         country=payload.country,
         timezone=payload.timezone,
         consent_terms=payload.agreed_to_terms,
-        consent_data_processing=payload.agreed_to_terms,
-        consent_analytics=False,
-        consent_given_at=now,
-        mfa_enabled=False,
+        # REMOVED: is_verified dropped in migration 20260422_01
+        # REMOVED: consent_data_processing dropped in migration 20260422_01
+        # REMOVED: consent_analytics dropped in migration 20260422_01
+        # REMOVED: consent_given_at dropped in migration 20260422_01
+        # REMOVED: mfa_enabled dropped in migration 20260422_01
     )
 
     db.add(user)

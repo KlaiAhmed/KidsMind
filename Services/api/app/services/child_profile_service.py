@@ -17,22 +17,22 @@ from sqlalchemy.orm import Session
 from crud.crud_child_profiles import create_child_profile, list_children_for_parent
 from crud.crud_child_rules import upsert_child_rules
 from models.avatar import Avatar
+from models.access_window import AccessWindow
+from models.access_window_subject import AccessWindowSubject
 from models.child_allowed_subject import ChildAllowedSubject
 from models.child_profile import ChildProfile
-from models.child_schedule_subject import ChildScheduleSubject
 from models.child_rules import ChildRules
-from models.child_week_schedule import ChildWeekSchedule
 from models.user import User
 from schemas.child_profile_schema import (
+    AccessWindowIn,
+    AccessWindowOut,
+    AccessWindowSubjectIn,
     ChildAllowedSubjectIn,
     ChildProfileCreate,
     ChildProfileRead,
     ChildProfileUpdate,
     ChildRulesRead,
-    ChildScheduleSubjectIn,
     ChildRulesUpdate,
-    ChildWeekScheduleIn,
-    ChildWeekScheduleOut,
 )
 from schemas.media_schema import AvatarResponse
 from utils.child_profile_logic import derive_student_profile_fields
@@ -54,7 +54,7 @@ class ChildProfileService:
         """Initialize service with database session."""
         self.db = db
 
-    def count_children_for_parent(self, parent_id: int) -> int:
+    def count_children_for_parent(self, parent_id: UUID) -> int:
         """Return how many child profiles currently exist for a parent account."""
         return int(
             self.db.query(func.count(ChildProfile.id))
@@ -66,11 +66,11 @@ class ChildProfileService:
     def _get_child_by_id(self, child_id: UUID) -> ChildProfile | None:
         return self.db.query(ChildProfile).filter(ChildProfile.id == child_id).first()
 
-    def _require_parent_ownership(self, child_profile: ChildProfile, parent_id: int) -> None:
+    def _require_parent_ownership(self, child_profile: ChildProfile, parent_id: UUID) -> None:
         if child_profile.parent_id != parent_id:
             raise HTTPException(status_code=403, detail="Access denied")
 
-    def _get_child_for_parent_or_raise(self, child_id: UUID, parent_id: int) -> ChildProfile:
+    def _get_child_for_parent_or_raise(self, child_id: UUID, parent_id: UUID) -> ChildProfile:
         child_profile = self._get_child_by_id(child_id)
         if not child_profile:
             raise HTTPException(status_code=404, detail="Child profile not found")
@@ -86,7 +86,7 @@ class ChildProfileService:
 
     @staticmethod
     def _extract_unique_subjects(
-        items: Sequence[ChildAllowedSubjectIn | ChildScheduleSubjectIn],
+        items: Sequence[ChildAllowedSubjectIn | AccessWindowSubjectIn],
     ) -> list[str]:
         seen: set[str] = set()
         ordered_subjects: list[str] = []
@@ -125,10 +125,10 @@ class ChildProfileService:
         self,
         *,
         child_profile_id: UUID,
-        week_schedule: Sequence[ChildWeekScheduleIn],
+        week_schedule: Sequence[AccessWindowIn],
     ) -> None:
         self.db.execute(
-            delete(ChildWeekSchedule).where(ChildWeekSchedule.child_profile_id == child_profile_id)
+            delete(AccessWindow).where(AccessWindow.child_profile_id == child_profile_id)
         )
         self.db.flush()
 
@@ -138,7 +138,7 @@ class ChildProfileService:
         all_subject_rows: list[dict[str, object]] = []
         for schedule in week_schedule:
             inserted_schedule = self.db.execute(
-                insert(ChildWeekSchedule)
+                insert(AccessWindow)
                 .values(
                     child_profile_id=child_profile_id,
                     day_of_week=schedule.day_of_week,
@@ -146,16 +146,16 @@ class ChildProfileService:
                     access_window_end=schedule.access_window_end,
                     daily_cap_seconds=schedule.daily_cap_seconds,
                 )
-                .returning(ChildWeekSchedule.id)
+                .returning(AccessWindow.id)
             ).first()
 
             if inserted_schedule and schedule.subjects:
                 unique_subjects = self._extract_unique_subjects(schedule.subjects)
                 for subject in unique_subjects:
-                    all_subject_rows.append({"schedule_id": inserted_schedule.id, "subject": subject})
+                    all_subject_rows.append({"access_window_id": inserted_schedule.id, "subject": subject})
 
         if all_subject_rows:
-            self.db.execute(insert(ChildScheduleSubject), all_subject_rows)
+            self.db.execute(insert(AccessWindowSubject), all_subject_rows)
 
     def update_allowed_subjects(
         self,
@@ -186,16 +186,16 @@ class ChildProfileService:
         *,
         child_id: UUID,
         parent_user: User,
-        schedule_day: ChildWeekScheduleIn,
+        schedule_day: AccessWindowIn,
     ) -> ChildProfileRead:
         child_profile = self._get_child_for_parent_or_raise(child_id, parent_user.id)
 
         try:
             existing = (
-                self.db.query(ChildWeekSchedule)
+                self.db.query(AccessWindow)
                 .filter(
-                    ChildWeekSchedule.child_profile_id == child_profile.id,
-                    ChildWeekSchedule.day_of_week == schedule_day.day_of_week,
+                    AccessWindow.child_profile_id == child_profile.id,
+                    AccessWindow.day_of_week == schedule_day.day_of_week,
                 )
                 .first()
             )
@@ -204,7 +204,7 @@ class ChildProfileService:
                 self.db.flush()
 
             inserted_schedule = self.db.execute(
-                insert(ChildWeekSchedule)
+                insert(AccessWindow)
                 .values(
                     child_profile_id=child_profile.id,
                     day_of_week=schedule_day.day_of_week,
@@ -212,16 +212,16 @@ class ChildProfileService:
                     access_window_end=schedule_day.access_window_end,
                     daily_cap_seconds=schedule_day.daily_cap_seconds,
                 )
-                .returning(ChildWeekSchedule.id)
+                .returning(AccessWindow.id)
             ).first()
 
             if inserted_schedule and schedule_day.subjects:
                 subject_rows = [
-                    {"schedule_id": inserted_schedule.id, "subject": subject}
+                    {"access_window_id": inserted_schedule.id, "subject": subject}
                     for subject in self._extract_unique_subjects(schedule_day.subjects)
                 ]
                 if subject_rows:
-                    self.db.execute(insert(ChildScheduleSubject), subject_rows)
+                    self.db.execute(insert(AccessWindowSubject), subject_rows)
 
             self.db.commit()
         except HTTPException:
@@ -257,12 +257,12 @@ class ChildProfileService:
             allowed_subjects_by_child_id[row.child_profile_id].append(row.subject)
 
         week_schedule_rows = (
-            self.db.query(ChildWeekSchedule)
-            .filter(ChildWeekSchedule.child_profile_id.in_(child_ids))
-            .order_by(ChildWeekSchedule.day_of_week.asc())
+            self.db.query(AccessWindow)
+            .filter(AccessWindow.child_profile_id.in_(child_ids))
+            .order_by(AccessWindow.day_of_week.asc())
             .all()
         )
-        week_schedule_by_child_id: dict[UUID, list[ChildWeekSchedule]] = defaultdict(list)
+        week_schedule_by_child_id: dict[UUID, list[AccessWindow]] = defaultdict(list)
         schedule_ids: list[UUID] = []
         for row in week_schedule_rows:
             week_schedule_by_child_id[row.child_profile_id].append(row)
@@ -271,19 +271,19 @@ class ChildProfileService:
         schedule_subjects_by_schedule_id: dict[UUID, list[str]] = defaultdict(list)
         if schedule_ids:
             schedule_subject_rows = (
-                self.db.query(ChildScheduleSubject)
-                .filter(ChildScheduleSubject.schedule_id.in_(schedule_ids))
-                .order_by(ChildScheduleSubject.subject.asc())
+                self.db.query(AccessWindowSubject)
+                .filter(AccessWindowSubject.access_window_id.in_(schedule_ids))
+                .order_by(AccessWindowSubject.subject.asc())
                 .all()
             )
             for row in schedule_subject_rows:
-                schedule_subjects_by_schedule_id[row.schedule_id].append(row.subject)
+                schedule_subjects_by_schedule_id[row.access_window_id].append(row.subject)
 
         serialized_profiles: list[ChildProfileRead] = []
         for profile in profiles:
             rules_row = rules_by_child_id.get(profile.id)
             week_schedule = [
-                ChildWeekScheduleOut(
+                AccessWindowOut(
                     id=schedule_row.id,
                     day_of_week=int(schedule_row.day_of_week),
                     access_window_start=schedule_row.access_window_start,
@@ -303,7 +303,6 @@ class ChildProfileService:
                     education_stage=profile.education_stage,
                     is_accelerated=profile.is_accelerated,
                     is_below_expected_stage=profile.is_below_expected_stage,
-                    languages=profile.languages,
                     avatar_id=profile.avatar_id,
                     avatar=AvatarResponse.model_validate(profile.avatar) if profile.avatar else None,
                     xp=profile.xp,
@@ -351,7 +350,6 @@ class ChildProfileService:
                 self.db,
                 parent_id=parent_user.id,
                 nickname=payload.nickname,
-                languages=payload.languages,
                 avatar_id=payload.avatar_id,
                 derivation=derived,
             )
@@ -386,7 +384,7 @@ class ChildProfileService:
         children = list_children_for_parent(self.db, parent_id=parent_user.id)
         return self._serialize_child_profiles(children)
 
-    def get_children_for_parent_id(self, parent_id: int) -> list[ChildProfileRead]:
+    def get_children_for_parent_id(self, parent_id: UUID) -> list[ChildProfileRead]:
         children = list_children_for_parent(self.db, parent_id=parent_id)
         return self._serialize_child_profiles(children)
 
@@ -405,8 +403,6 @@ class ChildProfileService:
 
         if "nickname" in update_data:
             child_profile.nickname = update_data["nickname"]
-        if "languages" in update_data:
-            child_profile.languages = update_data["languages"]
         if "avatar_id" in update_data:
             self._ensure_avatar_exists(update_data["avatar_id"])
             child_profile.avatar_id = update_data["avatar_id"]
@@ -444,7 +440,7 @@ class ChildProfileService:
     def update_child_profile_for_admin(
         self,
         *,
-        parent_id: int,
+        parent_id: UUID,
         child_id: UUID,
         payload: ChildProfileUpdate,
     ) -> ChildProfileRead:
@@ -460,8 +456,6 @@ class ChildProfileService:
 
         if "nickname" in update_data:
             child_profile.nickname = update_data["nickname"]
-        if "languages" in update_data:
-            child_profile.languages = update_data["languages"]
         if "avatar_id" in update_data:
             self._ensure_avatar_exists(update_data["avatar_id"])
             child_profile.avatar_id = update_data["avatar_id"]
@@ -543,6 +537,53 @@ class ChildProfileService:
 
         self.db.refresh(rules)
         return ChildRulesRead.model_validate(rules)
+
+    def update_child_rules_full(self, child_id: UUID, parent_user: User, payload: ChildRulesUpdate) -> ChildProfileRead:
+        """Update child rules and return the full child profile with rules, subjects, and schedule."""
+        child_profile = self._get_child_for_parent_or_raise(child_id, parent_user.id)
+
+        update_data = payload.model_dump(exclude_unset=True)
+        parent_pin = update_data.pop("parent_pin", None)
+        allowed_subjects_payload = update_data.pop("allowed_subjects", None)
+        week_schedule_payload = update_data.pop("week_schedule", None)
+
+        rules_update_payload = {
+            key: value for key, value in update_data.items() if key in self.RULE_FIELD_NAMES
+        }
+
+        rules = upsert_child_rules(self.db, child_profile_id=child_profile.id, payload=None)
+
+        if rules_update_payload:
+            rules = upsert_child_rules(
+                self.db,
+                child_profile_id=child_profile.id,
+                payload=rules_update_payload,
+            )
+
+        if allowed_subjects_payload is not None:
+            self._replace_allowed_subjects_rows(
+                child_profile_id=child_profile.id,
+                allowed_subjects=allowed_subjects_payload,
+            )
+
+        if week_schedule_payload is not None:
+            self._replace_all_week_schedule_rows(
+                child_profile_id=child_profile.id,
+                week_schedule=week_schedule_payload,
+            )
+
+        if parent_pin:
+            parent_user.parent_pin_hash = hash_password(parent_pin)
+            self.db.add(parent_user)
+
+        try:
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
+
+        self.db.refresh(child_profile)
+        return self._serialize_single_child_profile(child_profile)
 
     def delete_child_profile(self, child_id: UUID, parent_user: User) -> None:
         """Delete a child profile owned by the authenticated parent.

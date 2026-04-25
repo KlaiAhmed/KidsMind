@@ -8,6 +8,8 @@ Domain: Auth
 """
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, func
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
 
 from core.database import Base
 
@@ -29,7 +31,6 @@ class RefreshTokenSession(Base):
                      Existing legacy rows were backfilled by migration
                      using a temporary server default of 'web'.
         expires_at: Token expiration timestamp.
-        revoked: Whether token has been revoked.
         replaced_by_jti: JTI of replacement token.
         reuse_detected: Flag for suspicious reuse attempts.
     """
@@ -37,15 +38,19 @@ class RefreshTokenSession(Base):
     __tablename__ = "refresh_token_sessions"
     __table_args__ = (
         Index(
-            "ix_refresh_token_sessions_user_family_revoked",
+            "ix_refresh_token_sessions_user_family",
             "user_id",
             "family_id",
-            "revoked",
+        ),
+        Index(
+            "ix_refresh_token_sessions_user_kind",
+            "user_id",
+            "client_kind",
         ),
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
 
     jti = Column(String(64), unique=True, nullable=False, index=True)
     family_id = Column(String(64), nullable=False, index=True)
@@ -58,7 +63,6 @@ class RefreshTokenSession(Base):
     trust_level = Column(String(32), nullable=False, default="normal")
 
     expires_at = Column(DateTime(timezone=True), nullable=False)
-    revoked = Column(Boolean, nullable=False, default=False)
     revoked_at = Column(DateTime(timezone=True), nullable=True)
     replaced_by_jti = Column(String(64), nullable=True)
     reuse_detected = Column(Boolean, nullable=False, default=False)
@@ -66,3 +70,5 @@ class RefreshTokenSession(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    user = relationship("User", back_populates="refresh_token_sessions")

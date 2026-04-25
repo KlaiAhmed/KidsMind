@@ -13,9 +13,8 @@ from utils.child_profile_logic import StudentProfileDerivation
 def create_child_profile(
     db: Session,
     *,
-    parent_id: int,
+    parent_id: UUID,
     nickname: str,
-    languages: list[str],
     avatar_id: UUID | None,
     derivation: StudentProfileDerivation,
 ) -> ChildProfile:
@@ -26,7 +25,6 @@ def create_child_profile(
         education_stage=derivation.education_stage,
         is_accelerated=derivation.is_accelerated,
         is_below_expected_stage=derivation.is_below_expected_stage,
-        languages=languages,
         avatar_id=avatar_id,
     )
     db.add(child_profile)
@@ -34,7 +32,7 @@ def create_child_profile(
     return child_profile
 
 
-def list_children_for_parent(db: Session, *, parent_id: int) -> list[ChildProfile]:
+def list_children_for_parent(db: Session, *, parent_id: UUID) -> list[ChildProfile]:
     return (
         db.query(ChildProfile)
         .filter(ChildProfile.parent_id == parent_id)
