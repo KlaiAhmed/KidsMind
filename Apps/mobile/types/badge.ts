@@ -10,6 +10,7 @@ export interface Badge {
   earnedAt: string | null;
   condition: string;
   progressPercent?: number;
+  iconKey?: string | null;
 }
 
 export interface BadgeApiItem {
@@ -19,6 +20,6 @@ export interface BadgeApiItem {
   earned?: boolean;
   earned_at?: string | null;
   condition?: string;
-  icon_key?: string;
+  icon_key?: string | null;
   progress_percent?: number;
 }
