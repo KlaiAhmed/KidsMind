@@ -9,7 +9,8 @@ Domain: Chat
 
 import httpx
 from uuid import UUID
-from fastapi import APIRouter, Depends, UploadFile, Form, HTTPException, Query, Request
+
+from fastapi import APIRouter, Body, Depends, Form, HTTPException, Query, Request, UploadFile
 from redis.asyncio import Redis
 from sqlalchemy.orm import Session
 
@@ -17,6 +18,8 @@ from controllers.chat import (
     DEFAULT_CHAT_HISTORY_LIMIT,
     MAX_CHAT_HISTORY_LIMIT,
     clear_history_controller,
+    close_chat_session_controller,
+    create_chat_session_controller,
     get_history_controller,
     text_chat_controller,
     voice_chat_controller,
@@ -26,19 +29,47 @@ from dependencies.auth import get_current_user
 from dependencies.infrastructure import get_client, get_db, get_redis
 from dependencies.media import validate_audio_file
 from models.user import User
-from schemas.chat_schema import TextChatRequest
+from schemas.chat_schema import ChatSessionClose, ChatSessionCreate, ChatSessionRead, TextChatRequest
 from utils.limiter import limiter
 
 router = APIRouter()
+
+
+@router.post("/sessions", response_model=ChatSessionRead, status_code=201)
+@limiter.limit(settings.RATE_LIMIT)
+async def create_chat_session(
+    request: Request,
+    payload: ChatSessionCreate = Body(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ChatSessionRead:
+    return await create_chat_session_controller(db=db, current_user=current_user, payload=payload)
+
+
+@router.post("/sessions/{session_id}/close", response_model=ChatSessionRead)
+@limiter.limit(settings.RATE_LIMIT)
+async def close_chat_session(
+    request: Request,
+    session_id: UUID,
+    payload: ChatSessionClose | None = Body(default=None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ChatSessionRead:
+    return await close_chat_session_controller(
+        db=db,
+        current_user=current_user,
+        session_id=session_id,
+        payload=payload or ChatSessionClose(),
+    )
 
 
 @router.post("/voice/{user_id}/{child_id}/{session_id}")
 @limiter.limit(settings.RATE_LIMIT)
 async def voice_chat(
     request: Request,
-    user_id: int,
+    user_id: UUID,
     child_id: UUID,
-    session_id: str,
+    session_id: UUID,
     current_user: User = Depends(get_current_user),
     audio_file: UploadFile = Depends(validate_audio_file),
     context: str = Form(""),
@@ -52,7 +83,7 @@ async def voice_chat(
         raise HTTPException(status_code=403, detail="User mismatch")
 
     return await voice_chat_controller(
-        user_id=str(user_id),
+        user_id=user_id,
         child_id=child_id,
         session_id=session_id,
         audio_file=audio_file,
@@ -69,9 +100,9 @@ async def voice_chat(
 @limiter.limit(settings.RATE_LIMIT)
 async def text_chat(
     request: Request,
-    user_id: int,
+    user_id: UUID,
     child_id: UUID,
-    session_id: str,
+    session_id: UUID,
     body: TextChatRequest,
     current_user: User = Depends(get_current_user),
     client: httpx.AsyncClient = Depends(get_client),
@@ -82,7 +113,7 @@ async def text_chat(
         raise HTTPException(status_code=403, detail="User mismatch")
 
     return await text_chat_controller(
-        user_id=str(user_id),
+        user_id=user_id,
         child_id=child_id,
         session_id=session_id,
         text=body.text,
@@ -98,9 +129,9 @@ async def text_chat(
 @limiter.limit(settings.RATE_LIMIT)
 async def get_history(
     request: Request,
-    user_id: int,
+    user_id: UUID,
     child_id: UUID,
-    session_id: str | None = Query(default=None),
+    session_id: UUID | None = Query(default=None),
     limit: int = Query(default=DEFAULT_CHAT_HISTORY_LIMIT, ge=1, le=MAX_CHAT_HISTORY_LIMIT),
     offset: int = Query(default=0, ge=0),
     current_user: User = Depends(get_current_user),
@@ -111,7 +142,7 @@ async def get_history(
 
     return await get_history_controller(
         db=db,
-        user_id=str(user_id),
+        user_id=user_id,
         child_id=child_id,
         session_id=session_id,
         limit=limit,
@@ -123,9 +154,9 @@ async def get_history(
 @limiter.limit(settings.RATE_LIMIT)
 async def clear_history(
     request: Request,
-    user_id: int,
+    user_id: UUID,
     child_id: UUID,
-    session_id: str,
+    session_id: UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
     client: httpx.AsyncClient = Depends(get_client),
@@ -137,6 +168,6 @@ async def clear_history(
         db=db,
         child_id=child_id,
         session_id=session_id,
-        user_id=str(user_id),
+        user_id=user_id,
         client=client,
     )
