@@ -6,19 +6,19 @@ Quick-reference for OpenCode sessions. For full architectural detail, read the c
 
 ### Backend (Docker)
 ```bash
-docker compose up --build                                    # build + start all services
-docker compose up -d                                         # detached
+docker compose up --build # build + start all services
+docker compose up -d # detached
 docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.debug.yml up -d
-                                                             # hot-reload + expose internal services on 127.0.0.1
-docker compose logs -f core-api                              # tail one service
-docker compose up --force-recreate --no-deps bucket-provisioner  # re-provision MinIO buckets
+# hot-reload + expose internal services on 127.0.0.1
+docker compose logs -f core-api # tail one service
+docker compose up --force-recreate --no-deps bucket-provisioner # re-provision MinIO buckets
 ```
 `docker-compose.override.yml` is loaded by default (see `COMPOSE_FILE` in `.env.example`) and mounts source dirs with uvicorn `--reload`. Only load `docker-compose.debug.yml` when you need localhost ports for internal services.
 
 ### Backend (local Python, no Docker)
 ```bash
 cd services/<api|ai|stt>/app
-uv sync                    # install from uv.lock (preferred; uv.lock exists in each service)
+uv sync # install from uv.lock (preferred; uv.lock exists in each service)
 # OR
 pip install -r ../requirements.txt
 uvicorn main:app --reload --port 8000
@@ -27,17 +27,17 @@ Docker builds use `requirements.txt` (pinned). Local dev can use either `uv` or 
 
 ### Web (`Apps/web`)
 ```bash
-npm run dev    # Vite dev server
-npm run build  # tsc -b && vite build (typecheck is part of build, not a separate script)
-npm run lint   # ESLint
+npm run dev # Vite dev server
+npm run build # tsc -b && vite build (typecheck is part of build, not a separate script)
+npm run lint # ESLint
 ```
 No standalone `typecheck` script — `tsc` runs only via `npm run build`.
 
 ### Mobile (`Apps/mobile`)
 ```bash
-npx expo start           # Expo dev server
-npm run android / ios    # platform targets
-npm run lint             # expo lint (eslint-config-expo)
+npx expo start # Expo dev server
+npm run android / ios # platform targets
+npm run lint # expo lint (eslint-config-expo)
 ```
 No `typecheck` or `test` scripts. Expo handles TS checking at dev time.
 Path alias `@/*` maps to `Apps/mobile/` (project root).
@@ -45,73 +45,73 @@ Path alias `@/*` maps to `Apps/mobile/` (project root).
 ### Database migrations (Core API only)
 ```bash
 cd services/api
-alembic upgrade head                              # inside container or local
-alembic revision --autogenerate -m "desc"         # generate new revision
+alembic upgrade head # inside container or local
+alembic revision --autogenerate -m "desc" # generate new revision
 ```
 - `alembic.ini` is at `services/api/alembic.ini` (not inside `app/`).
 - `alembic/env.py` auto-detects container vs localhost (`/.dockerenv` check) and loads both root `.env` and `services/api/app/.env`.
 
 ### Tests
+No test directories currently exist. When adding tests:
 ```bash
 cd services/api/app
-uv run pytest                   # or: python -m pytest
+uv run pytest
 ```
 - Framework: **pytest + anyio** (async tests).
-- `conftest.py` uses an in-memory SQLite `StaticPool` — no external services needed.
-- Tests are in `services/api/app/tests/`. Currently minimal (1 test file).
+- `conftest.py` should use an in-memory SQLite `StaticPool` — no external services needed.
 - No test scripts exist for AI, STT, web, or mobile.
 
 ## Architecture
 
 ```
-Apps/web/         Vite 7 + React 19 + TypeScript (strict) + react-router-dom
-Apps/mobile/      Expo SDK 54 + Expo Router v6 (file-based routing) + Zustand + TanStack Query
-services/api/     FastAPI gateway :8000 — all client traffic enters here
-services/ai/      FastAPI AI service (internal) — LangChain LCEL pipeline
-services/stt/     FastAPI STT service (internal) — Faster-Whisper (GPU required)
-infra/            Prometheus, Grafana, Loki, Promtail, MinIO, postgres-exporter, redis-exporter
+Apps/web/     Vite 7 + React 19 + TypeScript (strict) + react-router-dom
+Apps/mobile/  Expo SDK 54 + Expo Router v6 (file-based routing) + Zustand + TanStack Query
+services/api/ FastAPI gateway :8000 — all client traffic enters here
+services/ai/  FastAPI AI service (internal) — LangChain LCEL pipeline
+services/stt/ FastAPI STT service (internal) — Faster-Whisper (GPU required)
+infra/        Prometheus, Grafana, Loki, Promtail, MinIO, postgres-exporter, redis-exporter
 ```
 
 - All backend services listen on container port `8000`.
 - Only `core-api` is published by default. Use `docker-compose.debug.yml` to bind internal services to `127.0.0.1`.
 - Clients never call AI or STT services directly. Core API proxies via `app.state.http_client` (`httpx.AsyncClient`). Inter-service auth uses `X-Service-Token` with `secrets.compare_digest`.
-- Infrastructure services: PostgreSQL 18.2, Redis 8.6, MinIO, Prometheus, Grafana, Loki + Promtail, postgres-exporter, redis-exporter.
+- Infrastructure services: PostgreSQL 18.2, Redis 8.6.1, MinIO, Prometheus, Grafana, Loki + Promtail, postgres-exporter, redis-exporter.
 
 ## Backend layer pattern (all 3 services)
 
 ```
-routers/       HTTP concerns (path params, file uploads, rate limiting)
-controllers/   Business logic orchestration
-services/      Domain operations (DB queries, LLM calls, audio processing)
-crud/          Reusable DB query helpers (api only)
-schemas/       Pydantic request/response models
-models/        SQLAlchemy ORM models (api only; stt has a Pydantic whisper model)
-core/          Config, database, logging, cache, storage clients
-dependencies/  FastAPI Depends() providers (api only)
-middlewares/   CSRF, request tracing, rate limiting (api only)
-utils/         Cross-cutting utilities
+routers/      HTTP concerns (path params, file uploads, rate limiting)
+controllers/  Business logic orchestration
+services/     Domain operations (DB queries, LLM calls, audio processing)
+crud/         Reusable DB query helpers (api only)
+schemas/      Pydantic request/response models
+models/       SQLAlchemy ORM models (api only; stt has a Pydantic whisper model)
+core/         Config, database, logging, cache, storage clients
+dependencies/ FastAPI Depends() providers (api only)
+middlewares/  CSRF, request tracing, rate limiting (api only)
+utils/        Cross-cutting utilities
 ```
 
 ## Core API router list
 
-| Router            | Prefix              |
-|-------------------|---------------------|
-| health            | `""`                |
-| web_auth          | `/api/web/auth`     |
-| mobile_auth       | `/api/mobile/auth`  |
-| media             | `/api/v1/media`     |
+| Router            | Prefix            |
+|-------------------|-------------------|
+| health            | `""`              |
+| web_auth          | `/api/web/auth`   |
+| mobile_auth       | `/api/mobile/auth`|
+| media             | `/api/v1/media`   |
 | admin_media       | `/api/v1/media/admin` |
-| chat              | `/api/v1/chat`      |
-| children          | `/api/v1/children`  |
-| safety_and_rules  | `/api/v1`           |
-| admin_users       | `/api/v1/users`     |
-| users             | `/api/v1/users`     |
+| chat              | `/api/v1/chat`    |
+| children          | `/api/v1/children`|
+| safety_and_rules  | `/api/v1`         |
+| admin_users       | `/api/v1/users`   |
+| users             | `/api/v1/users`   |
 
-AI service has one router: `chat_router`. STT service has one router: `stt_router`.
+AI service: `chat_router` at `/v1/ai`. STT service: `stt_router` at `/v1/stt`.
 
 ## ORM models
 
-user, child_profile, child_rules, child_allowed_subject, child_week_schedule, child_schedule_subject, avatar, avatar_tier_threshold, chat_history, media_asset, refresh_token_session
+User, ChildProfile, ChildRules, ChildAllowedSubject, AccessWindow, AccessWindowSubject, Avatar, AvatarTier, ChatHistory, ChatSession, MediaType (media_asset), RefreshTokenSession, Badge, NotificationPrefs
 
 ## Env setup
 
@@ -131,7 +131,7 @@ To use remote AI/STT instead of local containers, set `COMPOSE_FILE=docker-compo
 
 ## Key gotchas
 
-- **Python version mismatch**: `pyproject.toml` in api and ai says `>=3.14`, stt says `>=3.12`. `.python-version` files say `3.14` (api/ai). All Dockerfiles use `python:3.12-slim`. For local dev, Python 3.12+ works. The `>=3.14` in `pyproject.toml` is aspirational.
+- **Python version mismatch**: `pyproject.toml` in api and ai says `>=3.14`, stt says `>=3.12`. `.python-version` files say `3.14` (api/ai). All Dockerfiles use `python:3.12-slim` (STT uses `nvidia/cuda` base with `python3.12`). For local dev, Python 3.12+ works. The `>=3.14` in `pyproject.toml` is aspirational.
 - **`EXPLICIT_DEV_MODE` is mandatory**: When `IS_PROD=False`, you must set `EXPLICIT_DEV_MODE=true` in the service `.env` or the app crashes at startup. This is a safety guard — not optional.
 - **Auth split**: Web (`/api/web/auth`) uses HttpOnly cookies + CSRF tokens. Mobile (`/api/mobile/auth`) uses Bearer headers. Same `auth_service` core, different wrappers (`web_auth_service`, `mobile_auth_service`). Do not mix.
 - **CSRF**: `CSRFMiddleware` runs on the API. Web client stores the CSRF token in memory, never `localStorage`. Mobile is exempt.
@@ -151,23 +151,31 @@ To use remote AI/STT instead of local containers, set `COMPOSE_FILE=docker-compo
 
 ```
 app/
-  _layout.tsx         root stack (auth-state switch, font loading, QueryClientProvider + AuthProvider)
+  _layout.tsx           root stack (auth-state switch, font loading, QueryClientProvider + AuthProvider)
   splash.tsx
   onboarding.tsx
+  child-home.tsx
   badges.tsx
-  modal.tsx           (presentation: 'modal')
+  settings.tsx
+  modal.tsx             (presentation: 'modal')
   (auth)/
-    _layout.tsx       auth guard (redirects if authenticated+pin+profiled)
+    _layout.tsx         auth guard (redirects if authenticated+pin+profiled)
     login.tsx
     register.tsx
     child-profile-wizard.tsx
-    setup-pin.tsx     ← PIN setup required before profile wizard
+    setup-pin.tsx       ← PIN setup required before profile wizard
   (tabs)/
-    _layout.tsx       tab guard (redirects if unauthenticated or no profile)
-    index.tsx         Overview
-    chat.tsx          Insights
-    explore.tsx       Curriculum
-    profile.tsx       Controls
+    _layout.tsx         tab guard (redirects if unauthenticated or no profile)
+    index.tsx
+    chat.tsx
+    explore.tsx
+    profile.tsx
+  (child-tabs)/
+    _layout.tsx
+    index.tsx
+    chat.tsx
+    explore.tsx
+    profile.tsx
 ```
 Auth flow order: login/register → setup-pin → child-profile-wizard → (tabs).
 
@@ -176,22 +184,25 @@ Auth flow order: login/register → setup-pin → child-profile-wizard → (tabs
 ```
 auth/       Token storage, types, silent refresh hook
 contexts/   AuthContext (auth state provider)
-services/   API clients (apiClient, authApi, chatService, childService, countryService)
-store/      Zustand stores (authStore)
+services/   API clients (apiClient, authApi, chatService, childService, countryService, parentDashboardService, queryClient, toastClient)
+store/      Zustand stores
 constants/  Design tokens (theme.ts)
-screens/    Non-routed screens (AIChatScreen, BadgeGallery, ChildHomeDashboard, etc.)
+screens/    Non-routed screens (AIChatScreen, ChildHomeDashboard, ChildProfileHub, ChildProfileWizard, KidsMindChildExperience, SubjectTopicBrowser)
 components/ Reusable UI components
+src/        Additional organized code (components, config, hooks, lib, schemas, screens, utils)
+hooks/      Custom React hooks
+types/      TypeScript type definitions
 ```
 
 ## Web key directories
 
 ```
-src/pages/        Route pages (HomePage, LoginPage, GetStartedPage, ParentProfilePage, ErrorPage, NotFoundPage)
-src/components/   NavBar, HeroSection, LoginForm, FeaturesGrid, CTASection, Footer, etc.
-src/styles/       themes.css (light/dark tokens via data-theme), globals.css, animations.css
-src/hooks/        useAuthStatus, etc.
-src/utils/        Shared utilities
-src/types/        TypeScript type definitions
+src/pages/       Route pages (HomePage, LoginPage, GetStartedPage, ParentProfilePage, ErrorPage, NotFoundPage)
+src/components/  NavBar, HeroSection, LoginForm, FeaturesGrid, CTASection, Footer, AgeGroupSelector, GetStarted, HowItWorks, SafetyBanner, TestimonialCarousel, shared/
+src/styles/      themes.css (light/dark tokens via data-theme), globals.css, animations.css
+src/hooks/       useAuthStatus, etc.
+src/utils/       Shared utilities
+src/types/       TypeScript type definitions
 ```
 
 ## Verification checklist before finishing work
@@ -199,7 +210,7 @@ src/types/        TypeScript type definitions
 1. `npm run lint` in whichever frontend you changed
 2. `npm run build` in `Apps/web` if you changed web code (includes `tsc`)
 3. For backend Python: no linter configured; manually verify imports and types
-4. Run `pytest` in `services/api/app` if you changed API code
+4. Run `pytest` in `services/api/app` if you changed API code and tests exist
 
 ## Skills
 
