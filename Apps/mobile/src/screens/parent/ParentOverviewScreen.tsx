@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'react';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -13,9 +13,12 @@ import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import Animated, { useSharedValue, withSpring } from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 
 import { ActivityFlaggedBanner } from '@/src/components/parent/ActivityFlaggedBanner';
 import { ParentChildSwitcher } from '@/src/components/parent/ParentChildSwitcher';
+import { ChildSwitchModal } from '@/src/components/spaceSwitch/ChildSwitchModal';
 import { Colors, Gradients, Radii, Shadows, Spacing, Typography } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { getConversationHistory } from '@/services/parentDashboardService';
@@ -137,6 +140,13 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
     enabled: Boolean(user?.id && activeChild?.id),
   });
 
+  // Space switching modal state
+  const [isSwitchModalVisible, setIsSwitchModalVisible] = useState(false);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+
+  // Rocket icon animation
+  const iconScale = useSharedValue(1);
+
   const latestFlaggedSession = useMemo(
     () => historyQuery.data?.sessions.find((session) => session.hasSafetyFlags) ?? null,
     [historyQuery.data?.sessions],
@@ -217,6 +227,43 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
     if (!selectedChildId) return;
     selectChild(selectedChildId);
     void router.push(`/child-home?childId=${encodeURIComponent(selectedChildId)}` as never);
+  }
+
+  // Handle rocket icon press with animation
+  function handleRocketPress() {
+    if (!activeChild) return;
+
+    // Trigger haptic feedback
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+
+    // Icon spring animation (150ms)
+    iconScale.value = withSpring(0.85, { damping: 12, stiffness: 400 }, () => {
+      iconScale.value = withSpring(1, { damping: 15, stiffness: 200 });
+    });
+
+    // Open switch modal
+    setIsSwitchModalVisible(true);
+  }
+
+  // Handle confirm switch to child space
+  function handleConfirmSwitch() {
+    if (!selectedChildId || !activeChild || isTransitioning) return;
+
+    setIsTransitioning(true);
+
+    // Navigate to child space after animation
+    setTimeout(() => {
+      setIsSwitchModalVisible(false);
+      setIsTransitioning(false);
+      selectChild(selectedChildId);
+      void router.push(`/child-home?childId=${encodeURIComponent(selectedChildId)}` as never);
+    }, 300);
+  }
+
+  // Handle dismiss switch modal
+  function handleDismissSwitch() {
+    if (isTransitioning) return;
+    setIsSwitchModalVisible(false);
   }
 
   function handleManageRules() {
@@ -321,14 +368,21 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
             </View>
           </View>
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Open ${activeChild.nickname ?? activeChild.name}'s space`}
-          onPress={handleOpenChildSpace}
-          style={({ pressed }) => [styles.headerButton, pressed ? styles.pressed : null]}
-        >
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Open ${activeChild.nickname ?? activeChild.name}'s space`}
+        disabled={!activeChild || isTransitioning}
+        onPress={handleRocketPress}
+        style={({ pressed }) => [
+          styles.headerButton,
+          pressed && styles.headerButtonPressed,
+          (!activeChild || isTransitioning) && styles.headerButtonDisabled,
+        ]}
+      >
+        <Animated.View style={{ transform: [{ scale: iconScale }] }}>
           <MaterialCommunityIcons color={Colors.primary} name="rocket-launch-outline" size={20} />
-        </Pressable>
+        </Animated.View>
+      </Pressable>
         </View>
 
       <ParentChildSwitcher
@@ -464,16 +518,26 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
               </Pressable>
             ) : null}
 
-          <View style={styles.inlineNote}>
-            <MaterialCommunityIcons color={Colors.textSecondary} name="information-outline" size={16} />
-            <Text style={styles.inlineNoteText}>
-              Report export will appear here when the backend exposes downloadable parent reports.
-            </Text>
-          </View>
+        <View style={styles.inlineNote}>
+          <MaterialCommunityIcons color={Colors.textSecondary} name="information-outline" size={16} />
+          <Text style={styles.inlineNoteText}>
+            Report export will appear here when the backend exposes downloadable parent reports.
+          </Text>
         </View>
-      </ScrollView>
-    </SafeAreaView>
-  );
+      </View>
+
+      {/* Child Switch Modal */}
+      <ChildSwitchModal
+        childAvatar={activeChild ? getChildAvatarSource(activeChild) : undefined}
+        childName={activeChild?.nickname ?? activeChild?.name ?? ''}
+        isTransitioning={isTransitioning}
+        onConfirm={handleConfirmSwitch}
+        onDismiss={handleDismissSwitch}
+        visible={isSwitchModalVisible}
+      />
+    </ScrollView>
+  </SafeAreaView>
+);
 }
 
 const styles = StyleSheet.create({
@@ -775,5 +839,12 @@ const styles = StyleSheet.create({
   },
   pressed: {
     transform: [{ scale: 0.99 }],
+  },
+  headerButtonPressed: {
+    transform: [{ scale: 0.95 }],
+    backgroundColor: Colors.surfaceContainerLow,
+  },
+  headerButtonDisabled: {
+    opacity: 0.5,
   },
 });

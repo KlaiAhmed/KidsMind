@@ -1,6 +1,6 @@
 import { Redirect, Tabs, useLocalSearchParams } from 'expo-router';
 import React, { useEffect } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 
 import { ChildBottomNavContainer } from '@/components/navigation/ChildBottomNavContainer';
 import { Colors } from '@/constants/theme';
@@ -44,6 +44,21 @@ export default function ChildTabLayout() {
 
   return (
     <Tabs
+      backBehavior="none"
+      screenOptions={{
+        headerShown: false,
+        // SECURITY: Disable iOS swipe-back gesture to prevent navigation out of child space
+        gestureEnabled: false,
+        gestureDirection: 'horizontal',
+        animation: Platform.select({
+          ios: 'fade',
+          android: 'fade',
+        }),
+        tabBarHideOnKeyboard: true,
+        sceneContainerStyle: {
+          backgroundColor: Colors.surface,
+        },
+      }}
       tabBar={(props) => (
         <ChildBottomNavContainer
           {...props}
@@ -52,36 +67,34 @@ export default function ChildTabLayout() {
           voiceEnabled={Boolean(childProfile?.rules?.voiceModeEnabled)}
         />
       )}
-      screenOptions={{
-        headerShown: false,
-        tabBarHideOnKeyboard: true,
-        sceneContainerStyle: {
-          backgroundColor: Colors.surface,
-        },
-      }}
     >
       <Tabs.Screen
         name="index"
         options={{
           title: 'Home',
+          // SECURITY: Disable gestures for all child screens
+          gestureEnabled: false,
         }}
       />
       <Tabs.Screen
         name="explore"
         options={{
           title: 'Learn',
+          gestureEnabled: false,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
+          gestureEnabled: false,
         }}
       />
       <Tabs.Screen
         name="chat"
         options={{
           title: 'Qubie',
+          gestureEnabled: false,
         }}
       />
     </Tabs>
