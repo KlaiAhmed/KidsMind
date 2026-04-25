@@ -39,6 +39,7 @@ import {
 } from '@/src/schemas/childProfileWizardSchema';
 import {
   deriveBlockedSubjects,
+  deriveStageAlignment,
   deriveTimeWindowFromWeekSchedule,
   educationLevelToBackendStage,
   isChildProfileAgeInRange,
@@ -222,37 +223,7 @@ function mapValidationDetailToFieldError(
     };
   }
 
-  return null;
-}
-
-function deriveStageAlignmentFlags(
-  selectedEducationLevel: ChildProfileWizardFormValues['childInfo']['educationLevel'],
-  derivedEducationLevel: ChildProfileWizardFormValues['childInfo']['derivedEducationLevel'],
-): { isAccelerated: boolean; isBelowExpectedStage: boolean } {
-  if (!selectedEducationLevel || !derivedEducationLevel || selectedEducationLevel === derivedEducationLevel) {
-    return {
-      isAccelerated: false,
-      isBelowExpectedStage: false,
-    };
-  }
-
-  const order = {
-    kindergarten: 0,
-    primary_school: 1,
-    secondary_school: 2,
-  } as const;
-
-  if (order[selectedEducationLevel] > order[derivedEducationLevel]) {
-    return {
-      isAccelerated: true,
-      isBelowExpectedStage: false,
-    };
-  }
-
-  return {
-    isAccelerated: false,
-    isBelowExpectedStage: true,
-  };
+return null;
 }
 
 // --- 3. Nickname Animation ---
@@ -439,20 +410,26 @@ export default function ChildProfileWizard() {
       return;
     }
 
+    const birthDate = parseIsoDateOnly(values.childInfo.birthDateIso);
+    if (!birthDate) {
+      return;
+    }
+
+    const { isAccelerated, isBelowExpectedStage } = deriveStageAlignment(
+      birthDate,
+      values.childInfo.educationLevel,
+    );
+
     methods.clearErrors();
     setSubmitError(null);
     setIsSubmitting(true);
 
     try {
-      const hasExistingProfile = isEditMode && Boolean(profile?.id);
-      const blockedSubjects = deriveBlockedSubjects(values.schedule.allowedSubjects);
-      const { timeWindowStart, timeWindowEnd } = deriveTimeWindowFromWeekSchedule(
-        values.schedule.weekSchedule,
-      );
-      const { isAccelerated, isBelowExpectedStage } = deriveStageAlignmentFlags(
-        values.childInfo.educationLevel,
-        values.childInfo.derivedEducationLevel,
-      );
+ const hasExistingProfile = isEditMode && Boolean(profile?.id);
+ const blockedSubjects = deriveBlockedSubjects(values.schedule.allowedSubjects);
+ const { timeWindowStart, timeWindowEnd } = deriveTimeWindowFromWeekSchedule(
+ values.schedule.weekSchedule,
+ );
 
       const savedProfile = await saveChildProfile({
         nickname: values.childInfo.nickname.trim(),
@@ -460,7 +437,6 @@ export default function ChildProfileWizard() {
         educationStage: educationLevelToBackendStage(values.childInfo.educationLevel),
         isAccelerated,
         isBelowExpectedStage,
-        languages: [values.rules.defaultLanguage],
         avatarId: values.avatar.avatarId,
         rules: {
           defaultLanguage: values.rules.defaultLanguage,

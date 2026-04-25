@@ -2,7 +2,8 @@ import type MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIco
 import type { ComponentProps } from 'react';
 
 import type { Badge } from '@/types/badge';
-import type { Subject } from '@/types/child';
+import type { Subject, SubjectKey } from '@/types/child';
+import type { SubjectGridItem } from '@/src/components/SubjectGrid';
 import { ProfileColors } from '@/src/components/profile/profileTokens';
 
 type IconName = ComponentProps<typeof MaterialCommunityIcons>['name'];
@@ -267,4 +268,71 @@ export function buildWeeklyInsight(params: {
   }
 
   return `Amazing work, ${firstName}! Every session is helping your ${params.levelTitle.toLowerCase()} journey grow stronger.`;
+}
+
+interface SubjectGridVisual {
+  name: string;
+  iconName: IconName;
+  iconColor: string;
+  iconBackground: string;
+}
+
+const SUBJECT_GRID_VISUALS: Record<string, SubjectGridVisual> = {
+  math: {
+    name: 'Maths',
+    iconName: 'calculator-variant-outline',
+    iconColor: '#4338CA',
+    iconBackground: '#EEF2FF',
+  },
+  science: {
+    name: 'Science',
+    iconName: 'microscope',
+    iconColor: '#059669',
+    iconBackground: '#ECFDF5',
+  },
+  english: {
+    name: 'English',
+    iconName: 'book-open-variant',
+    iconColor: '#D97706',
+    iconBackground: '#FFFBEB',
+  },
+  reading: {
+    name: 'Reading',
+    iconName: 'book-open-variant',
+    iconColor: '#D97706',
+    iconBackground: '#FFFBEB',
+  },
+  french: {
+    name: 'French',
+    iconName: 'translate',
+    iconColor: '#7C3AED',
+    iconBackground: '#F5F3FF',
+  },
+  history: {
+    name: 'History',
+    iconName: 'history',
+    iconColor: '#92400E',
+    iconBackground: '#FEF3C7',
+  },
+  art: {
+    name: 'Art',
+    iconName: 'palette-outline',
+    iconColor: '#EC4899',
+    iconBackground: '#FDF2F8',
+  },
+};
+
+export function buildSubjectGridItems(subjectKeys: SubjectKey[]): SubjectGridItem[] {
+  return subjectKeys
+    .filter((key) => key in SUBJECT_GRID_VISUALS)
+    .map((key) => {
+      const visual = SUBJECT_GRID_VISUALS[key];
+      return {
+        name: visual.name,
+        lessonCount: 'Explore',
+        iconName: visual.iconName,
+        iconColor: visual.iconColor,
+        iconBackground: visual.iconBackground,
+      };
+    });
 }

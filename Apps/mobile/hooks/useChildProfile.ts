@@ -1,8 +1,11 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { getChildProfile } from '@/services/childService';
+import { getAvatarCatalog } from '@/services/childService';
 import type { AvatarOption } from '@/types/child';
 
-const DEFAULT_AVATAR_ID = 'avatar-1';
+const FALLBACK_AVATARS: AvatarOption[] = [
+  { id: 'fallback-0', label: 'Brainy Buddy', asset: require('../assets/images/icon.png') },
+];
 
 export function useChildProfile() {
   const {
@@ -24,10 +27,10 @@ export function useChildProfile() {
 
   function getAvatarById(avatarId: string | null | undefined): AvatarOption {
     const normalizedAvatarId = avatarId?.trim();
-    return avatars.find((avatar) => avatar.id === normalizedAvatarId) ?? avatars[0];
+    return avatars.find((avatar) => avatar.id === normalizedAvatarId) ?? avatars[0] ?? FALLBACK_AVATARS[0];
   }
 
-  const defaultAvatarId = avatars[0]?.id ?? DEFAULT_AVATAR_ID;
+  const defaultAvatarId = avatars[0]?.id ?? FALLBACK_AVATARS[0].id;
 
   async function refreshProfileFromApi(): Promise<void> {
     if (!childProfile?.id) {
@@ -43,6 +46,15 @@ export function useChildProfile() {
     }
   }
 
+  async function refreshAvatarCatalog(): Promise<AvatarOption[]> {
+    try {
+      const result = await getAvatarCatalog(childProfile?.id ?? undefined);
+      return result.avatars;
+    } catch {
+      return avatars;
+    }
+  }
+
   return {
     profile: childProfile,
     profiles: childProfiles,
@@ -55,6 +67,7 @@ export function useChildProfile() {
     getAvatarById,
     selectProfile: selectChild,
     refreshProfileFromApi,
+    refreshAvatarCatalog,
     updateProfile: updateChildProfile,
     refreshChildData,
     saveChildProfile,

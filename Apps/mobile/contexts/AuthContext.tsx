@@ -36,6 +36,7 @@ import {
   deleteChildProfile as deleteChildProfileRequest,
   listChildProfiles,
   patchChildProfile,
+  getAvatarCatalog,
 } from '@/services/childService';
 import { useAuthStore } from '@/store/authStore';
 import type {
@@ -127,48 +128,8 @@ function buildLevelProgress(xp: number): { level: number; xpToNextLevel: number 
   };
 }
 
-const AVATAR_OPTIONS: AvatarOption[] = [
-  { id: 'avatar-1', label: 'Brainy Buddy', asset: require('../assets/images/icon.png') },
-  {
-    id: 'avatar-2',
-    label: 'Spark Rocket',
-    asset: require('../assets/images/android-icon-foreground.png'),
-  },
-  {
-    id: 'avatar-3',
-    label: 'Moon Explorer',
-    asset: require('../assets/images/android-icon-monochrome.png'),
-  },
-  {
-    id: 'avatar-4',
-    label: 'Star Dreamer',
-    asset: require('../assets/images/splash-icon.png'),
-  },
-  {
-    id: 'avatar-5',
-    label: 'Sky Builder',
-    asset: require('../assets/images/android-icon-background.png'),
-  },
-  {
-    id: 'avatar-6',
-    label: 'Logic Llama',
-    asset: require('../assets/images/react-logo.png'),
-  },
-  {
-    id: 'avatar-7',
-    label: 'Code Comet',
-    asset: require('../assets/images/partial-react-logo.png'),
-  },
-  {
-    id: 'avatar-8',
-    label: 'Pixel Panda',
-    asset: require('../assets/images/react-logo.png'),
-  },
-  {
-    id: 'avatar-9',
-    label: 'Nova Ninja',
-    asset: require('../assets/images/react-logo.png'),
-  },
+const INITIAL_AVATARS: AvatarOption[] = [
+  { id: 'fallback-0', label: 'Brainy Buddy', asset: require('../assets/images/icon.png') },
 ];
 
 const TOPIC_SEED: Topic[] = [
@@ -404,7 +365,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     childDataError: null,
     subjects: seededSubjects,
     topics: seededTopics,
-    avatars: AVATAR_OPTIONS,
+    avatars: INITIAL_AVATARS,
     recentActivity: buildRecentActivity(seededTopics),
   });
 
@@ -628,6 +589,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         const nextStatus = applyResolvedChildProfiles(profiles);
         await saveOnboardingFlag(nextStatus === 'exists');
+
+        try {
+          const firstChildId = profiles.length > 0 ? profiles[0].id : undefined;
+          const catalogResult = await getAvatarCatalog(firstChildId);
+          if (!cancelled && catalogResult.avatars.length > 0) {
+            setChildState((current) => ({
+              ...current,
+              avatars: catalogResult.avatars,
+            }));
+          }
+        } catch {
+          // Avatar catalog fetch failed — keep existing avatars
+        }
       } catch {
         if (!cancelled) {
           setChildState((current) => ({

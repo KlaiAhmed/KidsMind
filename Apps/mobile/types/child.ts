@@ -81,6 +81,7 @@ export interface ChildProfile {
   totalSubjectsExplored: number;
   totalExercisesCompleted: number;
   totalBadgesEarned: number;
+  isPaused: boolean;
 }
 
 export interface Subject {
@@ -126,7 +127,6 @@ export interface CreateChildProfileInput {
   educationStage: BackendEducationStage;
   isAccelerated: boolean;
   isBelowExpectedStage: boolean;
-  languages: string[];
   avatarId: string | null;
   rules: CreateChildRulesInput;
   allowedSubjects: SubjectKey[];
@@ -134,11 +134,10 @@ export interface CreateChildProfileInput {
 }
 
 export interface UpdateChildProfileInput {
-  nickname?: string;
-  birthDate?: string;
-  educationStage?: BackendEducationStage;
-  languages?: string[];
-  avatarId?: string | null;
+ nickname?: string;
+ birthDate?: string;
+ educationStage?: BackendEducationStage;
+ avatarId?: string | null;
 }
 
 export interface UpdateChildRulesInput {
@@ -168,4 +167,133 @@ export interface RecentActivity {
 export interface BrowserSubjectMatch {
   subject: Subject;
   score: number;
+}
+
+export interface ParentOverviewStats {
+  totalSessions: number;
+  totalMessages: number;
+  totalExercisesCompleted: number;
+  totalXp: number;
+  streakDays: number;
+  flaggedMessageCount: number;
+  lastActiveAt: string | null;
+}
+
+export interface ParentOverview {
+  childId: string;
+  childNickname: string;
+  childXp: number;
+  childLevel: number;
+  stats: ParentOverviewStats;
+}
+
+export interface DailyUsagePoint {
+  date: string;
+  sessions: number;
+  messages: number;
+  xpGained: number;
+}
+
+export interface SubjectMasteryItem {
+  subject: string;
+  sessions: number;
+  messages: number;
+  xp: number;
+}
+
+export interface WeeklyInsight {
+  summary: string;
+  topSubject: string | null;
+  engagementLevel: string;
+}
+
+export interface SessionMetadata {
+  sessionId: string;
+  startedAt: string | null;
+  endedAt: string | null;
+  messageCount: number;
+  hasFlaggedContent: boolean;
+  subjects: string[];
+}
+
+export interface ParentProgress {
+  childId: string;
+  dailyUsage: DailyUsagePoint[];
+  subjectMastery: SubjectMasteryItem[];
+  weeklyInsight: WeeklyInsight;
+  recentSessions: SessionMetadata[];
+}
+
+export interface ParentHistorySession {
+  sessionId: string;
+  startedAt: string | null;
+  endedAt: string | null;
+  messageCount: number;
+  hasFlaggedContent: boolean;
+  lastMessageAt: string | null;
+  preview: string;
+}
+
+export interface ParentHistory {
+  childId: string;
+  sessions: ParentHistorySession[];
+  totalCount: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
+
+export interface BulkDeleteResult {
+  deletedCount: number;
+  notFoundCount: number;
+}
+
+export interface HistoryExport {
+  childId: string;
+  exportFormat: string;
+  downloadUrl: string | null;
+  totalSessions: number;
+  totalMessages: number;
+}
+
+export interface ChildPauseState {
+  childId: string;
+  isPaused: boolean;
+}
+
+export interface NotificationPrefs {
+  dailySummaryEnabled: boolean;
+  safetyAlertsEnabled: boolean;
+  weeklyReportEnabled: boolean;
+  sessionStartEnabled: boolean;
+  sessionEndEnabled: boolean;
+  streakMilestoneEnabled: boolean;
+  emailChannel: boolean;
+  pushChannel: boolean;
+}
+
+export interface NotificationPrefsUpdate {
+  dailySummaryEnabled?: boolean;
+  safetyAlertsEnabled?: boolean;
+  weeklyReportEnabled?: boolean;
+  sessionStartEnabled?: boolean;
+  sessionEndEnabled?: boolean;
+  streakMilestoneEnabled?: boolean;
+  emailChannel?: boolean;
+  pushChannel?: boolean;
+}
+
+export interface ControlAuditEntry {
+  action: string;
+  actorId: string;
+  targetChildId: string;
+  detail: string;
+  timestamp: string | null;
+}
+
+export interface ControlAuditLog {
+  entries: ControlAuditEntry[];
+  totalCount: number;
+  limit: number;
+  offset: number;
 }

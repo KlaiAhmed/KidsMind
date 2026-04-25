@@ -186,6 +186,23 @@ export function deriveEducationLevelFromBirthDate(birthDate: Date): EducationLev
   return 'secondary_school';
 }
 
+export function deriveStageAlignment(
+  birthDate: Date,
+  educationLevel: EducationLevel,
+): { isAccelerated: boolean; isBelowExpectedStage: boolean } {
+  const derivedLevel = deriveEducationLevelFromBirthDate(birthDate);
+
+  if (!derivedLevel || derivedLevel === educationLevel) {
+    return { isAccelerated: false, isBelowExpectedStage: false };
+  }
+
+  if (EDUCATION_LEVEL_ORDER[educationLevel] > EDUCATION_LEVEL_ORDER[derivedLevel]) {
+    return { isAccelerated: true, isBelowExpectedStage: false };
+  }
+
+  return { isAccelerated: false, isBelowExpectedStage: true };
+}
+
 export function buildDefaultWeekSchedule(subjects: SubjectKey[] = []): WeekSchedule {
   const hasSubjects = subjects.length > 0;
 
