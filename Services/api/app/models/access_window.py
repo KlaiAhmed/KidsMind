@@ -1,5 +1,5 @@
 """
-Child Week Schedule Model
+Access Window Model
 
 Responsibility: Stores one weekly access window and daily cap per child day.
 Layer: Model
@@ -13,15 +13,15 @@ from sqlalchemy.orm import relationship
 from core.database import Base
 
 
-class ChildWeekSchedule(Base):
-    __tablename__ = "child_week_schedule"
+class AccessWindow(Base):
+    __tablename__ = "access_windows"
     __table_args__ = (
-        CheckConstraint("day_of_week BETWEEN 0 AND 6", name="ck_child_week_schedule_day_of_week"),
-        CheckConstraint("daily_cap_seconds > 0", name="ck_child_week_schedule_daily_cap_seconds"),
+        CheckConstraint("day_of_week BETWEEN 0 AND 6", name="ck_access_windows_day_of_week"),
+        CheckConstraint("daily_cap_seconds > 0", name="ck_access_windows_daily_cap_seconds"),
         UniqueConstraint(
             "child_profile_id",
             "day_of_week",
-            name="uq_child_week_schedule_child_profile_id_day_of_week",
+            name="uq_access_windows_child_profile_id_day_of_week",
         ),
     )
 
@@ -38,9 +38,11 @@ class ChildWeekSchedule(Base):
     created_at = Column(DateTime(), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(), server_default=func.now(), onupdate=func.now(), nullable=False)
 
-    schedule_subjects = relationship(
-        "ChildScheduleSubject",
-        back_populates="schedule",
+    child_profile = relationship("ChildProfile", back_populates="access_windows")
+    subjects = relationship(
+        "AccessWindowSubject",
+        back_populates="access_window",
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    chat_sessions = relationship("ChatSession", back_populates="access_window", passive_deletes=True)
