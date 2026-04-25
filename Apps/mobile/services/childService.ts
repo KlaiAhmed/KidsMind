@@ -51,6 +51,7 @@ interface ChildProfileApiResponse {
   avatar_id: string | null;
   avatar: AvatarApiResponse | null;
   xp?: number;
+  is_paused?: boolean;
   rules: ChildRulesApiResponse | null;
   allowed_subjects: string[];
   week_schedule: ChildWeekScheduleApiResponse[];
@@ -80,15 +81,9 @@ function normalizeEducationStage(value: string): 'KINDERGARTEN' | 'PRIMARY' | 'S
   return 'SECONDARY';
 }
 
-const SUBJECT_VALUES: SubjectKey[] = [
-  'math',
-  'reading',
-  'french',
-  'english',
-  'science',
-  'history',
-  'art',
-];
+const SUBJECT_VALUES: readonly SubjectKey[] = Object.values([
+  'math', 'reading', 'french', 'english', 'science', 'history', 'art',
+] satisfies SubjectKey[]);
 
 const WEEKDAY_KEYS: WeekdayKey[] = [
   'monday',
@@ -439,6 +434,7 @@ function normalizeChildProfile(data: ChildProfileApiResponse): ChildProfile {
     totalSubjectsExplored: subjectIds.length,
     totalExercisesCompleted: 0,
     totalBadgesEarned: 0,
+    isPaused: Boolean(data.is_paused),
   };
 }
 
@@ -454,6 +450,7 @@ function normalizeBadge(item: BadgeApiItem, index: number): Badge {
     earnedAt: item.earned_at ?? null,
     condition: item.condition ?? 'Complete more learning activities to unlock this badge.',
     progressPercent: typeof item.progress_percent === 'number' ? item.progress_percent : undefined,
+    iconKey: item.icon_key ?? null,
   };
 }
 
@@ -466,7 +463,6 @@ export async function createChildProfile(input: CreateChildProfileInput): Promis
     education_stage: input.educationStage,
     is_accelerated: input.isAccelerated,
     is_below_expected_stage: input.isBelowExpectedStage,
-    languages: input.languages,
     ...avatarField,
     rules: {
       default_language: input.rules.defaultLanguage,
@@ -494,13 +490,12 @@ export async function patchChildProfile(
   const resolvedChildId = normalizeChildId(childId);
   const avatarField = buildAvatarIdField(input.avatarId);
 
-  const body = {
-    nickname: input.nickname,
-    birth_date: input.birthDate,
-    education_stage: input.educationStage,
-    languages: input.languages,
-    ...avatarField,
-  };
+ const body = {
+ nickname: input.nickname,
+ birth_date: input.birthDate,
+ education_stage: input.educationStage,
+ ...avatarField,
+ };
 
   const response = await apiRequest<ChildProfileApiResponse>(`/api/v1/children/${resolvedChildId}`, {
     method: 'PATCH',
@@ -513,7 +508,7 @@ export async function patchChildProfile(
 export async function patchChildRules(
   childId: string | number,
   input: UpdateChildRulesInput,
-): Promise<ChildRules> {
+): Promise<ChildProfile> {
   const resolvedChildId = normalizeChildId(childId);
 
   const body = {
@@ -526,25 +521,12 @@ export async function patchChildRules(
     week_schedule: buildWeekSchedulePatchPayload(input.weekSchedule),
   };
 
-  const response = await apiRequest<ChildRulesApiResponse>(`/api/v1/children/${resolvedChildId}/rules`, {
+  const response = await apiRequest<ChildProfileApiResponse>(`/api/v1/children/${resolvedChildId}/rules`, {
     method: 'PATCH',
     body,
   });
 
-  return {
-    defaultLanguage: response.default_language ?? input.defaultLanguage,
-    dailyLimitMinutes: input.dailyLimitMinutes,
-    allowedSubjects: [...input.allowedSubjects],
-    blockedSubjects: [...input.blockedSubjects],
-    weekSchedule: input.weekSchedule,
-    timeWindowStart: input.timeWindowStart,
-    timeWindowEnd: input.timeWindowEnd,
-    homeworkModeEnabled: Boolean(response.homework_mode_enabled),
-    voiceModeEnabled: Boolean(response.voice_mode_enabled),
-    audioStorageEnabled: Boolean(response.audio_storage_enabled),
-    conversationHistoryEnabled: Boolean(response.conversation_history_enabled),
-    contentSafetyLevel: input.contentSafetyLevel,
-  };
+  return normalizeChildProfile(response);
 }
 
 export async function listChildProfiles(): Promise<ChildProfile[]> {
@@ -573,12 +555,55 @@ export async function deleteChildProfile(childId: string | number): Promise<void
   });
 }
 
+interface BadgeCatalogApiResponse {
+  items: BadgeApiItem[];
+  total_earned: number;
+}
+
 export async function getChildBadges(childId: string | number): Promise<Badge[]> {
   const resolvedChildId = normalizeChildId(childId);
 
-  const response = await apiRequest<BadgeApiItem[]>(`/api/v1/children/${resolvedChildId}/badges`, {
+  const response = await apiRequest<BadgeCatalogApiResponse>(`/api/v1/children/${resolvedChildId}/badges`, {
     method: 'GET',
   });
 
-  return response.map((badge, index) => normalizeBadge(badge, index));
+  return response.items.map((badge, index) => normalizeBadge(badge, index));
+}
+
+interface AvatarCatalogItemApiResponse {
+  id: string;
+  tier_id: string;
+  name: string;
+  description: string | null;
+  file_path: string;
+  xp_threshold: number;
+  is_active: boolean;
+  sort_order: number;
+  is_locked: boolean;
+  url: string | null;
+}
+
+interface AvatarCatalogApiResponse {
+  items: AvatarCatalogItemApiResponse[];
+  child_xp: number;
+}
+
+export async function getAvatarCatalog(childId?: string): Promise<{
+  avatars: AvatarOption[];
+  childXp: number;
+}> {
+  const searchParams = childId ? `?child_id=${encodeURIComponent(childId)}` : '';
+
+  const response = await apiRequest<AvatarCatalogApiResponse>(
+    `/api/v1/media/avatars${searchParams}`,
+    { method: 'GET' },
+  );
+
+  const avatars: AvatarOption[] = response.items.map((item) => ({
+    id: item.id,
+    label: item.name,
+    asset: item.url ? { uri: item.url } : require('../assets/images/icon.png'),
+  }));
+
+  return { avatars, childXp: response.child_xp };
 }

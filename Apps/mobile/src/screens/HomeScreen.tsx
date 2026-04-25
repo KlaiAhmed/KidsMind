@@ -9,53 +9,9 @@ import { FeaturedLesson } from '@/src/components/FeaturedLesson';
 import { HomeHeader } from '@/src/components/HomeHeader';
 import { ProgressCard } from '@/src/components/ProgressCard';
 import { StreakCard } from '@/src/components/StreakCard';
-import { SubjectGrid, type SubjectGridItem } from '@/src/components/SubjectGrid';
+import { SubjectGrid } from '@/src/components/SubjectGrid';
 import { getChildTabSceneBottomPadding } from '@/components/navigation/bottomNavTokens';
-
-const SUBJECTS: SubjectGridItem[] = [
-  {
-    name: 'Maths',
-    lessonCount: '8 Lessons done',
-    iconName: 'calculator-variant-outline',
-    iconColor: '#4338CA',
-    iconBackground: '#EEF2FF',
-  },
-  {
-    name: 'Science',
-    lessonCount: '6 Lessons done',
-    iconName: 'microscope',
-    iconColor: '#059669',
-    iconBackground: '#ECFDF5',
-  },
-  {
-    name: 'English',
-    lessonCount: '5 Lessons done',
-    iconName: 'book-open-variant',
-    iconColor: '#D97706',
-    iconBackground: '#FFFBEB',
-  },
-  {
-    name: 'French',
-    lessonCount: '4 Lessons done',
-    iconName: 'translate',
-    iconColor: '#7C3AED',
-    iconBackground: '#F5F3FF',
-  },
-  {
-    name: 'History',
-    lessonCount: '3 Lessons done',
-    iconName: 'history',
-    iconColor: '#92400E',
-    iconBackground: '#FEF3C7',
-  },
-  {
-    name: 'Art',
-    lessonCount: '7 Lessons done',
-    iconName: 'palette-outline',
-    iconColor: '#EC4899',
-    iconBackground: '#FDF2F8',
-  },
-];
+import { buildSubjectGridItems } from '@/src/utils/profilePresentation';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -67,10 +23,12 @@ export default function HomeScreen() {
 
   const childName = profile?.nickname?.trim() || profile?.name?.trim() || 'Little Explorer';
   const avatarSource = getAvatarById(profile?.avatarId).asset;
-  const currentXP = profile?.xp ?? 1250;
-  const level = profile?.level ?? 5;
-  const maxXP = profile?.xpToNextLevel ?? 1500;
-  const streakDays = profile?.streakDays ?? 5;
+  const currentXP = profile?.xp ?? 0;
+  const level = profile?.level ?? 1;
+  const maxXP = profile?.xpToNextLevel ?? 100;
+  const streakDays = profile?.streakDays ?? 0;
+
+  const subjects = buildSubjectGridItems(profile?.subjectIds ?? []);
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
@@ -94,7 +52,7 @@ export default function HomeScreen() {
           title="Solar Systems"
         />
 
-        <SubjectGrid subjects={SUBJECTS} />
+        <SubjectGrid subjects={subjects} />
       </ScrollView>
     </SafeAreaView>
   );
