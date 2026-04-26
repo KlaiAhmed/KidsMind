@@ -37,6 +37,11 @@ from controllers.parent_dashboard import (
     resume_child_controller,
     update_notification_prefs_controller,
 )
+from controllers.parent_notification import (
+    list_notifications_controller,
+    mark_all_notifications_read_controller,
+    mark_notifications_read_controller,
+)
 from dependencies.auth import get_current_user
 from dependencies.infrastructure import get_db, get_redis
 from models.user import User, UserRole
@@ -48,6 +53,10 @@ from schemas.child_profile_schema import (
     ChildRulesUpdate,
 )
 from schemas.badge_schema import BadgeCatalogResponse
+from schemas.notification_schema import (
+    MarkNotificationsReadRequest,
+    ParentBadgeNotificationListResponse,
+)
 from schemas.parent_dashboard_schema import (
     BulkDeleteRequest,
     BulkDeleteResponse,
@@ -429,3 +438,74 @@ async def delete_child_profile(
 
     timer = time.perf_counter() - timer
     logger.info(f"Delete child profile request processed in {timer:.3f} seconds")
+
+
+@router.get("/notifications/badges", response_model=ParentBadgeNotificationListResponse)
+async def list_badge_notifications(
+    request: Request,
+    response: Response,
+    unread_only: bool = False,
+    limit: int = 50,
+    offset: int = 0,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    timer = time.perf_counter()
+
+    logger.info(f"List badge notifications request received for parent_id={current_user.id}")
+    result = await list_notifications_controller(
+        current_user=current_user,
+        db=db,
+        unread_only=unread_only,
+        limit=limit,
+        offset=offset,
+    )
+
+    timer = time.perf_counter() - timer
+    logger.info(f"List badge notifications request processed in {timer:.3f} seconds")
+
+    return result
+
+
+@router.patch("/notifications/badges/read", response_model=dict)
+async def mark_badge_notifications_read(
+    request: Request,
+    response: Response,
+    payload: MarkNotificationsReadRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    timer = time.perf_counter()
+
+    logger.info(f"Mark badge notifications read request received for parent_id={current_user.id}")
+    result = await mark_notifications_read_controller(
+        current_user=current_user,
+        db=db,
+        payload=payload,
+    )
+
+    timer = time.perf_counter() - timer
+    logger.info(f"Mark badge notifications read request processed in {timer:.3f} seconds")
+
+    return result
+
+
+@router.patch("/notifications/badges/read-all", response_model=dict)
+async def mark_all_badge_notifications_read(
+    request: Request,
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    timer = time.perf_counter()
+
+    logger.info(f"Mark all badge notifications read request received for parent_id={current_user.id}")
+    result = await mark_all_notifications_read_controller(
+        current_user=current_user,
+        db=db,
+    )
+
+    timer = time.perf_counter() - timer
+    logger.info(f"Mark all badge notifications read request processed in {timer:.3f} seconds")
+
+    return result

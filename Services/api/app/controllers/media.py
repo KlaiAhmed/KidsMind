@@ -90,10 +90,11 @@ async def download_media_controller(
     current_user: User,
     child_id: UUID | None,
     db: Session,
+    redis,
 ) -> dict:
     try:
-        media_service = MediaService(db=db)
-        return media_service.build_download_response(
+        media_service = MediaService(db=db, redis=redis)
+        return await media_service.build_download_response(
             media_id=media_id,
             current_user=current_user,
             child_id=child_id,
@@ -240,10 +241,10 @@ async def list_base_avatars_controller(*, db: Session, redis) -> list[dict]:
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
-async def avatar_catalog_controller(*, child_id: UUID | None, db: Session) -> dict:
+async def avatar_catalog_controller(*, child_id: UUID | None, db: Session, redis) -> dict:
     try:
-        media_service = MediaService(db=db)
-        return media_service.build_avatar_catalog(child_id=child_id)
+        media_service = MediaService(db=db, redis=redis)
+        return await media_service.build_avatar_catalog(child_id=child_id)
     except HTTPException:
         raise
     except (S3Error, RedisError, SQLAlchemyError, ValueError) as exc:
@@ -254,4 +255,33 @@ async def avatar_catalog_controller(*, child_id: UUID | None, db: Session) -> di
         )
     except Exception:
         logger.exception("Unexpected error building avatar catalog")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+
+async def replace_avatar_image_controller(
+    *,
+    avatar_id: UUID,
+    file: UploadFile,
+    db: Session,
+    redis,
+) -> Avatar:
+    try:
+        media_service = MediaService(db=db, redis=redis)
+        return await media_service.replace_avatar_image(
+            avatar_id=avatar_id,
+            file=file,
+        )
+    except HTTPException:
+        raise
+    except (S3Error, RedisError, SQLAlchemyError, ValueError) as exc:
+        _raise_mapped_media_error(
+            exc=exc,
+            operation="replace_avatar_image",
+            context={"avatar_id": str(avatar_id)},
+        )
+    except Exception:
+        logger.exception(
+            "Unexpected error replacing avatar image",
+            extra={"avatar_id": str(avatar_id)},
+        )
         raise HTTPException(status_code=500, detail="Internal Server Error")

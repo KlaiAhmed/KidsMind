@@ -81,6 +81,7 @@ def init_db() -> None:
         import models.child_profile
         import models.child_rules
         import models.child_allowed_subject
+        import models.child_gamification_stats
         import models.access_window
         import models.access_window_subject
         import models.avatar_tier_threshold
@@ -89,6 +90,8 @@ def init_db() -> None:
         import models.refresh_token_session
         import models.chat_history
         import models.chat_session
+        import models.badge
+        import models.parent_badge_notification
 
         Base.metadata.create_all(bind=engine)
 

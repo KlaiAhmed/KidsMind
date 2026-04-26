@@ -26,8 +26,10 @@ from models.chat_session import ChatSession
 from models.child_profile import ChildProfile
 from models.user import User
 from schemas.chat_schema import ChatSessionClose, ChatSessionCreate
+from services.badge_award_service import evaluate_and_award
 from services.chat_history import chat_history_service
 from services.child_profile_context_cache import get_child_profile_context
+from services.gamification_service import process_first_chat, process_login
 from services.generate_content import generate_content, stream_content
 from services.upload_file import remove_audio, upload_audio
 from utils.handle_service_errors import handle_service_errors
@@ -258,6 +260,7 @@ async def _persist_streamed_turn(
             user_message=user_message,
             ai_response=assistant_content,
         )
+        db.commit()
         logger.info(
             f"{stream_label.capitalize()} stream turn persisted",
             extra={
@@ -268,6 +271,7 @@ async def _persist_streamed_turn(
             },
         )
     except Exception:
+        db.rollback()
         logger.exception(
             f"Failed persisting {stream_label} stream chat turn",
             extra={
@@ -357,6 +361,18 @@ async def create_chat_session_controller(
     db.add(chat_session)
     db.commit()
     db.refresh(chat_session)
+
+    try:
+        await run_in_threadpool(process_login, db, child_profile.id)
+        await run_in_threadpool(evaluate_and_award, db, child_profile.id, current_user.id)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "Gamification processing failed during session creation — session unaffected",
+            extra={"child_id": str(child_profile.id)},
+        )
+
     return chat_session
 
 
@@ -518,28 +534,41 @@ async def voice_chat_controller(
             )
             ai_duration = time.perf_counter() - ai_start
 
-            assistant_content = _serialize_history_content(ai_response)
-            await chat_history_service.save_turn_to_db(
-                db=db,
-                session_id=chat_session.id,
-                user_message=text,
-                ai_response=assistant_content,
-            )
+        assistant_content = _serialize_history_content(ai_response)
+        await chat_history_service.save_turn_to_db(
+            db=db,
+            session_id=chat_session.id,
+            user_message=text,
+            ai_response=assistant_content,
+        )
+        db.commit()
 
-            request_duration = time.perf_counter() - request_start
-            logger.info(
-                "Voice chat completed",
-                extra={
-                    "user_id": normalized_user_id,
-                    "child_id": normalized_child_id,
-                    "session_id": normalized_session_id,
-                    "total_duration_seconds": round(request_duration, 3),
-                    "ai_duration_seconds": round(ai_duration, 3),
-                    "upload_duration_seconds": round(upload_duration, 3),
-                    "stt_duration_seconds": round(stt_duration, 3),
-                },
-            )
-            return ai_response
+        was_first_chat = await run_in_threadpool(process_first_chat, db, child_profile.id)
+        if was_first_chat:
+            try:
+                await run_in_threadpool(evaluate_and_award, db, child_profile.id, user_id)
+                db.commit()
+            except Exception:
+                db.rollback()
+                logger.exception(
+                    "Badge evaluation failed during voice chat — chat unaffected",
+                    extra={"child_id": normalized_child_id},
+                )
+
+        request_duration = time.perf_counter() - request_start
+        logger.info(
+            "Voice chat completed",
+            extra={
+                "user_id": normalized_user_id,
+                "child_id": normalized_child_id,
+                "session_id": normalized_session_id,
+                "total_duration_seconds": round(request_duration, 3),
+                "ai_duration_seconds": round(ai_duration, 3),
+                "upload_duration_seconds": round(upload_duration, 3),
+                "stt_duration_seconds": round(stt_duration, 3),
+            },
+        )
+        return ai_response
     finally:
         if filename and not store_audio:
             await run_in_threadpool(remove_audio, filename)
@@ -637,6 +666,19 @@ async def text_chat_controller(
             user_message=text,
             ai_response=assistant_content,
         )
+        db.commit()
+
+        was_first_chat = await run_in_threadpool(process_first_chat, db, child_profile.id)
+        if was_first_chat:
+            try:
+                await run_in_threadpool(evaluate_and_award, db, child_profile.id, user_id)
+                db.commit()
+            except Exception:
+                db.rollback()
+                logger.exception(
+                    "Badge evaluation failed during text chat — chat unaffected",
+                    extra={"child_id": normalized_child_id},
+                )
 
         request_duration = time.perf_counter() - request_start
         logger.info(

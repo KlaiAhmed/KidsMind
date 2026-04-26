@@ -77,12 +77,28 @@ class ChildProfileService:
         self._require_parent_ownership(child_profile, parent_id)
         return child_profile
 
-    def _ensure_avatar_exists(self, avatar_id: UUID | None) -> None:
+    def _ensure_avatar_exists(self, avatar_id: UUID | None, child_id: UUID | None = None, *, skip_xp_check: bool = False, enforce_zero_xp: bool = False) -> None:
         if avatar_id is None:
             return
-        avatar_exists = self.db.query(Avatar.id).filter(Avatar.id == avatar_id).first()
-        if not avatar_exists:
+        if skip_xp_check and enforce_zero_xp:
+            raise ValueError("skip_xp_check and enforce_zero_xp are mutually exclusive")
+        avatar = self.db.query(Avatar).filter(Avatar.id == avatar_id).first()
+        if not avatar:
             raise HTTPException(status_code=422, detail="avatar_id does not reference an existing avatar")
+        if enforce_zero_xp:
+            xp_threshold = int(avatar.xp_threshold or 0)
+            if xp_threshold > 0:
+                raise HTTPException(status_code=403, detail="New child profiles can only select base avatars (xp_threshold == 0)")
+            return
+        if skip_xp_check:
+            return
+        xp_threshold = int(avatar.xp_threshold or 0)
+        if xp_threshold > 0:
+            if child_id is None:
+                raise HTTPException(status_code=403, detail="Child has not unlocked this avatar")
+            child = self.db.query(ChildProfile).filter(ChildProfile.id == child_id).first()
+            if not child or int(child.xp or 0) < xp_threshold:
+                raise HTTPException(status_code=403, detail="Child has not unlocked this avatar")
 
     @staticmethod
     def _extract_unique_subjects(
@@ -343,7 +359,7 @@ class ChildProfileService:
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-        self._ensure_avatar_exists(payload.avatar_id)
+        self._ensure_avatar_exists(payload.avatar_id, child_id=None, enforce_zero_xp=True)
 
         try:
             child_profile = create_child_profile(
@@ -404,7 +420,7 @@ class ChildProfileService:
         if "nickname" in update_data:
             child_profile.nickname = update_data["nickname"]
         if "avatar_id" in update_data:
-            self._ensure_avatar_exists(update_data["avatar_id"])
+            self._ensure_avatar_exists(update_data["avatar_id"], child_id=child_id)
             child_profile.avatar_id = update_data["avatar_id"]
 
         has_profile_derivation_input = any(
@@ -457,7 +473,7 @@ class ChildProfileService:
         if "nickname" in update_data:
             child_profile.nickname = update_data["nickname"]
         if "avatar_id" in update_data:
-            self._ensure_avatar_exists(update_data["avatar_id"])
+            self._ensure_avatar_exists(update_data["avatar_id"], child_id=child_id)
             child_profile.avatar_id = update_data["avatar_id"]
 
         has_profile_derivation_input = any(

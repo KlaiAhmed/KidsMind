@@ -188,6 +188,16 @@ class Settings(BaseSettings):
     SECRET_REFRESH_KEY: str
     CHILD_PROFILE_CONTEXT_TTL_SECONDS: int = 24 * 3600
 
+    MEDIA_SIGNED_URL_TTL_SECONDS: int = 86400
+    AVATAR_URL_CACHE_TTL_SECONDS: int = 82800
+    AVATAR_URL_CACHE_REFRESH_BUFFER_SECONDS: int = 3600
+    XP_PER_CORRECT_ANSWER: int = 5
+    XP_PERFECT_QUIZ_BONUS: int = 10
+    XP_DAILY_LOGIN: int = 2
+    STREAK_MULTIPLIER_3_DAYS: float = 1.5
+    STREAK_MULTIPLIER_7_DAYS: float = 2.0
+    STREAK_MULTIPLIER_30_DAYS: float = 3.0
+
     # Initial super admin bootstrap
     SUPER_ADMIN_EMAIL: str | None = None
     SUPER_ADMIN_USERNAME: str | None = None

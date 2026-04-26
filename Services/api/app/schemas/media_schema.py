@@ -92,7 +92,6 @@ class AvatarUpdateRequest(BaseModel):
     tier_id: UUID | None = None
     name: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = Field(default=None, max_length=2000)
-    file_path: str | None = Field(default=None, min_length=1, max_length=512)
     xp_threshold: int | None = Field(default=None, ge=0)
     is_active: bool | None = None
     sort_order: int | None = Field(default=None, ge=0)
@@ -105,16 +104,6 @@ class AvatarUpdateRequest(BaseModel):
         normalized = value.strip()
         if not normalized:
             raise ValueError("name cannot be blank")
-        return normalized
-
-    @field_validator("file_path")
-    @classmethod
-    def validate_file_path(cls, value: str | None) -> str | None:
-        if value is None:
-            return value
-        normalized = value.strip()
-        if not normalized:
-            raise ValueError("file_path cannot be blank")
         return normalized
 
 

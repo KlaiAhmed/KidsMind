@@ -450,4 +450,4 @@ def match_endpoint_rule(*, method: str, path: str, policy: ResolvedRateLimitPoli
 
 
 def dev_mode_startup_warning() -> str:
-    return (f"Rate limiting is running in DEV MODE. All limits are 1000× higher than production.")
+    return (f"Rate limiting is running in DEV MODE. All limits are 1000x higher than production.")

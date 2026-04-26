@@ -12,7 +12,13 @@ from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, Up
 from redis.asyncio import Redis
 from sqlalchemy.orm import Session
 
-from controllers.media import download_media_controller, upload_media_controller, avatar_catalog_controller
+from controllers.media import (
+    avatar_catalog_controller,
+    download_media_controller,
+    list_base_avatars_controller,
+    replace_avatar_image_controller,
+    upload_media_controller,
+)
 from dependencies.auth import get_current_admin_or_super_admin, get_current_user
 from dependencies.infrastructure import get_db, get_redis
 from models.user import User
@@ -29,8 +35,9 @@ async def avatar_catalog(
     child_id: UUID | None = Query(default=None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    redis: Redis = Depends(get_redis),
 ):
-    return await avatar_catalog_controller(child_id=child_id, db=db)
+    return await avatar_catalog_controller(child_id=child_id, db=db, redis=redis)
 
 
 @router.post("/upload", response_model=AvatarResponse, status_code=201)
@@ -74,10 +81,23 @@ async def download_media(
     child_id: UUID | None = Query(default=None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    redis: Redis = Depends(get_redis),
 ):
     return await download_media_controller(
         media_id=avatar_id,
         current_user=current_user,
         child_id=child_id,
         db=db,
+        redis=redis,
     )
+
+
+@router.get("/avatars/base")
+async def list_base_avatars(
+    request: Request,
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    redis: Redis = Depends(get_redis),
+):
+    return await list_base_avatars_controller(db=db, redis=redis)

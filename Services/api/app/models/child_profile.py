@@ -67,3 +67,10 @@ class ChildProfile(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    gamification_stats = relationship(
+        "ChildGamificationStats",
+        back_populates="child_profile",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )

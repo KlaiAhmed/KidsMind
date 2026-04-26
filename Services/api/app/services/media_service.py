@@ -23,12 +23,11 @@ from models.avatar_tier_threshold import AvatarTier
 from models.child_profile import ChildProfile
 from models.user import User, UserRole
 from schemas.media_schema import AvatarCreate, AvatarTierUpdateItem, AvatarUpdateRequest, AvatarUploadFormData
-from services.media_cache_service import get_base_avatar_cache
+from services.media_cache_service import get_base_avatar_cache, get_cached_signed_url, invalidate_base_avatar_cache, invalidate_signed_url_cache
 from utils.logger import logger
 
 
 MEDIA_PUBLIC_BUCKET = "media-public"
-SIGNED_URL_EXPIRY_SECONDS = 900
 IMAGE_CONTENT_TYPES = {"image/webp", "image/png", "image/jpeg"}
 SLUG_SANITIZER = re.compile(r"[^a-z0-9_]+")
 
@@ -157,8 +156,6 @@ class MediaService:
             avatar.name = update_data["name"]
         if "description" in update_data:
             avatar.description = update_data["description"]
-        if "file_path" in update_data:
-            avatar.file_path = update_data["file_path"]
         if "xp_threshold" in update_data:
             avatar.xp_threshold = int(update_data["xp_threshold"])
         if "is_active" in update_data:
@@ -214,7 +211,7 @@ class MediaService:
         if (child_profile.xp or 0) < int(avatar.xp_threshold or 0):
             raise HTTPException(status_code=403, detail="Avatar is locked for this child profile")
 
-    def build_download_response(
+    async def build_download_response(
         self,
         *,
         media_id: UUID,
@@ -226,22 +223,27 @@ class MediaService:
         if self._is_locked_avatar(avatar):
             self._enforce_locked_avatar_access(avatar=avatar, current_user=current_user, child_id=child_id)
 
-        try:
-            url = minio_client.presigned_get_object(
-                MEDIA_PUBLIC_BUCKET,
-                avatar.file_path,
-                expires=timedelta(seconds=SIGNED_URL_EXPIRY_SECONDS),
-            )
-        except S3Error:
-            logger.exception("Failed to generate avatar download URL")
-            raise HTTPException(status_code=500, detail="Failed to generate avatar download URL")
+        url = None
+        if self.redis:
+            url = await get_cached_signed_url(self.redis, avatar.file_path)
+
+        if url is None:
+            try:
+                url = minio_client.presigned_get_object(
+                    MEDIA_PUBLIC_BUCKET,
+                    avatar.file_path,
+                    expires=timedelta(seconds=settings.MEDIA_SIGNED_URL_TTL_SECONDS),
+                )
+            except S3Error:
+                logger.exception("Failed to generate avatar download URL")
+                raise HTTPException(status_code=500, detail="Failed to generate avatar download URL")
 
         return {
             "avatar_id": avatar.id,
             "name": avatar.name,
             "file_path": avatar.file_path,
             "url": url,
-            "expires_in_seconds": SIGNED_URL_EXPIRY_SECONDS,
+            "expires_in_seconds": settings.MEDIA_SIGNED_URL_TTL_SECONDS,
         }
 
     def list_media_assets(self, *, include_inactive: bool) -> list[Avatar]:
@@ -283,7 +285,7 @@ class MediaService:
 
         return self.db.query(AvatarTier).order_by(AvatarTier.sort_order.asc()).all()
 
-    def build_avatar_catalog(self, *, child_id: UUID | None = None) -> dict[str, Any]:
+    async def build_avatar_catalog(self, *, child_id: UUID | None = None) -> dict[str, Any]:
         avatars = (
             self.db.query(Avatar)
             .filter(Avatar.is_active.is_(True))
@@ -301,12 +303,14 @@ class MediaService:
         for avatar in avatars:
             is_locked = int(avatar.xp_threshold or 0) > child_xp
             url = None
-            if not is_locked:
+            if self.redis:
+                url = await get_cached_signed_url(self.redis, avatar.file_path)
+            if url is None:
                 try:
                     url = minio_client.presigned_get_object(
                         MEDIA_PUBLIC_BUCKET,
                         avatar.file_path,
-                        expires=timedelta(seconds=SIGNED_URL_EXPIRY_SECONDS),
+                        expires=timedelta(seconds=settings.MEDIA_SIGNED_URL_TTL_SECONDS),
                     )
                 except S3Error:
                     logger.warning(
@@ -334,3 +338,59 @@ class MediaService:
         if not self.redis:
             raise HTTPException(status_code=500, detail="Redis dependency is required")
         return await get_base_avatar_cache(self.redis, self.db)
+
+    async def replace_avatar_image(self, *, avatar_id: UUID, file: UploadFile) -> Avatar:
+        avatar = self.get_media_asset_or_404(avatar_id)
+
+        file_size = _file_size_bytes(file)
+        self._validate_avatar_file(file=file, file_size=file_size)
+
+        new_file_path = self._build_avatar_file_path(
+            name=avatar.name,
+            original_filename=file.filename or avatar.name,
+        )
+
+        try:
+            minio_client.put_object(
+                bucket_name=MEDIA_PUBLIC_BUCKET,
+                object_name=new_file_path,
+                data=file.file,
+                length=file_size,
+                content_type=file.content_type,
+            )
+        except S3Error:
+            logger.exception("MinIO upload failed during avatar image replacement")
+            raise HTTPException(status_code=500, detail="Failed to upload replacement avatar image")
+
+        old_file_path = avatar.file_path
+        avatar.file_path = new_file_path
+        try:
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            logger.exception("Failed to update avatar file_path after image replacement")
+            try:
+                minio_client.remove_object(MEDIA_PUBLIC_BUCKET, new_file_path)
+            except S3Error:
+                logger.warning(
+                    "Failed to clean up new avatar object from MinIO after DB commit failure",
+                    extra={"avatar_id": str(avatar_id), "new_file_path": new_file_path},
+                )
+            raise HTTPException(status_code=500, detail="Failed to update avatar metadata")
+
+        self.db.refresh(avatar)
+
+        if old_file_path:
+            try:
+                minio_client.remove_object(MEDIA_PUBLIC_BUCKET, old_file_path)
+            except S3Error:
+                logger.warning(
+                    "Failed to delete old avatar object from MinIO during replacement",
+                    extra={"avatar_id": str(avatar_id), "old_file_path": old_file_path},
+                )
+            if self.redis:
+                await invalidate_signed_url_cache(self.redis, old_file_path)
+                await invalidate_signed_url_cache(self.redis, new_file_path)
+                await invalidate_base_avatar_cache(self.redis)
+
+        return avatar

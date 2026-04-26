@@ -1,26 +1,35 @@
 """
 Admin Media Router
 
-Responsibility: Exposes admin avatar management endpoints.
+Responsibility: Exposes admin avatar and badge management endpoints.
 Layer: Router
 Domain: Media / Administration
 """
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
 from redis.asyncio import Redis
 from sqlalchemy.orm import Session
 
+from controllers.badge_admin import (
+    delete_badge_controller,
+    list_badges_controller,
+    replace_badge_icon_controller,
+    update_badge_controller,
+    upload_badge_controller,
+)
 from controllers.media import (
     delete_media_controller,
     list_media_controller,
+    replace_avatar_image_controller,
     update_avatar_thresholds_controller,
     update_media_controller,
 )
 from dependencies.auth import get_current_admin_or_super_admin
 from dependencies.infrastructure import get_db, get_redis
 from models.user import User
+from schemas.badge_schema import BadgeAdminListResponse, BadgeAdminResponse, BadgeAdminUpdateRequest
 from schemas.media_schema import (
     AvatarListResponse,
     AvatarResponse,
@@ -92,32 +101,96 @@ async def update_avatar_thresholds(
     return [AvatarTierResponse.model_validate(row) for row in rows]
 
 
-# TODO: Badge management must be redesigned because media_assets was replaced by avatars.
-@router.get("/badges")
+@router.post("/avatars/{avatar_id}/replace-image", response_model=AvatarResponse)
+async def replace_avatar_image(
+    avatar_id: UUID,
+    request: Request,
+    response: Response,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    redis: Redis = Depends(get_redis),
+):
+    return await replace_avatar_image_controller(
+        avatar_id=avatar_id,
+        file=file,
+        db=db,
+        redis=redis,
+    )
+
+
+@router.get("/badges", response_model=BadgeAdminListResponse)
 async def list_badges(
     request: Request,
     response: Response,
+    db: Session = Depends(get_db),
 ):
-    raise HTTPException(status_code=501, detail="Badge management endpoint requires schema redesign")
+    items = await list_badges_controller(db=db)
+    return BadgeAdminListResponse(items=items)
 
 
-# TODO: Badge management must be redesigned because media_assets was replaced by avatars.
-@router.patch("/badges/{media_id}")
+@router.post("/badges", response_model=BadgeAdminResponse)
+async def upload_badge(
+    request: Request,
+    response: Response,
+    file: UploadFile = File(...),
+    name: str = Form(...),
+    description: str | None = Form(default=None),
+    condition: str = Form(...),
+    sort_order: int = Form(default=0),
+    is_active: bool = Form(default=True),
+    db: Session = Depends(get_db),
+    redis: Redis = Depends(get_redis),
+):
+    return await upload_badge_controller(
+        file=file,
+        name=name,
+        description=description,
+        condition=condition,
+        sort_order=sort_order,
+        is_active=is_active,
+        db=db,
+        redis=redis,
+    )
+
+
+@router.patch("/badges/{badge_id}", response_model=BadgeAdminResponse)
 async def update_badge(
-    media_id: int,
+    badge_id: UUID,
+    payload: BadgeAdminUpdateRequest,
     request: Request,
     response: Response,
+    db: Session = Depends(get_db),
 ):
-    del media_id
-    raise HTTPException(status_code=501, detail="Badge management endpoint requires schema redesign")
+    return await update_badge_controller(
+        badge_id=badge_id,
+        payload=payload,
+        db=db,
+    )
 
 
-# TODO: Badge management must be redesigned because media_assets was replaced by avatars.
-@router.delete("/badges/{media_id}", status_code=501)
+@router.delete("/badges/{badge_id}", status_code=204)
 async def delete_badge(
-    media_id: int,
+    badge_id: UUID,
     request: Request,
     response: Response,
+    db: Session = Depends(get_db),
+    redis: Redis = Depends(get_redis),
 ):
-    del media_id
-    raise HTTPException(status_code=501, detail="Badge management endpoint requires schema redesign")
+    await delete_badge_controller(badge_id=badge_id, db=db, redis=redis)
+
+
+@router.post("/badges/{badge_id}/replace-icon", response_model=BadgeAdminResponse)
+async def replace_badge_icon(
+    badge_id: UUID,
+    request: Request,
+    response: Response,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    redis: Redis = Depends(get_redis),
+):
+    return await replace_badge_icon_controller(
+        badge_id=badge_id,
+        file=file,
+        db=db,
+        redis=redis,
+    )

@@ -7,6 +7,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from models.child_profile import ChildProfile
+from models.child_gamification_stats import ChildGamificationStats
 from utils.child_profile_logic import StudentProfileDerivation
 
 
@@ -29,6 +30,11 @@ def create_child_profile(
     )
     db.add(child_profile)
     db.flush()
+
+    stats = ChildGamificationStats(child_profile_id=child_profile.id)
+    db.add(stats)
+    db.flush()
+
     return child_profile
 
 

@@ -125,10 +125,7 @@ class ChatHistoryService:
 
             db.add_all([user_row, assistant_row])
             db.flush()
-            db.commit()
         except Exception as exc:
-            db.rollback()
-
             table_exists = None
             try:
                 table_exists = inspect(db.get_bind()).has_table(ChatHistory.__tablename__)

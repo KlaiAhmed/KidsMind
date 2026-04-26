@@ -43,6 +43,7 @@ from routers.chat import router as chat_router
 from routers.children import router as children_router
 from routers.health import router as health_router
 from routers.media import router as media_router
+from routers.quiz import router as quiz_router
 from routers.safety_and_rules import router as safety_and_rules_router
 from routers.users import router as users_router
 from routers.web_auth import router as web_auth_router
@@ -175,6 +176,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_media_router, prefix="/api/v1/media/admin", tags=["Admin Media"])
     app.include_router(chat_router, prefix="/api/v1/chat", tags=["Chat"])
     app.include_router(children_router, prefix="/api/v1/children", tags=["Children"])
+    app.include_router(quiz_router, prefix="/api/v1/quizzes", tags=["Quizzes"])
     app.include_router(safety_and_rules_router, prefix="/api/v1", tags=["Safety and Rules"])
     app.include_router(admin_users_router, prefix="/api/v1/users", tags=["Admin Users"])
     app.include_router(users_router, prefix="/api/v1/users", tags=["Users"])
