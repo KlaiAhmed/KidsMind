@@ -1,5 +1,10 @@
 # KidsMind Web Client (React + TypeScript)
 
+![React](https://img.shields.io/badge/React_19-61DAFB?logo=react)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite_7-646CFF?logo=vite&logoColor=white)
+![React Router](https://img.shields.io/badge/React_Router_7-CA4245?logo=reactrouter)
+
 AI-powered, child-safe learning web client for ages 3–15 and parents.
 
 - **Framework**: React 19 + TypeScript (strict)
