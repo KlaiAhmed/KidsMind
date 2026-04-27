@@ -9,7 +9,7 @@
  * explicit PIN entry or cancel action to exit.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   BackHandler,
@@ -30,49 +30,65 @@ import Animated, {
   withSpring,
   withTiming,
   runOnJS,
+  type SharedValue,
 } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Colors, Radii, Shadows, Sizing, Spacing, Typography } from '@/constants/theme';
+import { Colors, Radii, Sizing, Spacing, Typography } from '@/constants/theme';
 
-// PIN digit configuration
 const PIN_DIGITS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'backspace'] as const;
 type PinDigit = (typeof PIN_DIGITS)[number];
 
-// Component state types
 type PinGateState = 'idle' | 'entering' | 'submitting' | 'error' | 'success';
 
+interface PinDotProps {
+  index: number;
+  isFilled: boolean;
+  isError: boolean;
+  isSuccess: boolean;
+  dotScale: SharedValue<number>;
+  successCheckmarkStyle: Animated.AnimateStyle<typeof Animated.View>;
+}
+
+function PinDot({ index, isFilled, isError, isSuccess, dotScale, successCheckmarkStyle }: PinDotProps) {
+  const dotAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: dotScale.value }],
+  }));
+
+  return (
+    <Animated.View
+      key={index}
+      style={[
+        styles.pinDot,
+        isFilled && styles.pinDotFilled,
+        isError && styles.pinDotError,
+        dotAnimatedStyle,
+      ]}
+    >
+      {isFilled && !isSuccess && <View style={styles.pinDotInner} />}
+      {isFilled && isSuccess && index === 3 && (
+        <Animated.View style={[styles.successCheckmark, successCheckmarkStyle]}>
+          <MaterialCommunityIcons
+            color={Colors.success}
+            name="check-bold"
+            size={16}
+          />
+        </Animated.View>
+      )}
+    </Animated.View>
+  );
+}
+
 interface ParentPINGateProps {
-  /**
-   * Controls modal visibility
-   */
   visible: boolean;
-  /**
-   * Called when PIN is successfully verified
-   */
   onSuccess: () => void;
-  /**
-   * Called when user cancels/dismisses the gate
-   */
   onCancel: () => void;
-  /**
-   * Async function to verify PIN against server
-   */
   verifyPin: (pin: string) => Promise<boolean>;
-  /**
-   * Optional title override (default: "Parent Access")
-   */
   title?: string;
-  /**
-   * Optional subtitle override
-   */
   subtitle?: string;
-  /**
-   * Optional: enable biometric bypass (future-proofing)
-   */
   onBiometricSuccess?: () => void;
 }
 
@@ -90,59 +106,40 @@ export function ParentPINGate({
   const [gateState, setGateState] = useState<PinGateState>('idle');
   const [errorMessage, setErrorMessage] = useState<string>('');
 
-  // Animation values
   const modalScale = useSharedValue(0.95);
   const modalOpacity = useSharedValue(0);
   const shakeTranslateX = useSharedValue(0);
-  const dotScaleValues = useRef<Array<ReturnType<typeof useSharedValue>>>(
-    Array(4).fill(null).map(() => useSharedValue(1)),
-  ).current;
+  const dotScale0 = useSharedValue(1);
+  const dotScale1 = useSharedValue(1);
+  const dotScale2 = useSharedValue(1);
+  const dotScale3 = useSharedValue(1);
+  const dotScaleValues = useMemo(() => [dotScale0, dotScale1, dotScale2, dotScale3], [dotScale0, dotScale1, dotScale2, dotScale3]);
   const successScale = useSharedValue(0);
 
-  // Reset state when modal opens/closes
   useEffect(() => {
     if (visible) {
-      // Animate in
-      modalScale.value = withSpring(1, {
-        damping: 15,
-        stiffness: 150,
-      });
+      modalScale.value = withSpring(1, { damping: 15, stiffness: 150 });
       modalOpacity.value = withTiming(1, { duration: 200, easing: Easing.out(Easing.cubic) });
-
-      // Auto-focus after modal animation
-      const timer = setTimeout(() => {
-        // PIN pad is always focused
-      }, 300);
-
+      const timer = setTimeout(() => {}, 300);
       return () => clearTimeout(timer);
     } else {
-      // Reset state when closed
       setPin('');
       setGateState('idle');
       setErrorMessage('');
       modalScale.value = 0.95;
       modalOpacity.value = 0;
       shakeTranslateX.value = 0;
-      dotScaleValues.forEach((sv) => {
-        sv.value = 1;
-      });
+      dotScaleValues.forEach((sv) => { sv.value = 1; });
       successScale.value = 0;
     }
   }, [visible, modalScale, modalOpacity, shakeTranslateX, dotScaleValues, successScale]);
 
-  // Handle hardware back button - prevent dismiss
   useEffect(() => {
     if (!visible) return;
-
-    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
-      // Prevent default back behavior - only allow cancel button
-      return true;
-    });
-
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => true);
     return () => backHandler.remove();
   }, [visible]);
 
-  // Shake animation for wrong PIN
   const triggerShake = useCallback(() => {
     'worklet';
     shakeTranslateX.value = withSequence(
@@ -153,12 +150,9 @@ export function ParentPINGate({
       withTiming(-10, { duration: 80, easing: Easing.inOut(Easing.cubic) }),
       withTiming(0, { duration: 50, easing: Easing.out(Easing.cubic) }),
     );
-
-    // Haptic feedback for error
-    runOnJS(Haptics.notificationAsync)(Haptics.NotificationFeedbackType.Error).catch(() => undefined);
+    runOnJS(Haptics.notificationAsync)(Haptics.NotificationFeedbackType.Error);
   }, [shakeTranslateX]);
 
-  // Animate dot entry
   const animateDotEntry = useCallback(
     (index: number) => {
       'worklet';
@@ -170,7 +164,6 @@ export function ParentPINGate({
     [dotScaleValues],
   );
 
-  // Handle PIN digit press
   const handleDigitPress = useCallback(
     async (digit: PinDigit) => {
       if (gateState === 'submitting' || gateState === 'success') return;
@@ -189,7 +182,6 @@ export function ParentPINGate({
         setPin(newPin);
         animateDotEntry(newPin.length - 1);
 
-        // Auto-submit when 4 digits entered
         if (newPin.length === 4) {
           setGateState('submitting');
           Keyboard.dismiss();
@@ -199,7 +191,6 @@ export function ParentPINGate({
 
             if (isValid) {
               setGateState('success');
-              // Success micro-animation
               successScale.value = withSequence(
                 withSpring(1.2, { damping: 8, stiffness: 400 }),
                 withSpring(1, { damping: 12, stiffness: 200 }),
@@ -207,18 +198,14 @@ export function ParentPINGate({
               await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
                 () => undefined,
               );
-
-              // Brief delay for success animation before navigating
-              setTimeout(() => {
-                onSuccess();
-              }, 400);
+              setTimeout(() => { onSuccess(); }, 400);
             } else {
               setGateState('error');
               setErrorMessage('Incorrect PIN. Please try again.');
               triggerShake();
               setPin('');
             }
-          } catch (error) {
+          } catch {
             setGateState('error');
             setErrorMessage('Something went wrong. Please try again.');
             triggerShake();
@@ -230,13 +217,11 @@ export function ParentPINGate({
     [pin, gateState, verifyPin, onSuccess, triggerShake, animateDotEntry, successScale],
   );
 
-  // Handle cancel
   const handleCancel = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
     onCancel();
   }, [onCancel]);
 
-  // Animated styles
   const modalAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: modalScale.value }],
     opacity: modalOpacity.value,
@@ -250,38 +235,6 @@ export function ParentPINGate({
     transform: [{ scale: successScale.value }],
     opacity: successScale.value,
   }));
-
-  const renderDot = (index: number) => {
-    const isFilled = index < pin.length;
-    const isError = gateState === 'error' && pin.length === 0;
-
-    const dotStyle = useAnimatedStyle(() => ({
-      transform: [{ scale: dotScaleValues[index].value }],
-    }));
-
-    return (
-      <Animated.View
-        key={index}
-        style={[
-          styles.pinDot,
-          isFilled && styles.pinDotFilled,
-          isError && styles.pinDotError,
-          dotStyle,
-        ]}
-      >
-        {isFilled && gateState !== 'success' && <View style={styles.pinDotInner} />}
-        {isFilled && gateState === 'success' && index === 3 && (
-          <Animated.View style={[styles.successCheckmark, successCheckmarkStyle]}>
-            <MaterialCommunityIcons
-              color={Colors.success}
-              name="check-bold"
-              size={16}
-            />
-          </Animated.View>
-        )}
-      </Animated.View>
-    );
-  };
 
   const renderKey = (digit: PinDigit, index: number) => {
     const isBackspace = digit === 'backspace';
@@ -320,25 +273,18 @@ export function ParentPINGate({
   return (
     <Modal
       animationType="none"
-      onRequestClose={() => {
-        /* Prevent default back button - only cancel button works */
-      }}
+      onRequestClose={() => {}}
       statusBarTranslucent
       transparent
       visible={visible}
     >
       <StatusBar barStyle="light-content" translucent />
 
-      {/* Blurred background - no tap to dismiss */}
       <BlurView intensity={50} style={StyleSheet.absoluteFill} tint="dark" />
-
-      {/* Dark overlay for extra depth */}
       <View style={styles.overlay} />
 
-      {/* Modal content */}
       <View style={[styles.container, { paddingBottom: insets.bottom + Spacing.md }]}>
         <Animated.View style={[styles.modalContent, modalAnimatedStyle]}>
-          {/* Header */}
           <View style={styles.header}>
             <View style={styles.iconContainer}>
               <MaterialCommunityIcons color={Colors.primary} name="shield-account" size={32} />
@@ -351,12 +297,20 @@ export function ParentPINGate({
             )}
           </View>
 
-          {/* PIN Display with shake animation */}
           <Animated.View style={[styles.pinDisplay, shakeAnimatedStyle]}>
-            {Array.from({ length: 4 }).map((_, index) => renderDot(index))}
+            {Array.from({ length: 4 }).map((_, index) => (
+              <PinDot
+                key={index}
+                index={index}
+                isFilled={index < pin.length}
+                isError={gateState === 'error' && pin.length === 0}
+                isSuccess={gateState === 'success'}
+                dotScale={dotScaleValues[index]}
+                successCheckmarkStyle={successCheckmarkStyle}
+              />
+            ))}
           </Animated.View>
 
-          {/* Error message */}
           {errorMessage && gateState === 'error' && (
             <View style={styles.errorContainer}>
               <MaterialCommunityIcons color={Colors.errorText} name="alert-circle" size={16} />
@@ -364,7 +318,6 @@ export function ParentPINGate({
             </View>
           )}
 
-          {/* Loading indicator during submit */}
           {gateState === 'submitting' && (
             <View style={styles.loadingContainer}>
               <ActivityIndicator color={Colors.primary} size="small" />
@@ -372,12 +325,12 @@ export function ParentPINGate({
             </View>
           )}
 
-          {/* PIN Pad */}
           <View style={styles.keypadContainer}>
-            <View style={styles.keypadGrid}>{PIN_DIGITS.map((digit, index) => renderKey(digit, index))}</View>
+            <View style={styles.keypadGrid}>
+              {PIN_DIGITS.map((digit, index) => renderKey(digit, index))}
+            </View>
           </View>
 
-          {/* Cancel button - only exit path besides correct PIN */}
           <Pressable
             accessibilityLabel="Cancel and return to child space"
             accessibilityRole="button"

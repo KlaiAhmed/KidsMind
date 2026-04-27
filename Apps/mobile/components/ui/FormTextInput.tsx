@@ -1,7 +1,7 @@
 import { type TextInputProps, View, Text, StyleSheet } from 'react-native';
 import { TextInput as RNTextInput } from 'react-native';
 import { useRef } from 'react';
-import { Colors, Radii, Sizing, Typography, Spacing } from '@/constants/theme';
+import { Colors, Radii, Typography, Spacing } from '@/constants/theme';
 
 export interface FormTextInputProps extends TextInputProps {
   label: string;
@@ -53,10 +53,10 @@ const styles = StyleSheet.create({
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: Sizing.inputHeight,
+    height: 52,
     borderWidth: 1,
     borderColor: Colors.inputBorder,
-    borderRadius: Radii.sm,
+    borderRadius: Radii.lg,
     backgroundColor: Colors.white,
     paddingHorizontal: Spacing.md,
   },
@@ -76,16 +76,19 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     ...Typography.body,
+    fontSize: 15,
     color: Colors.text,
     paddingVertical: 0,
-    height: Sizing.inputHeight,
+    height: 52,
   },
   inputWithIcon: {
     paddingLeft: 0,
   },
   errorText: {
     ...Typography.caption,
+    fontSize: 12,
     color: Colors.errorText,
     marginTop: Spacing.xs,
+    marginLeft: Spacing.sm,
   },
 });

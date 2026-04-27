@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "mobile_client",
-    "slug": "mobile_client",
+    "name": "KidsMind",
+    "slug": "KidsMind Mobile Client",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",

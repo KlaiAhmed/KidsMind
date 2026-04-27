@@ -7,6 +7,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   TouchableOpacity,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -14,11 +15,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useForm, Controller } from 'react-hook-form';
 import { z } from 'zod/v4';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Colors, Spacing, Radii, Shadows, Typography } from '@/constants/theme';
-import { PrimaryButton } from '@/components/ui/PrimaryButton';
-import { CountryPickerField } from '@/components/ui/CountryPickerField';
-import { FormTextInput } from '@/components/ui/FormTextInput';
-import { PasswordInput } from '@/components/ui/PasswordInput';
 import type { RegisterRequest } from '@/auth/types';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -28,6 +24,13 @@ import {
   getCountryOptions,
   type CountryOption,
 } from '@/services/countryService';
+import { Colors, Spacing, Radii, Shadows, Typography } from '@/constants/theme';
+import { PrimaryButton } from '@/components/ui/PrimaryButton';
+import { CountryPickerField } from '@/components/ui/CountryPickerField';
+import { FormTextInput } from '@/components/ui/FormTextInput';
+import { PasswordInput } from '@/components/ui/PasswordInput';
+
+const googleIcon = require('@/assets/icons/google-48.png');
 
 const registerSchema = z
   .object({
@@ -56,17 +59,21 @@ type RegisterFormData = RegisterRequest & z.infer<typeof registerSchema>;
 function getPasswordStrength(password: string): {
   label: string;
   color: string;
+  fraction: number;
 } {
-  if (!password || password.length < 8) return { label: '', color: '' };
-  let score = 0;
-  if (/[A-Z]/.test(password)) score++;
-  if (/[0-9]/.test(password)) score++;
-  if (/[^A-Za-z0-9]/.test(password)) score++;
-  if (password.length >= 12) score++;
+  if (!password || password.length === 0) return { label: '', color: '', fraction: 0 };
 
-  if (score <= 1) return { label: 'Weak', color: Colors.tertiary };
-  if (score <= 2) return { label: 'Moderate', color: Colors.accentAmber };
-  return { label: 'Strong', color: Colors.success };
+  const hasUpper = /[A-Z]/.test(password);
+  const hasLower = /[a-z]/.test(password);
+  const hasDigit = /\d/.test(password);
+  const hasSpecial = /[^A-Za-z0-9]/.test(password);
+  const hasLength = password.length >= 8;
+
+  const metCount = [hasUpper, hasLower, hasDigit, hasSpecial, hasLength].filter(Boolean).length;
+
+  if (metCount <= 2) return { label: 'Weak', color: Colors.tertiary, fraction: 1 / 3 };
+  if (metCount <= 4) return { label: 'Moderate', color: Colors.accentAmber, fraction: 2 / 3 };
+  return { label: 'Strong', color: Colors.success, fraction: 1 };
 }
 
 export default function RegisterScreen() {
@@ -190,8 +197,8 @@ export default function RegisterScreen() {
           <View style={styles.topRow}>
             <TouchableOpacity
               disabled={loading}
-              onPress={() => router.replace('/(auth)/login' as never)}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+onPress={() => router.back()}
+        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               accessibilityRole="button"
               accessibilityLabel="Go back"
             >
@@ -342,11 +349,24 @@ export default function RegisterScreen() {
                     value={value}
                     error={errors.password?.message}
                   />
-                  {strength.label ? (
-                    <Text style={[styles.strengthText, { color: strength.color }]}>
-                      Strength: {strength.label}
-                    </Text>
-                  ) : null}
+              {strength.label ? (
+                <View style={styles.strengthContainer}>
+                  <View style={styles.strengthBarTrack}>
+                    <View
+                      style={[
+                        styles.strengthBarFill,
+                        {
+                          width: `${strength.fraction * 100}%`,
+                          backgroundColor: strength.color,
+                        },
+                      ]}
+                    />
+                  </View>
+                  <Text style={[styles.strengthText, { color: strength.color }]}>
+                    {strength.label}
+                  </Text>
+                </View>
+              ) : null}
                 </View>
               )}
             />
@@ -434,24 +454,20 @@ export default function RegisterScreen() {
             <View style={styles.dividerLine} />
           </View>
 
-          {/* Google */}
-          <TouchableOpacity style={styles.googleButton} activeOpacity={0.7}>
-            <MaterialCommunityIcons
-              name="google"
-              size={20}
-              color={Colors.text}
-            />
-            <Text style={styles.googleText}>Continue with Google</Text>
-          </TouchableOpacity>
+      {/* Google */}
+      <TouchableOpacity style={styles.googleButton} activeOpacity={0.7}>
+        <Image source={googleIcon} style={styles.googleIcon} resizeMode="contain" />
+        <Text style={styles.googleText}>Continue with Google</Text>
+      </TouchableOpacity>
 
           {/* Sign in link */}
           <View style={styles.signInRow}>
             <Text style={styles.signInText}>Already have an account? </Text>
             <TouchableOpacity
               disabled={loading}
-              onPress={() => router.replace('/(auth)/login' as never)}
-            >
-              <Text style={styles.signInLink}>Log In</Text>
+onPress={() => router.back()}
+      >
+        <Text style={styles.signInLink}>Log In</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -529,11 +545,29 @@ const styles = StyleSheet.create({
   form: {
     marginBottom: Spacing.lg,
   },
+  strengthContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  strengthBarTrack: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.outline,
+    overflow: 'hidden',
+  },
+  strengthBarFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
   strengthText: {
     ...Typography.caption,
-    marginTop: -Spacing.sm,
-    marginBottom: Spacing.md,
     fontFamily: 'Inter_500Medium',
+    minWidth: 64,
+    textAlign: 'right',
   },
   countryDetectionText: {
     ...Typography.caption,
@@ -602,18 +636,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: Spacing.sm,
-    height: 44,
-    borderRadius: Radii.sm,
+    gap: Spacing.md,
+    height: 60,
+    borderRadius: Radii.xl,
     borderWidth: 1,
     borderColor: Colors.outline,
     backgroundColor: Colors.white,
-    marginBottom: Spacing.xl,
+    marginBottom: Spacing.md,
+  },
+  googleIcon: {
+    width: 24,
+    height: 24,
   },
   googleText: {
-    ...Typography.captionMedium,
+    ...Typography.bodyMedium,
     color: Colors.text,
     fontFamily: 'Inter_500Medium',
+    fontSize: 16,
   },
   signInRow: {
     flexDirection: 'row',

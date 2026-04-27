@@ -235,9 +235,7 @@ const styles = StyleSheet.create({
   },
   emptyState: {
     borderRadius: Radii.xl,
-    borderWidth: 1,
-    borderColor: Colors.outline,
-    backgroundColor: Colors.surfaceContainerLowest,
+    backgroundColor: Colors.surfaceContainerLow,
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.xs,

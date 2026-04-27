@@ -25,8 +25,8 @@ export const Colors = {
   /** Joy/discovery glow, gradient accent */
   secondaryContainer: '#FFD166',
 
-  /** Vivid Coral — high-energy CTA */
-  tertiary: '#FF6B6B',
+  /** Deep Maroon — CTA per Stitch design system */
+  tertiary: '#730012',
   /** CTA pressed state */
   tertiaryContainer: '#951c25',
 
@@ -103,11 +103,11 @@ export const Typography = {
     lineHeight: 36,
     fontFamily: 'PlusJakartaSans_700Bold',
   },
-  /** Title — screen titles, form headers */
+  /** Title — screen titles, form headers (18px per Stitch spec) */
   title: {
-    fontSize: 24,
+    fontSize: 18,
     fontWeight: '700' as const,
-    lineHeight: 32,
+    lineHeight: 24,
     fontFamily: 'PlusJakartaSans_700Bold',
   },
   /** Body — primary reading text */
@@ -189,14 +189,14 @@ export const Radii = {
 
 // ─── Shadows ──────────────────────────────────────────────────────
 
-/** "Ambient Shadow" — floating actions only */
+/** Stitch-specified shadows */
 export const Shadows = {
   button: {
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 14,
-    shadowOpacity: 0.25,
-    shadowColor: '#7C3AED',
-    elevation: 6,
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 24,
+    shadowOpacity: 0.08,
+    shadowColor: '#3B2FCC',
+    elevation: 8,
   },
   card: {
     shadowOffset: { width: 0, height: 4 },

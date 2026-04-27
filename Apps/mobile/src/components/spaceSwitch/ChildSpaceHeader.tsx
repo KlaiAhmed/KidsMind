@@ -12,7 +12,7 @@
  * Usage: Wrap every child space screen with this component.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   Image,
   Pressable,
@@ -25,9 +25,9 @@ import {
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import Animated, { useSharedValue, withSpring } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
-import { Colors, Radii, Sizing, Spacing, Typography } from '@/constants/theme';
+import { Colors, Radii, Sizing, Spacing } from '@/constants/theme';
 import { ParentPINGate } from '@/src/components/spaceSwitch/ParentPINGate';
 import { useChildNavigationLock } from '@/src/hooks/useChildNavigationLock';
 import { verifyParentPin } from '@/services/parentAccessService';
@@ -35,17 +35,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { showToast } from '@/services/toastClient';
 
 interface ChildSpaceHeaderProps {
-  /** Child's avatar image source */
   avatarSource: ImageSourcePropType;
-  /** Child's display name */
   childName: string;
-  /** Optional welcome label override */
   welcomeLabel?: string;
-  /** Optional greeting text override */
   greetingText?: string;
-  /** Additional container styles */
   style?: ViewStyle;
-  /** Optional children to render below header */
   children?: React.ReactNode;
 }
 
@@ -61,36 +55,13 @@ export function ChildSpaceHeader({
   const { user } = useAuth();
   const [isPinGateOpen, setIsPinGateOpen] = useState(false);
 
-  // Icon animation value
   const iconScale = useSharedValue(1);
 
-  // Navigation lock - intercept back button
-  useChildNavigationLock({
-    isLocked: !isPinGateOpen,
-    onBackAttempt: () => {
-      // Back button pressed in child space - show PIN gate
-      handleOpenPinGate();
-    },
-  });
+  const handleOpenPinGateRef = useRef<() => void>(() => {});
 
-  // Generate greeting if not provided
-  const displayGreeting = greetingText || `Good morning, ${childName}! ☀️`;
-
-  // Handle controls icon press with spring animation
-  const handleControlsPress = useCallback(() => {
-    'worklet';
-    iconScale.value = withSpring(0.85, { damping: 12, stiffness: 400 }, () => {
-      iconScale.value = withSpring(1, { damping: 15, stiffness: 200 });
-    });
-
-    handleOpenPinGate();
-  }, [iconScale]);
-
-  // Open PIN gate
-  const handleOpenPinGate = useCallback(() => {
+  handleOpenPinGateRef.current = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
 
-    // Check if PIN is configured
     if (!user?.pinConfigured) {
       showToast({
         type: 'error',
@@ -102,45 +73,52 @@ export function ChildSpaceHeader({
     }
 
     setIsPinGateOpen(true);
-  }, [user?.pinConfigured]);
+  };
 
-  // Handle successful PIN verification
+  useChildNavigationLock({
+    isLocked: !isPinGateOpen,
+    onBackAttempt: () => {
+      handleOpenPinGateRef.current();
+    },
+  });
+
+  const displayGreeting = greetingText || `Good morning, ${childName}! ☀️`;
+
+  const handleControlsPress = useCallback(() => {
+    iconScale.value = withSpring(0.85, { damping: 12, stiffness: 400 }, () => {
+      iconScale.value = withSpring(1, { damping: 15, stiffness: 200 });
+    });
+
+    handleOpenPinGateRef.current();
+  }, [iconScale]);
+
   const handlePinSuccess = useCallback(() => {
     setIsPinGateOpen(false);
 
-    // Navigate to parent space
-    // Use replace to clear child navigation history
     router.replace('/(tabs)' as never);
   }, [router]);
 
-  // Handle PIN gate cancel
   const handlePinCancel = useCallback(() => {
     setIsPinGateOpen(false);
   }, []);
 
-  // Verify PIN function for the gate
   const handleVerifyPin = useCallback(async (pin: string): Promise<boolean> => {
     try {
       return await verifyParentPin(pin);
-    } catch (error) {
-      // API errors are handled by the gate component
+    } catch {
       return false;
     }
   }, []);
 
-  // Animated icon style
-  const animatedIconStyle = {
-    transform: [{ scale: iconScale }],
-  };
+  const animatedIconStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: iconScale.value }],
+  }));
 
   return (
     <View style={[styles.container, style]}>
-      {/* Header Row */}
       <View style={styles.headerRow}>
-        {/* Avatar */}
         <Image source={avatarSource} style={styles.avatar} />
 
-        {/* Text Content */}
         <View style={styles.textContainer}>
           <Text style={styles.welcomeLabel}>{welcomeLabel}</Text>
           <Text style={styles.greetingText} numberOfLines={1}>
@@ -148,7 +126,6 @@ export function ChildSpaceHeader({
           </Text>
         </View>
 
-        {/* Controls Icon - Parent Access */}
         <Pressable
           accessibilityLabel="Parent access - requires PIN"
           accessibilityRole="button"
@@ -168,10 +145,8 @@ export function ChildSpaceHeader({
         </Pressable>
       </View>
 
-      {/* Children content */}
       {children}
 
-      {/* PIN Gate Modal */}
       <ParentPINGate
         onCancel={handlePinCancel}
         onSuccess={handlePinSuccess}
@@ -224,9 +199,7 @@ const styles = StyleSheet.create({
     width: Sizing.minTapTarget,
     height: Sizing.minTapTarget,
     borderRadius: Radii.full,
-    backgroundColor: Colors.surfaceContainerLowest,
-    borderWidth: 1,
-    borderColor: Colors.outline,
+    backgroundColor: Colors.surfaceContainerLow,
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 'auto',

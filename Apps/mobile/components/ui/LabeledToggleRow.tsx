@@ -54,9 +54,7 @@ const styles = StyleSheet.create({
   container: {
     minHeight: 64,
     borderRadius: Radii.lg,
-    borderWidth: 1,
-    borderColor: Colors.outline,
-    backgroundColor: Colors.surfaceContainerLowest,
+    backgroundColor: Colors.surfaceContainerLow,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
     flexDirection: 'row',

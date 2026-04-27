@@ -127,10 +127,12 @@ export default function ConversationHistoryScreen({
     flaggedOnly?: string;
     topic?: string;
   }>();
-  const { user, childDataLoading } = useAuth();
+  const { user, childDataLoading, childProfileStatus } = useAuth();
   const { children, activeChild, selectedChildId, selectChild, getChildAvatarSource } = useParentDashboardChild(
     typeof params.childId === 'string' ? params.childId : undefined,
   );
+
+  const isChildDataResolving = childProfileStatus === 'unknown' || (childDataLoading && children.length === 0);
 
   const initialSearch = typeof params.topic === 'string' ? params.topic : '';
   const [searchValue, setSearchValue] = useState(initialSearch);
@@ -224,7 +226,7 @@ export default function ConversationHistoryScreen({
     );
   }
 
-  if (initialState === 'loading' || (childDataLoading && children.length === 0) || historyQuery.isPending) {
+  if (initialState === 'loading' || isChildDataResolving || historyQuery.isPending) {
     return (
       <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
         <HistorySkeleton />

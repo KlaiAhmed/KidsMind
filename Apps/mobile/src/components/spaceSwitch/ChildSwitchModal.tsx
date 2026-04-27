@@ -27,8 +27,6 @@ import Animated, {
   Easing,
   useAnimatedStyle,
   useSharedValue,
-  withSequence,
-  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
@@ -65,37 +63,32 @@ export function ChildSwitchModal({
   const insets = useSafeAreaInsets();
   const [isConfirmed, setIsConfirmed] = useState(false);
 
-  // Animation values
-  const modalScale = useSharedValue(0.95);
+  const modalTranslateY = useSharedValue(400);
   const modalOpacity = useSharedValue(0);
-  const contentTranslateY = useSharedValue(20);
+  const backdropOpacity = useSharedValue(0);
 
-  // Reset and animate when visibility changes
   useEffect(() => {
     if (visible) {
       setIsConfirmed(false);
 
-      // Modal open animation - scale + fade in
-      modalScale.value = withSpring(1, {
-        damping: 20,
-        stiffness: 300,
-        mass: 0.8,
+      backdropOpacity.value = withTiming(1, {
+        duration: 200,
+        easing: Easing.out(Easing.cubic),
+      });
+      modalTranslateY.value = withTiming(0, {
+        duration: 350,
+        easing: Easing.out(Easing.cubic),
       });
       modalOpacity.value = withTiming(1, {
         duration: 250,
         easing: Easing.out(Easing.cubic),
       });
-      contentTranslateY.value = withSpring(0, {
-        damping: 15,
-        stiffness: 150,
-      });
     } else {
-      // Reset values when closed
-      modalScale.value = 0.95;
+      backdropOpacity.value = 0;
+      modalTranslateY.value = 400;
       modalOpacity.value = 0;
-      contentTranslateY.value = 20;
     }
-  }, [visible, modalScale, modalOpacity, contentTranslateY]);
+  }, [visible, modalTranslateY, modalOpacity, backdropOpacity]);
 
   // Handle confirm with transition animation
   const handleConfirm = useCallback(() => {
@@ -103,28 +96,36 @@ export function ChildSwitchModal({
 
     setIsConfirmed(true);
 
-    // Haptic feedback
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
 
-    // Start transition animation - fade out modal content
+    backdropOpacity.value = withTiming(0, {
+      duration: 200,
+      easing: Easing.in(Easing.cubic),
+    });
+    modalTranslateY.value = withTiming(400, {
+      duration: 250,
+      easing: Easing.in(Easing.cubic),
+    });
     modalOpacity.value = withTiming(0, {
       duration: 200,
       easing: Easing.in(Easing.cubic),
     });
 
-    // Small delay before calling onConfirm to allow animation
     setTimeout(() => {
       onConfirm();
     }, 250);
-  }, [isTransitioning, isConfirmed, modalOpacity, onConfirm]);
+  }, [isTransitioning, isConfirmed, backdropOpacity, modalTranslateY, modalOpacity, onConfirm]);
 
   // Handle dismiss
   const handleDismiss = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
 
-    // Animate out
-    modalScale.value = withTiming(0.95, {
+    backdropOpacity.value = withTiming(0, {
       duration: 150,
+      easing: Easing.in(Easing.cubic),
+    });
+    modalTranslateY.value = withTiming(400, {
+      duration: 200,
       easing: Easing.in(Easing.cubic),
     });
     modalOpacity.value = withTiming(0, {
@@ -134,12 +135,16 @@ export function ChildSwitchModal({
 
     setTimeout(() => {
       onDismiss();
-    }, 150);
-  }, [modalScale, modalOpacity, onDismiss]);
+    }, 200);
+  }, [backdropOpacity, modalTranslateY, modalOpacity, onDismiss]);
 
   // Animated styles
+  const backdropAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: backdropOpacity.value,
+  }));
+
   const modalAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: modalScale.value }, { translateY: contentTranslateY.value }],
+    transform: [{ translateY: modalTranslateY.value }],
     opacity: modalOpacity.value,
   }));
 
@@ -184,16 +189,14 @@ export function ChildSwitchModal({
     >
       <StatusBar barStyle="light-content" translucent />
 
-      {/* Blurred background */}
       <BlurView intensity={40} style={StyleSheet.absoluteFill} tint="dark" />
 
-      {/* Semi-transparent overlay */}
-      <Pressable onPress={handleDismiss} style={styles.overlay} />
+      <Animated.View style={[styles.overlay, backdropAnimatedStyle]}>
+        <Pressable onPress={handleDismiss} style={StyleSheet.absoluteFill} />
+      </Animated.View>
 
-      {/* Modal container */}
       <View style={[styles.container, { paddingBottom: insets.bottom + Spacing.md }]}>
         <Animated.View style={[styles.modalContent, modalAnimatedStyle]}>
-          {/* Close button (top right) */}
           <Pressable
             accessibilityLabel="Close"
             accessibilityRole="button"
@@ -203,28 +206,23 @@ export function ChildSwitchModal({
             <MaterialCommunityIcons color={Colors.textSecondary} name="close" size={24} />
           </Pressable>
 
-          {/* Avatar section */}
           <View style={styles.avatarSection}>
             <View style={styles.avatarContainer}>{renderAvatar()}</View>
 
-            {/* Decorative ring around avatar */}
             <View style={styles.avatarRing} />
           </View>
 
-          {/* Text content */}
           <View style={styles.textSection}>
             <Text style={styles.confirmationText}>Switch to</Text>
             <Text style={styles.childNameText} numberOfLines={1}>
-              {childName}'s space?
+              {childName}&apos;s space?
             </Text>
             <Text style={styles.subtitleText}>
-              You'll enter the child learning environment with full access to lessons and activities.
+              You&apos;ll enter the child learning environment with full access to lessons and activities.
             </Text>
           </View>
 
-          {/* Action buttons */}
           <View style={styles.buttonSection}>
-            {/* Primary CTA - Let's Go */}
             <Pressable
               accessibilityLabel={`Enter ${childName}'s space`}
               accessibilityRole="button"
@@ -251,13 +249,12 @@ export function ChildSwitchModal({
                       name="rocket-launch"
                       size={20}
                     />
-                    <Text style={styles.confirmButtonText}>Let's go!</Text>
+                    <Text style={styles.confirmButtonText}>Let&apos;s go!</Text>
                   </>
                 )}
               </LinearGradient>
             </Pressable>
 
-            {/* Secondary dismiss */}
             <Pressable
               accessibilityLabel="Stay in parent space"
               accessibilityRole="button"
@@ -285,26 +282,29 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: 'flex-end',
     paddingHorizontal: Spacing.lg,
   },
   modalContent: {
     width: '100%',
     maxWidth: 360,
+    alignSelf: 'center',
     backgroundColor: Colors.surface,
-    borderRadius: Radii.xxl,
+    borderTopLeftRadius: Radii.xxl,
+    borderTopRightRadius: Radii.xxl,
+    borderBottomLeftRadius: Radii.xxl,
+    borderBottomRightRadius: Radii.xxl,
     padding: Spacing.xl,
     alignItems: 'center',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.2,
-        shadowRadius: 24,
+        shadowOffset: { width: 0, height: -4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 20,
       },
       android: {
-        elevation: 12,
+        elevation: 16,
       },
     }),
   },

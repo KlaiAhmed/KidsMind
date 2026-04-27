@@ -110,8 +110,6 @@ const styles = StyleSheet.create({
     width: 280,
     borderRadius: Radii.xl,
     backgroundColor: Colors.surfaceContainerLowest,
-    borderWidth: 1,
-    borderColor: Colors.outline,
     padding: Spacing.md,
     gap: Spacing.sm,
   },

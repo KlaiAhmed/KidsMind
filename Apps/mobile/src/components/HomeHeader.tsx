@@ -1,5 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image, StyleSheet, Text, View, type ImageSourcePropType } from 'react-native';
+import { Colors } from '@/constants/theme';
 
 interface HomeHeaderProps {
   avatarSource: ImageSourcePropType;
@@ -17,7 +18,7 @@ export function HomeHeader({ avatarSource, childName }: HomeHeaderProps) {
       </View>
 
       <View style={styles.lockCircle}>
-        <MaterialCommunityIcons color="#4338CA" name="lock-outline" size={18} />
+        <MaterialCommunityIcons color={Colors.primary} name="lock-outline" size={18} />
       </View>
     </View>
   );
@@ -45,14 +46,14 @@ const styles = StyleSheet.create({
     fontFamily: 'PlusJakartaSans_700Bold',
     fontSize: 10,
     letterSpacing: 1.2,
-    color: '#9CA3AF',
+    color: Colors.textTertiary,
     textTransform: 'uppercase',
     marginBottom: 2,
   },
   greetingText: {
     fontFamily: 'PlusJakartaSans_800ExtraBold',
     fontSize: 18,
-    color: '#3730A3',
+    color: Colors.primaryDark,
     lineHeight: 24,
     flexShrink: 1,
   },
@@ -61,7 +62,7 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 20,
     borderWidth: 1.5,
-    borderColor: '#C4B5FD',
+    borderColor: Colors.primaryFixed,
     borderStyle: 'dashed',
     alignItems: 'center',
     justifyContent: 'center',

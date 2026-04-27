@@ -81,9 +81,7 @@ const styles = StyleSheet.create({
   },
   inputShell: {
     borderRadius: Radii.xl,
-    borderWidth: 1,
-    borderColor: Colors.outline,
-    backgroundColor: Colors.surfaceContainerLowest,
+    backgroundColor: Colors.surfaceContainerLow,
     paddingLeft: Spacing.sm,
     paddingRight: Spacing.xs,
     paddingTop: Spacing.xs,

@@ -383,7 +383,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const applyResolvedChildProfiles = useCallback((
     profiles: ChildProfile[],
     preferredChildId?: string | null,
-  ) => {
+  ): ChildProfileStatus => {
     const nextStatus: ChildProfileStatus = profiles.length > 0 ? 'exists' : 'missing';
 
     setChildState((current) => {
@@ -688,7 +688,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const profiles = await listChildProfiles();
         const nextStatus = applyResolvedChildProfiles(profiles);
-        await saveOnboardingFlag(nextStatus === 'exists');
+        await saveOnboardingFlag(nextStatus !== 'missing');
       } catch {
         setChildProfileStatus('missing');
       }
@@ -809,7 +809,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return {
         ...current,
         childProfiles: current.childProfiles.map((profile) =>
-          profile.id === current.childProfile.id ? nextProfile : profile,
+          profile.id === nextProfile.id ? nextProfile : profile,
         ),
         childProfile: nextProfile,
       };
@@ -826,7 +826,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const profiles = await listChildProfiles();
       const nextStatus = applyResolvedChildProfiles(profiles, preferredChildId);
-      await saveOnboardingFlag(nextStatus === 'exists');
+      await saveOnboardingFlag(nextStatus !== 'missing');
       setChildState((current) => ({
         ...current,
         childDataLoading: false,

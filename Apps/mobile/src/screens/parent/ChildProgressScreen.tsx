@@ -108,10 +108,12 @@ export default function ChildProgressScreen({
 }: ChildProgressScreenProps) {
   const router = useRouter();
   const params = useLocalSearchParams<{ childId?: string }>();
-  const { user, childDataLoading } = useAuth();
+  const { user, childDataLoading, childProfileStatus } = useAuth();
   const { children, activeChild, selectedChildId, selectChild, getChildAvatarSource } = useParentDashboardChild(
     typeof params.childId === 'string' ? params.childId : undefined,
   );
+
+  const isChildDataResolving = childProfileStatus === 'unknown' || (childDataLoading && children.length === 0);
 
   const historyQuery = useQuery({
     queryKey: ['parent-dashboard', 'progress-history', user?.id, activeChild?.id],
@@ -133,7 +135,7 @@ export default function ChildProgressScreen({
     void router.replace(`/(tabs)/explore?childId=${encodeURIComponent(childId)}` as never);
   }
 
-  if (initialState === 'loading' || (childDataLoading && children.length === 0) || historyQuery.isPending) {
+  if (initialState === 'loading' || isChildDataResolving || historyQuery.isPending) {
     return (
       <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
         <ProgressSkeleton />

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { Colors } from '@/constants/theme';
 
 import { useChildProfile } from '@/hooks/useChildProfile';
 import { BadgeNotification } from '@/src/components/BadgeNotification';
@@ -75,11 +76,11 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#EEEEF6',
+    backgroundColor: Colors.surface,
   },
   scrollView: {
     flex: 1,
-    backgroundColor: '#EEEEF6',
+    backgroundColor: Colors.surface,
   },
   contentContainer: {
     flexGrow: 1,

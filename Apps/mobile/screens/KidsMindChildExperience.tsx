@@ -6,6 +6,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getChildTabSceneBottomPadding } from '@/components/navigation/bottomNavTokens';
+import { Colors, Gradients, Shadows } from '@/constants/theme';
 
 type ChildScreen = 'home' | 'badges' | 'profile';
 type BadgeFilter = 'all' | 'recent' | 'subjects' | 'special';
@@ -55,8 +56,9 @@ interface RecentBadgeItem {
   backgroundColor: string;
 }
 
-const SCREEN_BG = '#F0EFFA';
-const CARD_BG = '#FFFFFF';
+const SCREEN_BG = Colors.surface;
+const CARD_BG = Colors.surfaceContainerLowest;
+const AVATAR_BG = Colors.primary;
 
 const homeSubjects: SubjectCardItem[] = [
   {
@@ -245,7 +247,7 @@ function HomeDashboardView({ onViewAll, onTalk }: { onViewAll: () => void; onTal
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.homeScrollContent}>
         <View style={styles.notificationBanner}>
           <Text style={styles.notificationText}>New Badge: Space Cadet 🏅</Text>
-          <Icon name="magnify" size={20} color="#1F2937" />
+          <Icon name="magnify" size={20} color={Colors.text} />
         </View>
 
         <View style={styles.screenInnerPadding}>
@@ -257,7 +259,7 @@ function HomeDashboardView({ onViewAll, onTalk }: { onViewAll: () => void; onTal
                 <Text style={styles.xpCaption}>1,250 / 1,500 XP</Text>
               </View>
               <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: '83%', backgroundColor: '#312E81' }]} />
+                <View style={[styles.progressFill, { width: '83%', backgroundColor: Colors.primaryDark }]} />
               </View>
             </View>
 
@@ -265,14 +267,14 @@ function HomeDashboardView({ onViewAll, onTalk }: { onViewAll: () => void; onTal
               <View style={styles.streakTopRow}>
                 <Text style={styles.streakMetaLabel}>DAILY STREAK</Text>
                 <View style={styles.streakFlameWrap}>
-                  <Icon name="fire" size={16} color="#FFFFFF" />
+                  <Icon name="fire" size={16} color={Colors.white} />
                 </View>
               </View>
               <Text style={styles.streakValue}>5 Day Streak! 🔥</Text>
             </View>
           </View>
 
-          <LinearGradient colors={['#3730A3', '#4F46E5']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={styles.featuredCard}>
+          <LinearGradient colors={[...Gradients.indigoDepth.colors]} start={Gradients.indigoDepth.start} end={Gradients.indigoDepth.end} style={styles.featuredCard}>
             <View style={styles.featuredTag}>
               <Text style={styles.featuredTagText}>SCIENCE + SPACE</Text>
             </View>
@@ -314,7 +316,7 @@ function HomeDashboardView({ onViewAll, onTalk }: { onViewAll: () => void; onTal
       </ScrollView>
 
       <Pressable style={styles.talkButton} onPress={onTalk}>
-        <Icon name="chat-processing-outline" size={18} color="#FFFFFF" />
+        <Icon name="chat-processing-outline" size={18} color={Colors.white} />
         <Text style={styles.talkButtonText}>Talk to KidsMind</Text>
       </Pressable>
     </View>
@@ -330,7 +332,7 @@ function TrophyCard({ item }: { item: TrophyItem }) {
         </View>
         {item.locked ? (
           <View style={styles.lockBadge}>
-            <Icon name="lock" size={10} color="#FFFFFF" />
+            <Icon name="lock" size={10} color={Colors.white} />
           </View>
         ) : null}
       </View>
@@ -349,7 +351,7 @@ function BadgeGalleryView({ activeFilter, onFilterChange }: { activeFilter: Badg
           </View>
           <Text style={styles.profileHeaderName}>Gentle Polymath</Text>
         </View>
-        <Icon name="cog-outline" size={22} color="#9CA3AF" />
+        <Icon name="cog-outline" size={22} color={Colors.textTertiary} />
       </View>
 
       <View style={styles.streakBannerCard}>
@@ -380,8 +382,8 @@ function BadgeGalleryView({ activeFilter, onFilterChange }: { activeFilter: Badg
                   item.state === 'empty' ? styles.weekDayCircleEmpty : null,
                 ]}
               >
-                {item.state === 'done' ? <Icon name="check" size={15} color="#FFFFFF" /> : null}
-                {item.state === 'today' ? <Icon name="lightning-bolt" size={15} color="#FFFFFF" /> : null}
+      {item.state === 'done' ? <Icon name="check" size={15} color={Colors.white} /> : null}
+      {item.state === 'today' ? <Icon name="lightning-bolt" size={15} color={Colors.white} /> : null}
               </View>
             </View>
           ))}
@@ -442,14 +444,14 @@ function BadgeGalleryView({ activeFilter, onFilterChange }: { activeFilter: Badg
         <View style={styles.assistantTopRow}>
           <View style={styles.assistantBrandRow}>
             <View style={styles.assistantIconBubble}>
-              <Icon name="plus" size={18} color="#FFFFFF" />
+              <Icon name="plus" size={18} color={Colors.white} />
             </View>
             <Text style={styles.assistantTitle}>Polymath Assistant</Text>
           </View>
           <View style={styles.assistantSparklesWrap}>
-            <Icon name="star-four-points" size={13} color="#C4B5FD" />
-            <Icon name="star-four-points" size={9} color="#C4B5FD" />
-            <Icon name="star-four-points" size={11} color="#C4B5FD" />
+      <Icon name="star-four-points" size={13} color={Colors.primaryFixed} />
+      <Icon name="star-four-points" size={9} color={Colors.primaryFixed} />
+      <Icon name="star-four-points" size={11} color={Colors.primaryFixed} />
           </View>
         </View>
 
@@ -496,13 +498,13 @@ function ProfileHubView() {
           </View>
           <Text style={styles.profileHeaderName}>Gentle Polymath</Text>
         </View>
-        <Icon name="cog-outline" size={22} color="#9CA3AF" />
+        <Icon name="cog-outline" size={22} color={Colors.textTertiary} />
       </View>
 
-      <LinearGradient colors={['#3D35B5', '#5B52D5']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={styles.profileHero}>
+      <LinearGradient colors={[...Gradients.indigoDepth.colors]} start={Gradients.indigoDepth.start} end={Gradients.indigoDepth.end} style={styles.profileHero}>
         <View style={styles.heroAvatarOuter}>
           <View style={styles.heroAvatarInner}>
-            <Icon name="account" size={44} color="#312E81" />
+            <Icon name="account" size={44} color={Colors.primaryDark} />
           </View>
         </View>
         <View style={styles.heroLevelPill}>
@@ -551,7 +553,7 @@ function ProfileHubView() {
         {recentBadges.map((badge) => (
           <View key={badge.label} style={styles.recentBadgeItem}>
             <View style={[styles.recentBadgeCircle, { backgroundColor: badge.backgroundColor }]}>
-              <Icon name={badge.icon} size={25} color="#FFFFFF" />
+              <Icon name={badge.icon} size={25} color={Colors.white} />
             </View>
             <Text style={styles.recentBadgeLabel}>{badge.label}</Text>
           </View>
@@ -560,7 +562,7 @@ function ProfileHubView() {
 
       <View style={styles.weeklyInsightCard}>
         <View style={styles.weeklyInsightIconWrap}>
-          <Icon name="star-four-points" size={22} color="#FFFFFF" />
+          <Icon name="star-four-points" size={22} color={Colors.white} />
         </View>
         <View style={styles.weeklyInsightBodyWrap}>
           <Text style={styles.weeklyInsightTitle}>Weekly Insight</Text>
@@ -610,7 +612,7 @@ const styles = StyleSheet.create({
   },
   notificationBanner: {
     minHeight: 40,
-    backgroundColor: '#FCD34D',
+    backgroundColor: Colors.secondaryContainer,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -618,7 +620,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   notificationText: {
-    color: '#1F2937',
+    color: Colors.text,
     fontFamily: 'Inter_700Bold',
     fontSize: 14,
     lineHeight: 20,
@@ -638,15 +640,10 @@ const styles = StyleSheet.create({
     backgroundColor: CARD_BG,
     borderRadius: 16,
     padding: 16,
-    shadowColor: '#111827',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 3,
     gap: 10,
   },
   metaLabel: {
-    color: '#9CA3AF',
+    color: Colors.textTertiary,
     fontFamily: 'Inter_700Bold',
     fontSize: 11,
     lineHeight: 16,
@@ -659,13 +656,13 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   levelValue: {
-    color: '#4338CA',
+    color: Colors.primary,
     fontFamily: 'PlusJakartaSans_800ExtraBold',
     fontSize: 22,
     lineHeight: 28,
   },
   xpCaption: {
-    color: '#6B7280',
+    color: Colors.textSecondary,
     fontFamily: 'Inter_500Medium',
     fontSize: 13,
     lineHeight: 18,
@@ -675,7 +672,7 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
     overflow: 'hidden',
-    backgroundColor: '#E5E7EB',
+    backgroundColor: Colors.surfaceContainerHigh,
   },
   progressFill: {
     height: 8,
@@ -683,7 +680,7 @@ const styles = StyleSheet.create({
   },
   streakCard: {
     flex: 0.95,
-    backgroundColor: '#7B1A2A',
+    backgroundColor: Colors.tertiaryContainer,
     borderRadius: 16,
     padding: 16,
     gap: 10,
@@ -695,7 +692,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   streakMetaLabel: {
-    color: '#FFFFFF',
+    color: Colors.white,
     fontFamily: 'Inter_700Bold',
     fontSize: 10,
     lineHeight: 14,
@@ -710,7 +707,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   streakValue: {
-    color: '#FFFFFF',
+    color: Colors.white,
     fontFamily: 'PlusJakartaSans_800ExtraBold',
     fontSize: 20,
     lineHeight: 26,
@@ -730,14 +727,14 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   featuredTagText: {
-    color: '#FFFFFF',
+    color: Colors.white,
     fontFamily: 'Inter_700Bold',
     fontSize: 11,
     lineHeight: 15,
     letterSpacing: 0.7,
   },
   featuredTitle: {
-    color: '#FFFFFF',
+    color: Colors.white,
     fontFamily: 'PlusJakartaSans_800ExtraBold',
     fontSize: 26,
     lineHeight: 30,
@@ -756,12 +753,12 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     marginTop: 14,
     borderRadius: 999,
-    backgroundColor: '#F59E0B',
+    backgroundColor: Colors.secondaryContainer,
     paddingHorizontal: 20,
     paddingVertical: 10,
   },
   resumeButtonText: {
-    color: '#1F2937',
+    color: Colors.text,
     fontFamily: 'Inter_700Bold',
     fontSize: 14,
     lineHeight: 18,
@@ -807,13 +804,13 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   sectionTitle: {
-    color: '#111827',
+    color: Colors.text,
     fontFamily: 'PlusJakartaSans_700Bold',
     fontSize: 18,
     lineHeight: 24,
   },
   viewAllLink: {
-    color: '#4338CA',
+    color: Colors.link,
     fontFamily: 'Inter_600SemiBold',
     fontSize: 14,
     lineHeight: 20,
@@ -831,11 +828,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingHorizontal: 10,
     paddingVertical: 12,
-    shadowColor: '#111827',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
   },
   subjectIconWrap: {
     width: 48,
@@ -846,14 +838,14 @@ const styles = StyleSheet.create({
   },
   subjectName: {
     marginTop: 10,
-    color: '#111827',
+    color: Colors.text,
     fontFamily: 'Inter_700Bold',
     fontSize: 15,
     lineHeight: 20,
   },
   subjectLessonText: {
     marginTop: 4,
-    color: '#9CA3AF',
+    color: Colors.textSecondary,
     fontFamily: 'Inter_400Regular',
     fontSize: 13,
     lineHeight: 18,
@@ -863,20 +855,16 @@ const styles = StyleSheet.create({
     right: 24,
     bottom: 24,
     borderRadius: 999,
-    backgroundColor: '#EF4444',
+    backgroundColor: Colors.primary,
     paddingHorizontal: 20,
     paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    shadowColor: '#EF4444',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    elevation: 6,
+    ...Shadows.button,
   },
   talkButtonText: {
-    color: '#FFFFFF',
+    color: Colors.white,
     fontFamily: 'Inter_700Bold',
     fontSize: 14,
     lineHeight: 18,
@@ -890,7 +878,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.surfaceContainerLowest,
     borderRadius: 16,
     paddingHorizontal: 14,
     paddingVertical: 12,
@@ -905,25 +893,25 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#4338CA',
+    backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   profileAvatarInitials: {
-    color: '#FFFFFF',
+    color: Colors.white,
     fontFamily: 'Inter_700Bold',
     fontSize: 12,
     lineHeight: 16,
   },
   profileHeaderName: {
-    color: '#111827',
+    color: Colors.text,
     fontFamily: 'PlusJakartaSans_700Bold',
     fontSize: 18,
     lineHeight: 24,
   },
   streakBannerCard: {
     borderRadius: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.surfaceContainerLowest,
     paddingHorizontal: 16,
     paddingVertical: 16,
     gap: 12,
@@ -934,13 +922,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   streakBannerTitle: {
-    color: '#111827',
+    color: Colors.text,
     fontFamily: 'PlusJakartaSans_700Bold',
     fontSize: 18,
     lineHeight: 24,
   },
   streakBannerLink: {
-    color: '#4338CA',
+    color: Colors.primary,
     fontFamily: 'Inter_600SemiBold',
     fontSize: 13,
     lineHeight: 18,
@@ -957,7 +945,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   weekDayLabel: {
-    color: '#9CA3AF',
+    color: Colors.textTertiary,
     fontFamily: 'Inter_600SemiBold',
     fontSize: 11,
     lineHeight: 14,
@@ -970,13 +958,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   weekDayCircleDone: {
-    backgroundColor: '#F59E0B',
+    backgroundColor: Colors.secondaryContainer,
   },
   weekDayCircleToday: {
-    backgroundColor: '#4338CA',
+    backgroundColor: Colors.primary,
   },
   weekDayCircleEmpty: {
-    backgroundColor: '#E5E7EB',
+    backgroundColor: Colors.surfaceContainerHigh,
   },
   filterTabsRow: {
     flexDirection: 'row',
@@ -988,23 +976,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 8,
     borderWidth: 1,
+    borderColor: Colors.outlineVariant,
   },
   filterPillActive: {
-    backgroundColor: '#4338CA',
-    borderColor: '#4338CA',
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
   },
   filterPillInactive: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E5E7EB',
+    backgroundColor: Colors.surfaceContainerLowest,
+    borderColor: Colors.outline,
   },
   filterPillText: {
-    color: '#6B7280',
+    color: Colors.textTertiary,
     fontFamily: 'Inter_600SemiBold',
     fontSize: 13,
     lineHeight: 16,
   },
   filterPillTextActive: {
-    color: '#FFFFFF',
+    color: Colors.white,
   },
   collectibleHeaderRow: {
     flexDirection: 'row',
@@ -1013,13 +1002,13 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   collectibleHeaderTitle: {
-    color: '#111827',
+    color: Colors.text,
     fontFamily: 'PlusJakartaSans_700Bold',
     fontSize: 18,
     lineHeight: 24,
   },
   collectibleHeaderCount: {
-    color: '#9CA3AF',
+    color: Colors.textTertiary,
     fontFamily: 'Inter_500Medium',
     fontSize: 12,
     lineHeight: 16,
@@ -1033,11 +1022,11 @@ const styles = StyleSheet.create({
   trophyCard: {
     width: '31.5%',
     borderRadius: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.surfaceContainerLowest,
     paddingHorizontal: 8,
     paddingVertical: 14,
     alignItems: 'center',
-    shadowColor: '#111827',
+    shadowColor: Colors.text,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 8,
@@ -1060,25 +1049,25 @@ const styles = StyleSheet.create({
     width: 18,
     height: 18,
     borderRadius: 9,
-    backgroundColor: '#6B7280',
+    backgroundColor: Colors.textTertiary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   trophyLabel: {
     marginTop: 10,
     textAlign: 'center',
-    color: '#6B7280',
+    color: Colors.textTertiary,
     fontFamily: 'Inter_700Bold',
     fontSize: 10,
     lineHeight: 14,
     letterSpacing: 0.6,
   },
   trophyLabelLocked: {
-    color: '#9CA3AF',
+    color: Colors.textTertiary,
   },
   assistantCard: {
     borderRadius: 20,
-    backgroundColor: '#F5F3FF',
+    backgroundColor: Colors.surfaceContainerLow,
     paddingHorizontal: 20,
     paddingVertical: 20,
     marginTop: 4,
@@ -1100,12 +1089,12 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#F59E0B',
+    backgroundColor: Colors.secondaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
   },
   assistantTitle: {
-    color: '#111827',
+    color: Colors.text,
     fontFamily: 'Inter_700Bold',
     fontSize: 15,
     lineHeight: 20,
@@ -1120,14 +1109,14 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   assistantBodyItalic: {
-    color: '#6B7280',
+    color: Colors.textSecondary,
     fontFamily: 'Inter_400Regular',
     fontStyle: 'italic',
     fontSize: 14,
     lineHeight: 20,
   },
   assistantBodyHighlight: {
-    color: '#4338CA',
+    color: Colors.primary,
     fontFamily: 'Inter_700Bold',
     fontSize: 14,
     lineHeight: 20,
@@ -1135,12 +1124,12 @@ const styles = StyleSheet.create({
   assistantButton: {
     height: 48,
     borderRadius: 12,
-    backgroundColor: '#4338CA',
+    backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   assistantButtonText: {
-    color: '#FFFFFF',
+    color: Colors.white,
     fontFamily: 'Inter_700Bold',
     fontSize: 15,
     lineHeight: 20,
@@ -1162,7 +1151,7 @@ const styles = StyleSheet.create({
     height: 86,
     borderRadius: 43,
     borderWidth: 3,
-    borderColor: '#FFFFFF',
+    borderColor: Colors.white,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1170,19 +1159,19 @@ const styles = StyleSheet.create({
     width: 76,
     height: 76,
     borderRadius: 38,
-    backgroundColor: '#DCD9FF',
+    backgroundColor: Colors.primaryFixed,
     alignItems: 'center',
     justifyContent: 'center',
   },
   heroLevelPill: {
     marginTop: 10,
     borderRadius: 999,
-    backgroundColor: '#F59E0B',
+    backgroundColor: Colors.secondaryContainer,
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
   heroLevelText: {
-    color: '#1F2937',
+    color: Colors.text,
     fontFamily: 'Inter_700Bold',
     fontSize: 11,
     lineHeight: 15,
@@ -1190,7 +1179,7 @@ const styles = StyleSheet.create({
   },
   heroName: {
     marginTop: 12,
-    color: '#FFFFFF',
+    color: Colors.white,
     fontFamily: 'PlusJakartaSans_800ExtraBold',
     fontSize: 24,
     lineHeight: 30,
@@ -1213,12 +1202,12 @@ const styles = StyleSheet.create({
   statCard: {
     flex: 1,
     borderRadius: 14,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.surfaceContainerLowest,
     paddingHorizontal: 8,
     paddingVertical: 12,
     alignItems: 'center',
     gap: 2,
-    shadowColor: '#111827',
+    shadowColor: Colors.text,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 8,
@@ -1227,16 +1216,16 @@ const styles = StyleSheet.create({
   statCardSelected: {
     borderWidth: 1.5,
     borderStyle: 'dashed',
-    borderColor: '#6D28D9',
+    borderColor: Colors.primary,
   },
   statValue: {
-    color: '#111827',
+    color: Colors.text,
     fontFamily: 'Inter_700Bold',
     fontSize: 18,
     lineHeight: 22,
   },
   statLabel: {
-    color: '#9CA3AF',
+    color: Colors.textTertiary,
     fontFamily: 'Inter_600SemiBold',
     fontSize: 9,
     lineHeight: 13,
@@ -1257,10 +1246,10 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#4338CA',
+    backgroundColor: Colors.primary,
   },
   subjectProgressCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.surfaceContainerLowest,
     borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 14,
@@ -1280,7 +1269,7 @@ const styles = StyleSheet.create({
   },
   subjectProgressName: {
     flex: 1,
-    color: '#111827',
+    color: Colors.text,
     fontFamily: 'Inter_600SemiBold',
     fontSize: 15,
     lineHeight: 20,
@@ -1298,7 +1287,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   viewAllLinkSmall: {
-    color: '#4338CA',
+    color: Colors.primary,
     fontFamily: 'Inter_600SemiBold',
     fontSize: 13,
     lineHeight: 18,
@@ -1321,7 +1310,7 @@ const styles = StyleSheet.create({
   },
   recentBadgeLabel: {
     marginTop: 6,
-    color: '#9CA3AF',
+    color: Colors.textTertiary,
     fontFamily: 'Inter_600SemiBold',
     fontSize: 9,
     lineHeight: 12,
@@ -1331,7 +1320,7 @@ const styles = StyleSheet.create({
   weeklyInsightCard: {
     marginHorizontal: 16,
     borderRadius: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.surfaceContainerLowest,
     paddingHorizontal: 16,
     paddingVertical: 16,
     flexDirection: 'row',
@@ -1342,7 +1331,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#3730A3',
+    backgroundColor: Colors.primaryDark,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1351,13 +1340,13 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   weeklyInsightTitle: {
-    color: '#111827',
+    color: Colors.text,
     fontFamily: 'Inter_700Bold',
     fontSize: 15,
     lineHeight: 20,
   },
   weeklyInsightText: {
-    color: '#6B7280',
+    color: Colors.textSecondary,
     fontFamily: 'Inter_400Regular',
     fontSize: 13,
     lineHeight: 18,

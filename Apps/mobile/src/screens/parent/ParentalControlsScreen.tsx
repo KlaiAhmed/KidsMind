@@ -259,12 +259,15 @@ export default function ParentalControlsScreen({
   const params = useLocalSearchParams<{ childId?: string }>();
   const {
     childDataLoading,
+    childProfileStatus,
     updateChildProfile,
     deleteChildProfile,
   } = useAuth();
   const { children, activeChild, selectedChildId, selectChild, getChildAvatarSource } = useParentDashboardChild(
     typeof params.childId === 'string' ? params.childId : undefined,
   );
+
+  const isChildDataResolving = childProfileStatus === 'unknown' || (childDataLoading && children.length === 0);
 
   const [dailyAllowanceMinutes, setDailyAllowanceMinutes] = useState(60);
   const [weekSchedule, setWeekSchedule] = useState<WeekSchedule>(createEmptyWeekSchedule());
@@ -408,7 +411,7 @@ export default function ParentalControlsScreen({
     );
   }
 
-  if (initialState === 'loading' || (childDataLoading && children.length === 0)) {
+  if (initialState === 'loading' || isChildDataResolving) {
     return (
       <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
         <ScrollView contentContainerStyle={styles.loadingContent} showsVerticalScrollIndicator={false}>

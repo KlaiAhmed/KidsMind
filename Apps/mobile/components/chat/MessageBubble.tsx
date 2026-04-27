@@ -119,9 +119,8 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   aiBubble: {
-    backgroundColor: Colors.surfaceContainerLowest,
-    borderWidth: 1,
-    borderColor: Colors.outline,
+    backgroundColor: Colors.surfaceVariant,
+    opacity: 0.75,
     borderTopLeftRadius: Radii.sm,
   },
   childBubble: {

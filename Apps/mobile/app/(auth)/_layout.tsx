@@ -5,15 +5,12 @@ import { Colors } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function AuthLayout() {
-  const { isLoading, isAuthenticated, childProfileStatus, childProfile, user } = useAuth();
+  const { isLoading, isAuthenticated, childProfileStatus, user } = useAuth();
   const segments = useSegments();
 
   if (
     isLoading ||
-    (isAuthenticated && (
-      childProfileStatus === 'unknown' ||
-      (childProfileStatus === 'exists' && !childProfile)
-    ))
+    (isAuthenticated && childProfileStatus === 'unknown')
   ) {
     return (
       <View style={styles.loadingContainer}>
@@ -32,29 +29,56 @@ export default function AuthLayout() {
     }
 
     if (hasPinConfigured && !inChildProfileWizard && !inSetupPin) {
-      if (childProfileStatus === 'missing') {
-        return <Redirect href="/(auth)/child-profile-wizard" />;
-      }
       return <Redirect href="/(tabs)" />;
     }
   }
 
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        animation: 'slide_from_right',
-      }}
-    >
-      <Stack.Screen name="setup-pin" />
-      <Stack.Screen name="child-profile-wizard" />
-      <Stack.Screen name="login" />
-      <Stack.Screen name="register" />
-    </Stack>
+    <View style={styles.stackContainer}>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          animation: 'slide_from_right',
+          animationDuration: 280,
+          contentStyle: { backgroundColor: Colors.surface },
+        }}
+      >
+        <Stack.Screen
+          name="setup-pin"
+          options={{
+            contentStyle: { backgroundColor: Colors.surface },
+          }}
+        />
+        <Stack.Screen
+          name="child-profile-wizard"
+          options={{
+            contentStyle: { backgroundColor: Colors.surface },
+          }}
+        />
+        <Stack.Screen
+          name="login"
+          options={{
+            animation: 'slide_from_right',
+            contentStyle: { backgroundColor: Colors.surface },
+          }}
+        />
+        <Stack.Screen
+          name="register"
+          options={{
+            animation: 'slide_from_right',
+            contentStyle: { backgroundColor: Colors.surface },
+          }}
+        />
+      </Stack>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  stackContainer: {
+    flex: 1,
+    backgroundColor: Colors.surface,
+  },
   loadingContainer: {
     flex: 1,
     alignItems: 'center',

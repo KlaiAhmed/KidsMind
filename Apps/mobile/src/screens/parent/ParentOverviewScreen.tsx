@@ -131,8 +131,10 @@ function OverviewSkeleton() {
 
 export default function ParentOverviewScreen({ initialState }: ParentOverviewScreenProps) {
   const router = useRouter();
-  const { user, childDataLoading, childDataError } = useAuth();
+  const { user, childDataLoading, childDataError, childProfileStatus } = useAuth();
   const { children, activeChild, selectedChildId, selectChild, getChildAvatarSource } = useParentDashboardChild();
+
+  const isChildDataResolving = childProfileStatus === 'unknown' || (childDataLoading && children.length === 0);
 
   const historyQuery = useQuery({
     queryKey: ['parent-dashboard', 'overview-history', user?.id, activeChild?.id],
@@ -223,12 +225,6 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
     selectChild(childId);
   }
 
-  function handleOpenChildSpace() {
-    if (!selectedChildId) return;
-    selectChild(selectedChildId);
-    void router.push(`/child-home?childId=${encodeURIComponent(selectedChildId)}` as never);
-  }
-
   // Handle rocket icon press with animation
   function handleRocketPress() {
     if (!activeChild) return;
@@ -282,7 +278,7 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
     void router.push(`/(tabs)/chat?childId=${encodeURIComponent(activeChild.id)}` as never);
   }
 
-  if (initialState === 'loading' || (childDataLoading && children.length === 0)) {
+  if (initialState === 'loading' || isChildDataResolving) {
     return (
       <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
         <OverviewSkeleton />

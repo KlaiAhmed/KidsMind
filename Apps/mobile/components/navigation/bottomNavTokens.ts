@@ -2,11 +2,11 @@ import { Colors, Radii, Sizing, Spacing } from '@/constants/theme';
 
 export const BottomNavTokens = {
   colors: {
-    container: Colors.white,
+    container: Colors.surfaceContainerLowest,
     active: Colors.primary,
-    inactive: 'rgba(156, 163, 175, 0.5)',
-    disabled: '#A8B0BD',
-    shadow: '#111A2E',
+    inactive: Colors.textTertiary,
+    disabled: Colors.outlineVariant,
+    shadow: Colors.text,
   },
   radius: {
     container: Radii.xxl,

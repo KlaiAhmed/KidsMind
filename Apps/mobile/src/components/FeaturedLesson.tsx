@@ -1,5 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Colors, Shadows } from '@/constants/theme';
 
 interface FeaturedLessonProps {
   category: string;
@@ -52,7 +53,7 @@ export function FeaturedLesson({
 
 const styles = StyleSheet.create({
   featuredCard: {
-    backgroundColor: '#3730A3',
+    backgroundColor: Colors.primary,
     borderRadius: 20,
     marginHorizontal: 20,
     marginBottom: 20,
@@ -75,7 +76,7 @@ const styles = StyleSheet.create({
     fontFamily: 'PlusJakartaSans_700Bold',
     fontSize: 11,
     letterSpacing: 1.2,
-    color: '#FFFFFF',
+    color: Colors.white,
     textTransform: 'uppercase',
   },
   planetArt: {
@@ -135,7 +136,7 @@ const styles = StyleSheet.create({
   featuredTitle: {
     fontFamily: 'PlusJakartaSans_800ExtraBold',
     fontSize: 28,
-    color: '#FFFFFF',
+    color: Colors.white,
     marginBottom: 10,
     zIndex: 1,
   },
@@ -157,7 +158,7 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   resumeButton: {
-    backgroundColor: '#F59E0B',
+    backgroundColor: Colors.secondaryContainer,
     borderRadius: 100,
     paddingVertical: 10,
     paddingHorizontal: 20,
@@ -165,25 +166,21 @@ const styles = StyleSheet.create({
   resumeText: {
     fontFamily: 'PlusJakartaSans_700Bold',
     fontSize: 14,
-    color: '#1F2937',
+    color: Colors.text,
   },
   talkButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#EF4444',
+    backgroundColor: Colors.primary,
     borderRadius: 100,
     paddingVertical: 10,
     paddingHorizontal: 16,
     gap: 6,
-    shadowColor: '#EF4444',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 6,
+    ...Shadows.button,
   },
   talkText: {
     fontFamily: 'PlusJakartaSans_700Bold',
     fontSize: 13,
-    color: '#FFFFFF',
+    color: Colors.white,
   },
 });

@@ -1,4 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
+import { Colors } from '@/constants/theme';
 
 interface ProgressCardProps {
   currentXP: number;
@@ -29,22 +30,17 @@ export function ProgressCard({ currentXP, level, maxXP }: ProgressCardProps) {
 
 const styles = StyleSheet.create({
   progressCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.surfaceContainerLowest,
     borderRadius: 16,
     marginHorizontal: 20,
     marginBottom: 12,
     padding: 16,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
-    shadowRadius: 6,
-    elevation: 3,
   },
   progressLabel: {
     fontFamily: 'PlusJakartaSans_700Bold',
     fontSize: 10,
     letterSpacing: 1.4,
-    color: '#9CA3AF',
+    color: Colors.textTertiary,
     textTransform: 'uppercase',
     marginBottom: 6,
   },
@@ -58,24 +54,24 @@ const styles = StyleSheet.create({
   levelText: {
     fontFamily: 'PlusJakartaSans_800ExtraBold',
     fontSize: 26,
-    color: '#4338CA',
+    color: Colors.primary,
   },
   xpText: {
     fontFamily: 'Inter_600SemiBold',
     fontSize: 13,
-    color: '#9CA3AF',
+    color: Colors.textSecondary,
     flexShrink: 1,
     textAlign: 'right',
   },
   progressTrack: {
     height: 8,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: Colors.surfaceContainerHigh,
     borderRadius: 4,
     overflow: 'hidden',
   },
   progressFill: {
     height: 8,
-    backgroundColor: '#312E81',
+    backgroundColor: Colors.primaryDark,
     borderRadius: 4,
   },
 });

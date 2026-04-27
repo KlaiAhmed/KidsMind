@@ -10,7 +10,8 @@ export interface DetectedCountry {
 }
 
 const REST_COUNTRIES_ENDPOINT = 'https://restcountries.com/v3.1/all?fields=name,cca2,flag';
-const IP_GEOLOCATION_ENDPOINT = 'https://ipapi.co/json/';
+const IP_GEOLOCATION_ENDPOINT_PRIMARY = 'http://ip-api.com/json/';
+const IP_GEOLOCATION_ENDPOINT_FALLBACK = 'https://ipapi.co/json/';
 const COUNTRY_REQUEST_TIMEOUT_MS = 7000;
 const GEOLOCATION_REQUEST_TIMEOUT_MS = 5000;
 const ISO_ALPHA2_PATTERN = /^[A-Z]{2}$/;
@@ -82,6 +83,7 @@ async function fetchJsonWithTimeout(url: string, timeoutMs: number): Promise<unk
       method: 'GET',
       headers: {
         Accept: 'application/json',
+        'User-Agent': 'KidsMind/1.0',
       },
       signal: controller.signal,
     });
@@ -190,31 +192,44 @@ export async function getCountryOptions(): Promise<CountryOption[]> {
 }
 
 export async function detectCountryByIp(): Promise<DetectedCountry | null> {
-  try {
-    const payload = await fetchJsonWithTimeout(IP_GEOLOCATION_ENDPOINT, GEOLOCATION_REQUEST_TIMEOUT_MS);
+  const endpoints: Array<{
+    url: string;
+    parse: (payload: unknown) => DetectedCountry | null;
+  }> = [
+    {
+      url: IP_GEOLOCATION_ENDPOINT_PRIMARY,
+      parse: (payload) => {
+        if (typeof payload !== 'object' || payload === null) return null;
+        const record = payload as { status?: unknown; countryCode?: unknown; country?: unknown };
+        if (record.status !== 'success') return null;
+        const code = typeof record.countryCode === 'string' ? record.countryCode.trim().toUpperCase() : '';
+        if (!ISO_ALPHA2_PATTERN.test(code)) return null;
+        const name = typeof record.country === 'string' ? record.country.trim() : '';
+        return { code, name };
+      },
+    },
+    {
+      url: IP_GEOLOCATION_ENDPOINT_FALLBACK,
+      parse: (payload) => {
+        if (typeof payload !== 'object' || payload === null) return null;
+        const record = payload as { country_code?: unknown; country_name?: unknown };
+        const code = typeof record.country_code === 'string' ? record.country_code.trim().toUpperCase() : '';
+        if (!ISO_ALPHA2_PATTERN.test(code)) return null;
+        const name = typeof record.country_name === 'string' ? record.country_name.trim() : '';
+        return { code, name };
+      },
+    },
+  ];
 
-    if (typeof payload !== 'object' || payload === null) {
-      return null;
+  for (const { url, parse } of endpoints) {
+    try {
+      const payload = await fetchJsonWithTimeout(url, GEOLOCATION_REQUEST_TIMEOUT_MS);
+      const result = parse(payload);
+      if (result) return result;
+    } catch {
+      continue;
     }
-
-    const record = payload as {
-      country_code?: unknown;
-      country_name?: unknown;
-    };
-
-    const code = typeof record.country_code === 'string' ? record.country_code.trim().toUpperCase() : '';
-
-    if (!ISO_ALPHA2_PATTERN.test(code)) {
-      return null;
-    }
-
-    const name = typeof record.country_name === 'string' ? record.country_name.trim() : '';
-
-    return {
-      code,
-      name,
-    };
-  } catch {
-    return null;
   }
+
+  return null;
 }

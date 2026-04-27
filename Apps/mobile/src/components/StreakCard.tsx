@@ -1,5 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { StyleSheet, Text, View } from 'react-native';
+import { Colors } from '@/constants/theme';
 
 interface StreakCardProps {
   days: number;
@@ -28,7 +29,7 @@ export function StreakCard({ days }: StreakCardProps) {
 
 const styles = StyleSheet.create({
   streakCard: {
-    backgroundColor: '#7B1A2A',
+    backgroundColor: Colors.tertiaryContainer,
     borderRadius: 16,
     marginHorizontal: 20,
     marginBottom: 14,
@@ -64,7 +65,7 @@ const styles = StyleSheet.create({
   streakText: {
     fontFamily: 'PlusJakartaSans_800ExtraBold',
     fontSize: 24,
-    color: '#FFFFFF',
+    color: Colors.white,
     lineHeight: 30,
     maxWidth: '76%',
   },

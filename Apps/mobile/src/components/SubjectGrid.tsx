@@ -1,6 +1,7 @@
 import type { ComponentProps } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Colors, Typography } from '@/constants/theme';
 
 export interface SubjectGridItem {
   iconBackground: string;
@@ -53,14 +54,13 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   sectionTitle: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 20,
-    color: '#111827',
+    ...Typography.title,
+    color: Colors.text,
   },
   viewAllLink: {
     fontFamily: 'Inter_600SemiBold',
     fontSize: 14,
-    color: '#4338CA',
+    color: Colors.link,
   },
   grid: {
     flexDirection: 'row',
@@ -71,13 +71,8 @@ const styles = StyleSheet.create({
   subjectCard: {
     width: '48%',
     borderRadius: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.surfaceContainerLowest,
     padding: 14,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
   },
   iconContainer: {
     width: 48,
@@ -90,12 +85,12 @@ const styles = StyleSheet.create({
   subjectName: {
     fontFamily: 'PlusJakartaSans_700Bold',
     fontSize: 15,
-    color: '#111827',
+    color: Colors.text,
     marginBottom: 4,
   },
   lessonCount: {
     fontFamily: 'Inter_400Regular',
     fontSize: 13,
-    color: '#9CA3AF',
+    color: Colors.textSecondary,
   },
 });

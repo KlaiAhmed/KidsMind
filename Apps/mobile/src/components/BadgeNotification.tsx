@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Colors } from '@/constants/theme';
 
 interface BadgeNotificationProps {
   onDismiss: () => void;
@@ -24,24 +25,19 @@ const styles = StyleSheet.create({
   badgeBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FEF3C7',
+    backgroundColor: Colors.secondaryContainer,
     borderRadius: 14,
     marginHorizontal: 20,
     marginBottom: 12,
     paddingVertical: 12,
     paddingHorizontal: 14,
     gap: 10,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
   },
   badgeIconCircle: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#FCD34D',
+    backgroundColor: Colors.accentAmber,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -53,14 +49,14 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: 'PlusJakartaSans_700Bold',
     fontSize: 14,
-    color: '#1F2937',
+    color: Colors.text,
   },
   dismissButton: {
     padding: 4,
   },
   dismissX: {
     fontSize: 18,
-    color: '#6B7280',
+    color: Colors.textSecondary,
     fontWeight: '600',
     lineHeight: 20,
   },
