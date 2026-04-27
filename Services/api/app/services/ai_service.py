@@ -5,10 +5,12 @@ from typing import AsyncGenerator
 
 from langchain_core.exceptions import OutputParserException
 from langchain_core.output_parsers import JsonOutputParser
+from openai import RateLimitError as OpenAIRateLimitError
 
 from services.build_chain import chain_builder
 from schemas.llm_response import KidsMindResponse
-from core.llm import llm, llm_streaming
+from core.exceptions import AIRateLimitError
+from core.llm import get_llm, get_llm_streaming
 from utils.age_guidelines import age_guidelines
 from utils.logger import logger
 
@@ -18,8 +20,8 @@ RESPONSE_FIELDS = ("explanation", "example", "exercise", "encouragement")
 
 class AIService:
     def __init__(self, chain=None, stream_chain=None):
-        self.chain = chain or chain_builder.build(llm_client=llm, with_parser=True)
-        self.stream_chain = stream_chain or chain_builder.build(llm_client=llm_streaming, with_parser=False)
+        self.chain = chain or chain_builder.build(llm_client=get_llm(), with_parser=True)
+        self.stream_chain = stream_chain or chain_builder.build(llm_client=get_llm_streaming(), with_parser=False)
         self.parser = JsonOutputParser(pydantic_object=KidsMindResponse)
 
     def build_session_key(self, user_id: str, child_id: str, session_id: str) -> str:
@@ -277,7 +279,6 @@ class AIService:
         }
 
     async def get_response(self, user: dict, payload) -> dict:
-        """Non-streaming path: returns the fully structured dict."""
         timer = time.perf_counter()
         guidelines = age_guidelines(payload.age_group)
         invoke_payload = self._build_input_payload(payload, guidelines)
@@ -309,6 +310,8 @@ class AIService:
                 },
             )
             return response
+        except OpenAIRateLimitError as e:
+            raise AIRateLimitError(str(e)) from e
         except TimeoutError:
             elapsed = time.perf_counter() - timer
             logger.error(
@@ -354,11 +357,6 @@ class AIService:
             raise
 
     async def stream_response(self, user: dict, payload) -> AsyncGenerator[str, None]:
-        """
-        Streaming path: yields normalized JSON payloads with the non-stream shape.
-        Each yielded event is a complete JSON object with the same fields as the
-        non-stream response.  Empty leading chunks are suppressed.
-        """
         timer = time.perf_counter()
         guidelines = age_guidelines(payload.age_group)
         invoke_payload = self._build_input_payload(payload, guidelines)
@@ -415,6 +413,8 @@ class AIService:
             if final_payload != last_payload:
                 yield json.dumps(final_payload, ensure_ascii=False)
 
+        except OpenAIRateLimitError as e:
+            raise AIRateLimitError(str(e)) from e
         except Exception:
             logger.exception(
                 "AIService.stream_response failed",

@@ -8,6 +8,7 @@ Domain: Media
 
 import enum
 
+
 class MediaType(str, enum.Enum):
     """Enumeration of media categories supported by the platform."""
 

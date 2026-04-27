@@ -2,11 +2,11 @@ import json
 import time
 from fastapi import HTTPException
 from typing import AsyncGenerator
-from openai import RateLimitError
 from langchain_core.exceptions import OutputParserException
 
+from core.exceptions import AIRateLimitError
 from services.ai_service import ai_service
-from schemas.ChatRequest import ChatRequest
+from schemas.chat_request import ChatRequest
 from utils.get_moderation_service import get_moderation_service
 from utils.validate_token_limit import validate_token_limit
 from utils.logger import logger
@@ -15,8 +15,7 @@ from utils.logger import logger
 SLOW_CALL_THRESHOLD_SECONDS = 3.0
 
 
-async def chat_controller(payload: ChatRequest, user: dict, client) -> dict:
-    """Non-streaming: validate → moderate → invoke → return parsed dict."""
+async def chat_controller(payload: ChatRequest, user: dict, moderation_client) -> dict:
     try:
         start = time.perf_counter()
 
@@ -33,7 +32,9 @@ async def chat_controller(payload: ChatRequest, user: dict, client) -> dict:
         validate_token_limit(payload)
 
         moderate = get_moderation_service()
-        await moderate(payload.text, payload.context or "", client=client)
+
+        await moderate(payload.text, payload.context or "", client=moderation_client)
+
         logger.info(
             "Moderation check passed",
             extra={
@@ -80,16 +81,6 @@ async def chat_controller(payload: ChatRequest, user: dict, client) -> dict:
             status_code=502,
             detail="AI service returned an empty or invalid response format. Please try again shortly."
         )
-    except RateLimitError as e:
-        logger.error(
-            "AI provider rate limit exceeded",
-            extra={
-                "user_id": user.get("id"),
-                "child_id": user.get("child_id"),
-                "error": str(e),
-            },
-        )
-        raise HTTPException(status_code=429, detail="AI service is temporarily rate-limited. Please try again shortly.")
     except TimeoutError:
         logger.error(
             "AI request timed out",
@@ -102,6 +93,19 @@ async def chat_controller(payload: ChatRequest, user: dict, client) -> dict:
         raise HTTPException(
             status_code=504,
             detail="AI service timed out while generating a response. Please try again.",
+        )
+    except AIRateLimitError:
+        logger.warning(
+            "AI provider rate limit exceeded",
+            extra={
+                "user_id": user.get("id"),
+                "child_id": user.get("child_id"),
+                "session_id": user.get("session_id"),
+            },
+        )
+        raise HTTPException(
+            status_code=429,
+            detail="AI service rate limit reached. Please try again in a moment.",
         )
     except HTTPException:
         raise
@@ -116,13 +120,7 @@ async def chat_controller(payload: ChatRequest, user: dict, client) -> dict:
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
-async def chat_stream_controller(payload: ChatRequest, user: dict, client) -> AsyncGenerator[str, None]:
-    """
-    Streaming: validate → moderate (before stream starts) → yield SSE events.
-
-    Each SSE event data is a JSON string: {"field":"...","value":"..."}
-    Terminal events: [DONE] on success, {"error":"..."} on failure.
-    """
+async def chat_stream_controller(payload: ChatRequest, user: dict, moderation_client) -> AsyncGenerator[str, None]:
     start = time.perf_counter()
 
     logger.info(
@@ -135,10 +133,9 @@ async def chat_stream_controller(payload: ChatRequest, user: dict, client) -> As
         },
     )
 
-    # Validate and moderate BEFORE returning the generator, errors surface as HTTP exceptions
     validate_token_limit(payload)
     moderate = get_moderation_service()
-    await moderate(payload.text, payload.context or "", client=client)
+    await moderate(payload.text, payload.context or "", client=moderation_client)
     logger.info(
         "Moderation check passed for stream",
         extra={
@@ -172,16 +169,15 @@ async def chat_stream_controller(payload: ChatRequest, user: dict, client) -> As
             error_event = json.dumps({"error": "AI service returned an invalid response. Please try again shortly."}, ensure_ascii=False)
             yield f"data: {error_event}\n\n"
 
-        except RateLimitError as e:
-            logger.error(
+        except AIRateLimitError:
+            logger.warning(
                 "AI provider rate limit exceeded during stream",
                 extra={
                     "user_id": user.get("id"),
                     "child_id": user.get("child_id"),
-                    "error": str(e),
                 },
             )
-            error_event = json.dumps({"error": "AI service is temporarily rate-limited. Please try again shortly."}, ensure_ascii=False)
+            error_event = json.dumps({"error": "AI service rate limit reached. Please try again in a moment."}, ensure_ascii=False)
             yield f"data: {error_event}\n\n"
 
         except Exception as e:

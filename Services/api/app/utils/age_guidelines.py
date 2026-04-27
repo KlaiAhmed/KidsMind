@@ -1,9 +1,4 @@
 def age_guidelines(age_group: str) -> str:
-    """ 
-    LLM guidelines based on the kid age group
-    Accepts age-group (string): "3-6", "7-11", "12-15"
-    Returns: string
-    """
     guidelines = {
         "3-6": (
             "Tone: Playful, warm. Max 8 words/sentence. 4yo vocabulary. "

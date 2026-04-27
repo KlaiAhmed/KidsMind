@@ -59,7 +59,6 @@ def _get_encoder():
 
 
 def get_token_count(text: str) -> int:
-    """Returns the number of tokens in the given text."""
     encoder = _get_encoder()
 
     if encoder is None:
@@ -73,7 +72,6 @@ def get_token_count(text: str) -> int:
 
 
 def get_sum_token_count(messages: list[BaseMessage]) -> int:
-    """Returns the total number of tokens across all messages."""
     return sum(
         get_token_count(m.content)
         for m in messages

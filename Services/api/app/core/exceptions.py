@@ -1,0 +1,2 @@
+class AIRateLimitError(Exception):
+    pass

@@ -13,7 +13,6 @@ KIDS_THRESHOLDS = {
 }
 
 async def check_moderation(message: str, context: str, client: httpx.AsyncClient ):
-    """ Checks if the content is appropriate for kids using OpenAI's moderation API."""
     try:
         timer = time.perf_counter()
 
@@ -23,14 +22,12 @@ async def check_moderation(message: str, context: str, client: httpx.AsyncClient
 
         payload = {"model": settings.GUARD_MODEL_NAME, "input": text}
 
-        # Call to OpenAI's API moderation endpoint
         response = await client.post(settings.GUARD_API_URL, json=payload, headers=headers)
         response.raise_for_status()
 
         data = response.json()
         results = data["results"][0]
 
-        # Check if the content is flagged (More Permissive)
         if results["flagged"]:
             raise HTTPException(status_code=400, detail="text contains inappropriate content for your age.")
 

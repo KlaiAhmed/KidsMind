@@ -1,7 +1,3 @@
-# services/history.py
-from typing import Optional
-import asyncio
-
 from langchain_community.chat_message_histories import RedisChatMessageHistory
 from langchain_core.chat_history import BaseChatMessageHistory
 
@@ -11,11 +7,6 @@ from utils.logger import logger
 
 class HistoryService:
     def get_history(self, session_id: str) -> BaseChatMessageHistory:
-        """
-        Returns an async-compatible RedisChatMessageHistory.
-        This function is async because it awaits the async Redis client factory.
-        RunnableWithMessageHistory supports async get_session_history when the chain is used via .ainvoke.
-        """
         logger.debug("HistoryService.get_history called", extra={"session_id": session_id})
 
         try:

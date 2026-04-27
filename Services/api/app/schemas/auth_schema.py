@@ -66,6 +66,7 @@ class MobileRegisterRequest(UserRegister):
     attestation_platform: str | None = None
     device_info: str | None = None
 
+
 class UserLogin(BaseModel):
     email: EmailStr
     password: str = Field(min_length=1)

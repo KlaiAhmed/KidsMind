@@ -53,40 +53,6 @@ def _serialize_history_content(value: object) -> str:
         return str(value)
 
 
-def _extract_stream_payload(
-    chunk: bytes,
-    accumulated_text: str,
-    accumulated_payload: dict[str, object],
-) -> tuple[str, dict[str, object], bool]:
-    stream_completed = b"data: [DONE]" in chunk
-
-    try:
-        decoded = chunk.decode("utf-8")
-    except UnicodeDecodeError:
-        return accumulated_text, accumulated_payload, stream_completed
-
-    for line in decoded.splitlines():
-        if not line.startswith("data:"):
-            continue
-
-        data = line[5:].strip()
-        if not data or data == "[DONE]":
-            continue
-
-        try:
-            parsed = json.loads(data)
-        except json.JSONDecodeError:
-            continue
-
-        if isinstance(parsed, dict):
-            accumulated_payload.update(parsed)
-            text_value = parsed.get("text")
-            if isinstance(text_value, str):
-                accumulated_text = text_value
-
-    return accumulated_text, accumulated_payload, stream_completed
-
-
 def _resolve_owned_child_profile(
     db: Session,
     user_id: UUID,
@@ -227,7 +193,6 @@ async def _persist_streamed_turn(
     user_message: str,
     stream_label: str,
     stream_completed: bool,
-    accumulated_text: str,
     accumulated_payload: dict[str, object],
 ) -> None:
     if not stream_completed:
@@ -241,7 +206,7 @@ async def _persist_streamed_turn(
         )
         return
 
-    assistant_content = accumulated_text or _serialize_history_content(accumulated_payload)
+    assistant_content = _serialize_history_content(accumulated_payload)
     if not assistant_content:
         logger.warning(
             f"Skipping {stream_label} stream persistence because assistant content is empty",
@@ -293,17 +258,25 @@ async def _stream_with_persistence(
     stream_label: str,
 ) -> AsyncGenerator[bytes, None]:
     stream_completed = False
-    accumulated_text = ""
     accumulated_payload: dict[str, object] = {}
 
     try:
         async for chunk in source_stream:
-            accumulated_text, accumulated_payload, got_done = _extract_stream_payload(
-                chunk=chunk,
-                accumulated_text=accumulated_text,
-                accumulated_payload=accumulated_payload,
-            )
-            stream_completed = stream_completed or got_done
+            decoded = chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk
+            if "data: [DONE]" in decoded:
+                stream_completed = True
+            for line in decoded.splitlines():
+                if not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if not data or data == "[DONE]":
+                    continue
+                try:
+                    parsed = json.loads(data)
+                    if isinstance(parsed, dict) and "error" not in parsed:
+                        accumulated_payload.update(parsed)
+                except json.JSONDecodeError:
+                    continue
             yield chunk
     finally:
         await _persist_streamed_turn(
@@ -314,7 +287,6 @@ async def _stream_with_persistence(
             user_message=user_message,
             stream_label=stream_label,
             stream_completed=stream_completed,
-            accumulated_text=accumulated_text,
             accumulated_payload=accumulated_payload,
         )
 
@@ -407,6 +379,7 @@ async def voice_chat_controller(
     stream: bool,
     store_audio: bool,
     client: httpx.AsyncClient,
+    external_client: httpx.AsyncClient,
     db: Session,
     redis: Any,
 ) -> dict | StreamingResponse:
@@ -486,38 +459,39 @@ async def voice_chat_controller(
 
             logger.info("Transcription received", extra={"text_length": len(text)})
 
-            if stream:
-                source_stream = stream_content(
+        if stream:
+            source_stream = stream_content(
+                user_id=normalized_user_id,
+                child_id=normalized_child_id,
+                session_id=normalized_session_id,
+                text=text,
+                context=context,
+                nickname=profile_context["nickname"],
+                age_group=profile_context["age_group"],
+                education_stage=profile_context["education_stage"],
+                is_accelerated=profile_context["is_accelerated"],
+                is_below_expected_stage=profile_context["is_below_expected_stage"],
+                moderation_client=external_client,
+            )
+
+            return StreamingResponse(
+                _stream_with_persistence(
+                    source_stream,
+                    db=db,
                     user_id=normalized_user_id,
                     child_id=normalized_child_id,
-                    session_id=normalized_session_id,
-                    text=text,
-                    context=context,
-                    nickname=profile_context["nickname"],
-                    age_group=profile_context["age_group"],
-                    education_stage=profile_context["education_stage"],
-                    is_accelerated=profile_context["is_accelerated"],
-                    is_below_expected_stage=profile_context["is_below_expected_stage"],
-                    client=client,
-                )
+                    session_id=chat_session.id,
+                    user_message=text,
+                    stream_label="voice",
+                ),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "X-Accel-Buffering": "no",
+                },
+            )
 
-                return StreamingResponse(
-                    _stream_with_persistence(
-                        source_stream,
-                        db=db,
-                        user_id=normalized_user_id,
-                        child_id=normalized_child_id,
-                        session_id=chat_session.id,
-                        user_message=text,
-                        stream_label="voice",
-                    ),
-                    media_type="text/event-stream",
-                    headers={
-                        "Cache-Control": "no-cache",
-                        "X-Accel-Buffering": "no",
-                    },
-                )
-
+        else:
             ai_start = time.perf_counter()
             ai_response = await generate_content(
                 user_id=normalized_user_id,
@@ -530,45 +504,45 @@ async def voice_chat_controller(
                 education_stage=profile_context["education_stage"],
                 is_accelerated=profile_context["is_accelerated"],
                 is_below_expected_stage=profile_context["is_below_expected_stage"],
-                client=client,
+                moderation_client=external_client,
             )
             ai_duration = time.perf_counter() - ai_start
 
-        assistant_content = _serialize_history_content(ai_response)
-        await chat_history_service.save_turn_to_db(
-            db=db,
-            session_id=chat_session.id,
-            user_message=text,
-            ai_response=assistant_content,
-        )
-        db.commit()
+            assistant_content = _serialize_history_content(ai_response)
+            await chat_history_service.save_turn_to_db(
+                db=db,
+                session_id=chat_session.id,
+                user_message=text,
+                ai_response=assistant_content,
+            )
+            db.commit()
 
-        was_first_chat = await run_in_threadpool(process_first_chat, db, child_profile.id)
-        if was_first_chat:
-            try:
-                await run_in_threadpool(evaluate_and_award, db, child_profile.id, user_id)
-                db.commit()
-            except Exception:
-                db.rollback()
-                logger.exception(
-                    "Badge evaluation failed during voice chat — chat unaffected",
-                    extra={"child_id": normalized_child_id},
-                )
+            was_first_chat = await run_in_threadpool(process_first_chat, db, child_profile.id)
+            if was_first_chat:
+                try:
+                    await run_in_threadpool(evaluate_and_award, db, child_profile.id, user_id)
+                    db.commit()
+                except Exception:
+                    db.rollback()
+                    logger.exception(
+                        "Badge evaluation failed during voice chat — chat unaffected",
+                        extra={"child_id": normalized_child_id},
+                    )
 
-        request_duration = time.perf_counter() - request_start
-        logger.info(
-            "Voice chat completed",
-            extra={
-                "user_id": normalized_user_id,
-                "child_id": normalized_child_id,
-                "session_id": normalized_session_id,
-                "total_duration_seconds": round(request_duration, 3),
-                "ai_duration_seconds": round(ai_duration, 3),
-                "upload_duration_seconds": round(upload_duration, 3),
-                "stt_duration_seconds": round(stt_duration, 3),
-            },
-        )
-        return ai_response
+            request_duration = time.perf_counter() - request_start
+            logger.info(
+                "Voice chat completed",
+                extra={
+                    "user_id": normalized_user_id,
+                    "child_id": normalized_child_id,
+                    "session_id": normalized_session_id,
+                    "total_duration_seconds": round(request_duration, 3),
+                    "ai_duration_seconds": round(ai_duration, 3),
+                    "upload_duration_seconds": round(upload_duration, 3),
+                    "stt_duration_seconds": round(stt_duration, 3),
+                },
+            )
+            return ai_response
     finally:
         if filename and not store_audio:
             await run_in_threadpool(remove_audio, filename)
@@ -582,6 +556,7 @@ async def text_chat_controller(
     context: str,
     stream: bool,
     client: httpx.AsyncClient,
+    external_client: httpx.AsyncClient,
     db: Session,
     redis: Any,
 ) -> dict | StreamingResponse:
@@ -623,7 +598,7 @@ async def text_chat_controller(
                 education_stage=profile_context["education_stage"],
                 is_accelerated=profile_context["is_accelerated"],
                 is_below_expected_stage=profile_context["is_below_expected_stage"],
-                client=client,
+                moderation_client=external_client,
             )
 
             return StreamingResponse(
@@ -643,57 +618,58 @@ async def text_chat_controller(
                 },
             )
 
-        ai_start = time.perf_counter()
-        ai_response = await generate_content(
-            user_id=normalized_user_id,
-            child_id=normalized_child_id,
-            session_id=normalized_session_id,
-            text=text,
-            context=context,
-            nickname=profile_context["nickname"],
-            age_group=profile_context["age_group"],
-            education_stage=profile_context["education_stage"],
-            is_accelerated=profile_context["is_accelerated"],
-            is_below_expected_stage=profile_context["is_below_expected_stage"],
-            client=client,
-        )
-        ai_duration = time.perf_counter() - ai_start
+        else:
+            ai_start = time.perf_counter()
+            ai_response = await generate_content(
+                user_id=normalized_user_id,
+                child_id=normalized_child_id,
+                session_id=normalized_session_id,
+                text=text,
+                context=context,
+                nickname=profile_context["nickname"],
+                age_group=profile_context["age_group"],
+                education_stage=profile_context["education_stage"],
+                is_accelerated=profile_context["is_accelerated"],
+                is_below_expected_stage=profile_context["is_below_expected_stage"],
+                moderation_client=external_client,
+            )
+            ai_duration = time.perf_counter() - ai_start
 
-        assistant_content = _serialize_history_content(ai_response)
-        await chat_history_service.save_turn_to_db(
-            db=db,
-            session_id=chat_session.id,
-            user_message=text,
-            ai_response=assistant_content,
-        )
-        db.commit()
+            assistant_content = _serialize_history_content(ai_response)
+            await chat_history_service.save_turn_to_db(
+                db=db,
+                session_id=chat_session.id,
+                user_message=text,
+                ai_response=assistant_content,
+            )
+            db.commit()
 
-        was_first_chat = await run_in_threadpool(process_first_chat, db, child_profile.id)
-        if was_first_chat:
-            try:
-                await run_in_threadpool(evaluate_and_award, db, child_profile.id, user_id)
-                db.commit()
-            except Exception:
-                db.rollback()
-                logger.exception(
-                    "Badge evaluation failed during text chat — chat unaffected",
-                    extra={"child_id": normalized_child_id},
-                )
+            was_first_chat = await run_in_threadpool(process_first_chat, db, child_profile.id)
+            if was_first_chat:
+                try:
+                    await run_in_threadpool(evaluate_and_award, db, child_profile.id, user_id)
+                    db.commit()
+                except Exception:
+                    db.rollback()
+                    logger.exception(
+                        "Badge evaluation failed during text chat — chat unaffected",
+                        extra={"child_id": normalized_child_id},
+                    )
 
-        request_duration = time.perf_counter() - request_start
-        logger.info(
-            "Text chat completed",
-            extra={
-                "user_id": normalized_user_id,
-                "child_id": normalized_child_id,
-                "session_id": normalized_session_id,
-                "total_duration_seconds": round(request_duration, 3),
-                "ai_duration_seconds": round(ai_duration, 3),
-                "response_size_bytes": len(str(ai_response)),
-            },
-        )
+            request_duration = time.perf_counter() - request_start
+            logger.info(
+                "Text chat completed",
+                extra={
+                    "user_id": normalized_user_id,
+                    "child_id": normalized_child_id,
+                    "session_id": normalized_session_id,
+                    "total_duration_seconds": round(request_duration, 3),
+                    "ai_duration_seconds": round(ai_duration, 3),
+                    "response_size_bytes": len(str(ai_response)),
+                },
+            )
 
-        return ai_response
+            return ai_response
 
 
 async def get_history_controller(
@@ -767,7 +743,6 @@ async def clear_history_controller(
     child_id: UUID,
     session_id: UUID,
     user_id: UUID,
-    client: httpx.AsyncClient,
 ) -> dict:
     try:
         child_profile, chat_session = await run_in_threadpool(
@@ -783,7 +758,6 @@ async def clear_history_controller(
             child_id=str(child_profile.id),
             session_id=chat_session.id,
             user_id=str(user_id),
-            client=client,
         )
         return {"success": True, "message": "Session history cleared"}
     except HTTPException:

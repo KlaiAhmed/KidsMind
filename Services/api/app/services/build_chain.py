@@ -1,4 +1,3 @@
-# services/build_chain.py
 from operator import itemgetter
 
 from langchain_core.output_parsers import JsonOutputParser
@@ -10,13 +9,11 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 from services.prompts import BASE_SYSTEM_PROMPT
 from services.history import history_service
 from schemas.llm_response import KidsMindResponse
-from core.llm import llm as default_llm
 from core.config import settings
 from utils.token_count import get_sum_token_count
 
 
 class ChainBuilder:
-    """Assembles the LangChain pipeline from isolated, testable components."""
 
     def _build_parser(self) -> JsonOutputParser:
         return JsonOutputParser(pydantic_object=KidsMindResponse)
@@ -38,8 +35,8 @@ class ChainBuilder:
             start_on="human",
         )
 
-    def build(self, llm_client=None, with_parser: bool = True):
-        selected_llm = llm_client or default_llm
+    def build(self, llm_client, with_parser: bool = True):
+        selected_llm = llm_client
 
         parser = self._build_parser()
         prompt = self._build_prompt(parser.get_format_instructions())
@@ -60,5 +57,5 @@ class ChainBuilder:
             return chain_with_history | parser
 
         return chain_with_history
-    
+
 chain_builder = ChainBuilder()

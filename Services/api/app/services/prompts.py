@@ -27,4 +27,3 @@ Guidelines: {age_guidelines}
 ## OUTPUT FORMAT
 {format_instructions}
 """
-

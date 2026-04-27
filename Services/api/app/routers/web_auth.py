@@ -20,7 +20,7 @@ from utils.request_timing import timed_handler
 router = APIRouter()
 
 
-@router.post("/register", response_model=WebAuthResponse, status_code=201)
+@router.post("/register", status_code=201, responses={201: {"model": WebAuthResponse}})
 @timed_handler("web_auth_register")
 async def register(
     request: Request,
@@ -33,7 +33,7 @@ async def register(
     return await service.register(payload, device_info=x_device_info)
 
 
-@router.post("/login", response_model=WebAuthResponse)
+@router.post("/login", responses={200: {"model": WebAuthResponse}})
 @timed_handler("web_auth_login")
 async def login(
     request: Request,
@@ -46,7 +46,7 @@ async def login(
     return await service.login(request, payload, device_info=x_device_info)
 
 
-@router.post("/refresh", response_model=WebAuthResponse)
+@router.post("/refresh", responses={200: {"model": WebAuthResponse}})
 @timed_handler("web_auth_refresh")
 async def refresh(
     request: Request,
@@ -58,7 +58,7 @@ async def refresh(
     return await service.refresh(request)
 
 
-@router.post("/logout", response_model=MessageResponse)
+@router.post("/logout", responses={200: {"model": MessageResponse}})
 @timed_handler("web_auth_logout")
 async def logout(
     request: Request,

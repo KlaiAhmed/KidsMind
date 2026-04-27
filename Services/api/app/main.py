@@ -7,7 +7,7 @@ Layer: Core
 Domain: Application Infrastructure
 """
 
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, AsyncExitStack
 
 import asyncio
 
@@ -70,18 +70,6 @@ HTTPX_TIMEOUT = httpx.Timeout(
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Manage application startup and shutdown lifecycle.
-
-    On startup:
-    - Initialize shared HTTP client
-    - Connect to cache
-    - Initialize database schema
-    - Bootstrap super admin user
-
-    On shutdown:
-    - Close cache connection
-    """
     logger.info(
         "Application starting up",
         extra={
@@ -91,10 +79,18 @@ async def lifespan(app: FastAPI):
         },
     )
 
+    async with AsyncExitStack() as stack:
+        internal_client = await stack.enter_async_context(
+            httpx.AsyncClient(timeout=HTTPX_TIMEOUT, headers=build_service_headers())
+        )
+        app.state.http_client = internal_client
 
-    async with httpx.AsyncClient(timeout=HTTPX_TIMEOUT, headers=build_service_headers()) as client:
-        app.state.http_client = client
-        logger.info("HTTP client initialized")
+        external_client = await stack.enter_async_context(
+            httpx.AsyncClient(timeout=HTTPX_TIMEOUT)
+        )
+        app.state.external_client = external_client
+
+        logger.info("HTTP clients initialized")
 
         resolved_rate_limit_policy = build_resolved_rate_limit_policy()
         set_resolved_rate_limit_policy(resolved_rate_limit_policy)
@@ -115,6 +111,14 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(warm_base_avatar_cache())
         logger.info("Base avatar cache warm-up scheduled in background")
 
+        from core.llm import get_llm, get_llm_streaming
+        get_llm()
+        get_llm_streaming()
+        logger.info(
+            "AI module initialized",
+            extra={"model_name": settings.MODEL_NAME},
+        )
+
         logger.info(
             "Application startup complete",
             extra={
@@ -122,9 +126,9 @@ async def lifespan(app: FastAPI):
                 "rate_limit": settings.RATE_LIMIT,
             },
         )
-
+    
         yield
-
+    
         await close_cache_client()
         logger.info(
             "Application shutdown complete",
