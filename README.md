@@ -1,16 +1,11 @@
 # KidsMind - AI Educational Assistant
 
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.128-009688?logo=fastapi)
-![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)
 ![React Native](https://img.shields.io/badge/React_Native-0.81-61DAFB?logo=react)
-![Expo](https://img.shields.io/badge/Expo_SDK-54-000020?logo=expo)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18.2-4169E1?logo=postgresql)
 ![Redis](https://img.shields.io/badge/Redis-8.6-DC382D?logo=redis)
 ![MinIO](https://img.shields.io/badge/MinIO-S3_Compatible-E54336?logo=minio)
-![LangChain](https://img.shields.io/badge/LangChain-LCEL-1C3C3C?logo=langchain)
-![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker)
 ![Prometheus](https://img.shields.io/badge/Prometheus-3.9-E6522C?logo=prometheus)
 ![Grafana](https://img.shields.io/badge/Grafana-12.3-F46800?logo=grafana)
 
