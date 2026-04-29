@@ -6,16 +6,48 @@ Layer: Schema
 Domain: Quiz / Gamification
 """
 
-from pydantic import BaseModel, Field, model_validator
+from typing import Literal
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class QuizAnswerItem(BaseModel):
+    question_id: int
+    answer: str
 
 
 class QuizSubmitRequest(BaseModel):
+    quiz_id: str
+    answers: list[QuizAnswerItem]
+    duration_seconds: float | None = None
     subject: str | None = None
-    correct_count: int = Field(..., ge=0)
-    total_questions: int = Field(..., ge=1)
 
-    @model_validator(mode="after")
-    def _validate_counts(self) -> "QuizSubmitRequest":
-        if self.correct_count > self.total_questions:
-            raise ValueError("correct_count must not exceed total_questions")
-        return self
+
+class QuizRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    child_id: UUID
+    subject: str
+    topic: str
+    level: Literal["easy", "medium", "hard"]
+    question_count: int = Field(default=3, ge=1, le=10)
+    context: str = ""
+
+
+class QuizQuestion(BaseModel):
+    id: int
+    type: Literal["mcq", "true_false", "short_answer"]
+    prompt: str
+    options: list[str] | None = None
+    answer: str
+    explanation: str
+
+
+class QuizResponse(BaseModel):
+    quiz_id: str
+    subject: str
+    topic: str
+    level: str
+    intro: str
+    questions: list[QuizQuestion] = Field(default_factory=list)

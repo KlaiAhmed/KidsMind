@@ -74,3 +74,9 @@ class ChildProfile(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    quizzes = relationship(
+        "Quiz",
+        back_populates="child_profile",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )

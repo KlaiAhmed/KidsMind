@@ -22,7 +22,14 @@ from utils.limiter import limiter
 router = APIRouter()
 
 
-@router.post("/{child_id}/submit")
+@router.post(
+    "/{child_id}/submit",
+    summary="Submit quiz answers for server-side validation",
+    description=(
+        "Validates submitted answers against server-stored correct answers. "
+        "Returns server-computed score. Triggers gamification updates."
+    ),
+)
 @limiter.limit(settings.RATE_LIMIT)
 async def submit_quiz(
     request: Request,
@@ -35,7 +42,5 @@ async def submit_quiz(
         db=db,
         child_id=child_id,
         current_user=current_user,
-        subject=payload.subject,
-        correct_count=payload.correct_count,
-        total_questions=payload.total_questions,
+        payload=payload,
     )
