@@ -1,43 +1,87 @@
+"""AI Service
+
+Responsibility: Orchestrates LLM interactions for chat and quiz generation.
+Layer: Service
+Domain: AI/LLM
+
+ARCHITECTURAL NOTE: History vs Memory
+---------------------------------------
+This service uses LangChain's RunnableWithMessageHistory which automatically
+injects MEMORY (active conversation context) into prompts. We do NOT pass
+HISTORY (persisted database records) directly to the LLM.
+
+Key points:
+- session_id: Identifies the conversation session for MEMORY retrieval
+- MEMORY is loaded from Redis via session_memory_service
+- HISTORY is persisted to Postgres via chat_history_service (separate concern)
+- The build_chain module handles the transformation layer
+
+The invoke_payload sent to the chain contains ONLY:
+- Child profile data (nickname, age_group, etc.)
+- Current user message (input)
+- Context (if any)
+
+MEMORY is injected by RunnableWithMessageHistory, NOT in the payload.
+"""
+
 import json
 import time
 import asyncio
+from uuid import uuid4
 from typing import AsyncGenerator
 
-from langchain_core.exceptions import OutputParserException
-from langchain_core.output_parsers import JsonOutputParser
 from openai import RateLimitError as OpenAIRateLimitError
 
 from services.build_chain import chain_builder
-from schemas.llm_response import KidsMindResponse
+from core.config import settings
 from core.exceptions import AIRateLimitError
-from core.llm import get_llm, get_llm_streaming
-from utils.age_guidelines import age_guidelines
+from core.llm import build_llm_for_profile
+from utils.child_policy import child_policy
 from utils.logger import logger
-
-AI_INVOKE_TIMEOUT_SECONDS = 70
-RESPONSE_FIELDS = ("explanation", "example", "exercise", "encouragement")
 
 
 class AIService:
-    def __init__(self, chain=None, stream_chain=None):
-        self.chain = chain or chain_builder.build(llm_client=get_llm(), with_parser=True)
-        self.stream_chain = stream_chain or chain_builder.build(llm_client=get_llm_streaming(), with_parser=False)
-        self.parser = JsonOutputParser(pydantic_object=KidsMindResponse)
+    def __init__(self):
+        pass
 
     def build_session_key(self, user_id: str, child_id: str, session_id: str) -> str:
-        return f"kidsmind:history:{user_id}:{child_id}:{session_id}"
+        return f"kidsmind:session:{user_id}:{child_id}:{session_id}"
 
     @staticmethod
-    def _build_input_payload(payload, guidelines: str) -> dict:
+    def _build_chat_input(profile_context: dict, text: str, context: str = "") -> dict:
         return {
-            "nickname": payload.nickname,
-            "age_group": payload.age_group,
-            "education_stage": payload.education_stage,
-            "is_accelerated": payload.is_accelerated,
-            "is_below_expected_stage": payload.is_below_expected_stage,
-            "age_guidelines": guidelines,
-            "context": payload.context or "",
-            "input": payload.text,
+            "nickname": profile_context["nickname"],
+            "age_group": profile_context["age_group"],
+            "education_stage": profile_context["education_stage"],
+            "is_accelerated": profile_context["is_accelerated"],
+            "is_below_expected_stage": profile_context["is_below_expected_stage"],
+            "child_policy": child_policy(
+                profile_context["age_group"],
+                profile_context["is_accelerated"],
+                profile_context["is_below_expected_stage"],
+            ),
+            "language": profile_context["language"],
+            "context": context or "",
+            "input": text,
+        }
+
+    @staticmethod
+    def _build_quiz_input(profile_context: dict, subject: str, topic: str, level: str, question_count: int, context: str = "") -> dict:
+        return {
+            "nickname": profile_context["nickname"],
+            "age_group": profile_context["age_group"],
+            "education_stage": profile_context["education_stage"],
+            "child_policy": child_policy(
+                profile_context["age_group"],
+                profile_context.get("is_accelerated", False),
+                profile_context.get("is_below_expected_stage", False),
+            ),
+            "language": profile_context.get("language", "en"),
+            "subject": subject,
+            "topic": topic,
+            "level": level,
+            "question_count": question_count,
+            "context": context or "",
         }
 
     @staticmethod
@@ -80,7 +124,7 @@ class AIService:
                         nested = text_value.get("value") or text_value.get("text")
                         if isinstance(nested, str):
                             parts.append(nested)
-                            continue
+                        continue
 
                     for key in ("content", "value", "output_text"):
                         value = block.get(key)
@@ -92,346 +136,141 @@ class AIService:
 
         return str(content or "")
 
-    @staticmethod
-    def _empty_response_payload() -> dict[str, str]:
-        return {field: "" for field in RESPONSE_FIELDS}
-
-    @classmethod
-    def _normalize_response_payload(cls, payload: dict) -> dict[str, str]:
-        normalized = cls._empty_response_payload()
-        if not isinstance(payload, dict):
-            return normalized
-        for field in RESPONSE_FIELDS:
-            value = payload.get(field, "")
-            if isinstance(value, str):
-                normalized[field] = value
-            elif value is None:
-                normalized[field] = ""
-            else:
-                normalized[field] = str(value)
-        return normalized
-
-    @staticmethod
-    def _has_non_empty_fields(payload: dict[str, str]) -> bool:
-        return any((value or "").strip() for value in payload.values())
-
-    @staticmethod
-    def _strip_to_json_text(raw_text: str) -> str:
-        text = (raw_text or "").strip()
-        if not text:
-            return ""
-        if "```" in text:
-            text = text.replace("```json", "").replace("```JSON", "").replace("```", "").strip()
-        first_brace = text.find("{")
-        if first_brace >= 0:
-            return text[first_brace:]
-        return text
-
-    @staticmethod
-    def _extract_first_json_object(text: str) -> str:
-        if not text:
-            return ""
-        start = text.find("{")
-        if start == -1:
-            return ""
-        depth = 0
-        in_string = False
-        escaped = False
-        for index in range(start, len(text)):
-            char = text[index]
-            if in_string:
-                if escaped:
-                    escaped = False
-                elif char == "\\":
-                    escaped = True
-                elif char == '"':
-                    in_string = False
-                continue
-            if char == '"':
-                in_string = True
-                continue
-            if char == "{":
-                depth += 1
-                continue
-            if char == "}":
-                depth -= 1
-                if depth == 0:
-                    return text[start : index + 1]
-        return text[start:]
-
-    def _parse_structured_output(self, raw_text: str) -> dict[str, str] | None:
-        json_text = self._strip_to_json_text(raw_text)
-        if not json_text:
-            return None
-
-        candidates = [json_text]
-        extracted_object = self._extract_first_json_object(json_text)
-        if extracted_object and extracted_object not in candidates:
-            candidates.append(extracted_object)
-
-        for candidate in candidates:
-            parsed_object = None
-            try:
-                parsed_object = self.parser.parse(candidate)
-            except Exception:
-                try:
-                    parsed_object = json.loads(candidate)
-                except Exception:
-                    continue
-
-            if hasattr(parsed_object, "model_dump"):
-                parsed_object = parsed_object.model_dump()
-
-            normalized = self._normalize_response_payload(parsed_object)
-            if self._has_non_empty_fields(normalized):
-                return normalized
-
-        return None
-
-    @staticmethod
-    def _extract_partial_json_string_value(json_text: str, key: str) -> str | None:
-        marker = f'"{key}"'
-        key_start = json_text.find(marker)
-        if key_start == -1:
-            return None
-
-        cursor = key_start + len(marker)
-        length = len(json_text)
-        while cursor < length and json_text[cursor].isspace():
-            cursor += 1
-        if cursor >= length or json_text[cursor] != ":":
-            return None
-        cursor += 1
-        while cursor < length and json_text[cursor].isspace():
-            cursor += 1
-        if cursor >= length:
-            return None
-
-        if json_text[cursor] != '"':
-            end = cursor
-            while end < length and json_text[end] not in ",}":
-                end += 1
-            literal = json_text[cursor:end].strip()
-            if not literal:
-                return None
-            try:
-                parsed_literal = json.loads(literal)
-            except json.JSONDecodeError:
-                return literal
-            return "" if parsed_literal is None else str(parsed_literal)
-
-        cursor += 1
-        pieces: list[str] = []
-        escaped = False
-        while cursor < length:
-            char = json_text[cursor]
-            if escaped:
-                pieces.append("\\" + char)
-                escaped = False
-                cursor += 1
-                continue
-            if char == "\\":
-                escaped = True
-                cursor += 1
-                continue
-            if char == '"':
-                encoded_value = "".join(pieces)
-                try:
-                    return json.loads(f'"{encoded_value}"')
-                except json.JSONDecodeError:
-                    return encoded_value
-            pieces.append(char)
-            cursor += 1
-
-        partial_value = "".join(pieces)
-        if partial_value.endswith("\\"):
-            partial_value = partial_value[:-1]
-        if not partial_value:
-            return ""
-        try:
-            return json.loads(f'"{partial_value}"')
-        except json.JSONDecodeError:
-            return partial_value.replace('\\"', '"').replace("\\n", "\n")
-
-    def _extract_progress_payload(self, raw_text: str) -> dict[str, str]:
-        parsed_payload = self._parse_structured_output(raw_text)
-        if parsed_payload is not None:
-            return parsed_payload
-
-        json_text = self._strip_to_json_text(raw_text)
-        payload = self._empty_response_payload()
-        for field in RESPONSE_FIELDS:
-            value = self._extract_partial_json_string_value(json_text, field)
-            if value is not None:
-                payload[field] = value
-        return payload
-
-    @staticmethod
-    def _to_fallback_response(raw_text: str) -> dict:
-        text = (raw_text or "").strip()
-        if not text:
-            text = "I'm sorry, I couldn't generate a complete answer this time. Please try again."
-        return {
-            "explanation": text,
-            "example": "",
-            "exercise": "",
-            "encouragement": "Thanks for your patience. We can try again together.",
-        }
-
-    async def get_response(self, user: dict, payload) -> dict:
+    async def stream_chat_text(
+        self,
+        user: dict,
+        profile_context: dict,
+        text: str,
+        context: str = "",
+    ) -> AsyncGenerator[str, None]:
         timer = time.perf_counter()
-        guidelines = age_guidelines(payload.age_group)
-        invoke_payload = self._build_input_payload(payload, guidelines)
+        age_group = profile_context["age_group"]
+        llm = build_llm_for_profile(age_group, streaming=True)
+        chain = chain_builder.build_chat_chain(llm)
 
         session_id = self.build_session_key(user['id'], user['child_id'], user['session_id'])
+        invoke_payload = self._build_chat_input(profile_context, text, context)
 
         logger.info(
-            "AIService.get_response started",
-            extra={
-                "session_id": session_id,
-                "timeout_seconds": AI_INVOKE_TIMEOUT_SECONDS,
-            },
-        )
-
-        try:
-            response = await asyncio.wait_for(
-                self.chain.ainvoke(
-                    invoke_payload,
-                    config={"configurable": {"session_id": session_id}},
-                ),
-                timeout=AI_INVOKE_TIMEOUT_SECONDS,
-            )
-            elapsed = time.perf_counter() - timer
-            logger.info(
-                "AIService.get_response completed",
-                extra={
-                    "session_id": session_id,
-                    "elapsed_seconds": elapsed,
-                },
-            )
-            return response
-        except OpenAIRateLimitError as e:
-            raise AIRateLimitError(str(e)) from e
-        except TimeoutError:
-            elapsed = time.perf_counter() - timer
-            logger.error(
-                "AIService.get_response timed out",
-                extra={
-                    "session_id": session_id,
-                    "elapsed_seconds": elapsed,
-                    "timeout_seconds": AI_INVOKE_TIMEOUT_SECONDS,
-                },
-            )
-            raise
-        except OutputParserException as parse_error:
-            elapsed = time.perf_counter() - timer
-            logger.warning(
-                "Structured parse failed, attempting local raw-output recovery",
-                extra={
-                    "session_id": session_id,
-                    "elapsed_seconds": elapsed,
-                    "error": str(parse_error),
-                },
-            )
-            raw_output = self._extract_message_text(getattr(parse_error, "llm_output", ""))
-            recovered = self._parse_structured_output(raw_output)
-            if recovered is not None:
-                logger.info(
-                    "Structured parse recovery succeeded",
-                    extra={"session_id": session_id},
-                )
-                return recovered
-            logger.warning(
-                "Structured parse recovery failed, using fallback response",
-                extra={
-                    "session_id": session_id,
-                    "raw_output_preview": raw_output[:250] if raw_output else None,
-                },
-            )
-            return self._to_fallback_response(raw_output)
-        except Exception:
-            logger.exception(
-                "AIService.get_response failed",
-                extra={"session_id": session_id},
-            )
-            raise
-
-    async def stream_response(self, user: dict, payload) -> AsyncGenerator[str, None]:
-        timer = time.perf_counter()
-        guidelines = age_guidelines(payload.age_group)
-        invoke_payload = self._build_input_payload(payload, guidelines)
-
-        session_id = self.build_session_key(user['id'], user['child_id'], user['session_id'])
-
-        logger.info(
-            "AIService.stream_response started",
+            "AIService.stream_chat_text started",
             extra={
                 "user_id": user.get("id"),
                 "child_id": user.get("child_id"),
                 "session_id": session_id,
-                "nickname": payload.nickname,
-                "age_group": payload.age_group,
-                "education_stage": payload.education_stage,
-                "is_accelerated": payload.is_accelerated,
-                "is_below_expected_stage": payload.is_below_expected_stage,
+                "age_group": age_group,
             },
         )
 
-        accumulated_text = ""
-        last_payload = self._empty_response_payload()
-
         try:
-            async for chunk in self.stream_chain.astream(
+            async for chunk in chain.astream(
                 invoke_payload,
                 config={"configurable": {"session_id": session_id}},
             ):
                 chunk_text = self._extract_message_text(chunk)
-                if chunk_text == "":
+                if not chunk_text:
                     continue
-
-                accumulated_text += chunk_text
-                progress_payload = self._extract_progress_payload(accumulated_text)
-                if not self._has_non_empty_fields(progress_payload):
-                    continue
-                if progress_payload == last_payload:
-                    continue
-                yield json.dumps(progress_payload, ensure_ascii=False)
-                last_payload = progress_payload
-
-            final_payload = self._parse_structured_output(accumulated_text)
-            if final_payload is None:
-                explanation_text = self._extract_partial_json_string_value(
-                    self._strip_to_json_text(accumulated_text),
-                    "explanation",
-                )
-                fallback_seed = explanation_text or accumulated_text
-                final_payload = self._to_fallback_response(fallback_seed)
-                logger.warning(
-                    "AI stream ended without valid JSON payload, sending fallback",
-                    extra={"session_id": session_id, "raw_output_preview": accumulated_text[:200]},
-                )
-            if final_payload != last_payload:
-                yield json.dumps(final_payload, ensure_ascii=False)
+                yield chunk_text
 
         except OpenAIRateLimitError as e:
             raise AIRateLimitError(str(e)) from e
         except Exception:
             logger.exception(
-                "AIService.stream_response failed",
-                extra={
-                    "session_id": session_id,
-                },
+                "AIService.stream_chat_text failed",
+                extra={"session_id": session_id},
             )
             raise
         finally:
             elapsed = time.perf_counter() - timer
             logger.info(
-                "AIService.stream_response finished",
+                "AIService.stream_chat_text finished",
                 extra={
                     "session_id": session_id,
                     "elapsed_seconds": elapsed,
                 },
             )
+
+    async def generate_quiz(
+        self,
+        profile_context: dict,
+        subject: str,
+        topic: str,
+        level: str,
+        question_count: int = 3,
+        context: str = "",
+    ) -> dict:
+        timer = time.perf_counter()
+        age_group = profile_context["age_group"]
+        llm = build_llm_for_profile(age_group, streaming=False)
+        chain = chain_builder.build_quiz_chain(llm)
+
+        invoke_payload = self._build_quiz_input(
+            profile_context, subject, topic, level, question_count, context
+        )
+
+        logger.info(
+            "AIService.generate_quiz started",
+            extra={
+                "age_group": age_group,
+                "subject": subject,
+                "topic": topic,
+                "level": level,
+                "question_count": question_count,
+            },
+        )
+
+        try:
+            task = asyncio.create_task(chain.ainvoke(invoke_payload))
+            response = await asyncio.wait_for(
+                asyncio.shield(task),
+                timeout=settings.AI_QUIZ_TIMEOUT_SECONDS,
+            )
+            elapsed = time.perf_counter() - timer
+            logger.info(
+                "AIService.generate_quiz completed",
+                extra={
+                    "elapsed_seconds": elapsed,
+                },
+            )
+            if isinstance(response, dict):
+                payload = dict(response)
+            elif hasattr(response, "model_dump"):
+                payload = response.model_dump()
+            else:
+                payload = {"intro": "", "questions": []}
+
+            payload.setdefault("intro", "")
+            payload.setdefault("questions", [])
+            payload["quiz_id"] = payload.get("quiz_id") or str(uuid4())
+            payload["subject"] = subject
+            payload["topic"] = topic
+            payload["level"] = level
+            return payload
+        except OpenAIRateLimitError as e:
+            raise AIRateLimitError(str(e)) from e
+        except asyncio.TimeoutError:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            elapsed = time.perf_counter() - timer
+            logger.error(
+                "AIService.generate_quiz timed out",
+                extra={
+                    "elapsed_seconds": elapsed,
+                    "timeout_seconds": settings.AI_QUIZ_TIMEOUT_SECONDS,
+                },
+            )
+            raise
+        except Exception:
+            logger.exception(
+                "AIService.generate_quiz failed",
+                extra={
+                    "subject": subject,
+                    "topic": topic,
+                },
+            )
+            raise
 
 
 ai_service = AIService()

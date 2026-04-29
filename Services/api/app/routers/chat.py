@@ -10,26 +10,26 @@ Domain: Chat
 import httpx
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends, Form, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from redis.asyncio import Redis
 from sqlalchemy.orm import Session
 
 from controllers.chat import (
     DEFAULT_CHAT_HISTORY_LIMIT,
     MAX_CHAT_HISTORY_LIMIT,
+    chat_message_controller,
     clear_history_controller,
     close_chat_session_controller,
     create_chat_session_controller,
     get_history_controller,
-    text_chat_controller,
-    voice_chat_controller,
+    quiz_generate_controller,
 )
 from core.config import settings
 from dependencies.auth import get_current_user
-from dependencies.infrastructure import get_client, get_db, get_external_client, get_redis
-from dependencies.media import validate_audio_file
+from dependencies.infrastructure import get_db, get_external_client, get_redis
 from models.user import User
 from schemas.chat_schema import ChatSessionClose, ChatSessionCreate, ChatSessionRead, TextChatRequest
+from schemas.quiz_schema import QuizRequest, QuizResponse
 from utils.limiter import limiter
 
 router = APIRouter()
@@ -61,73 +61,6 @@ async def close_chat_session(
         session_id=session_id,
         payload=payload or ChatSessionClose(),
     )
-
-
-@router.post("/voice/{user_id}/{child_id}/{session_id}")
-@limiter.limit(settings.RATE_LIMIT)
-async def voice_chat(
-    request: Request,
-    user_id: UUID,
-    child_id: UUID,
-    session_id: UUID,
-    current_user: User = Depends(get_current_user),
-    audio_file: UploadFile = Depends(validate_audio_file),
-    context: str = Form(""),
-    stream: bool = Form(False),
-    store_audio: bool = Form(True),
-    client: httpx.AsyncClient = Depends(get_client),
-    external_client: httpx.AsyncClient = Depends(get_external_client),
-    db: Session = Depends(get_db),
-    redis: Redis = Depends(get_redis),
-):
-    if current_user.id != user_id:
-        raise HTTPException(status_code=403, detail="User mismatch")
-
-    return await voice_chat_controller(
-        user_id=user_id,
-        child_id=child_id,
-        session_id=session_id,
-        audio_file=audio_file,
-        context=context,
-        stream=stream,
-        store_audio=store_audio,
-        client=client,
-        external_client=external_client,
-        db=db,
-        redis=redis,
-    )
-
-
-@router.post("/text/{user_id}/{child_id}/{session_id}")
-@limiter.limit(settings.RATE_LIMIT)
-async def text_chat(
-    request: Request,
-    user_id: UUID,
-    child_id: UUID,
-    session_id: UUID,
-    body: TextChatRequest,
-    current_user: User = Depends(get_current_user),
-    client: httpx.AsyncClient = Depends(get_client),
-    external_client: httpx.AsyncClient = Depends(get_external_client),
-    db: Session = Depends(get_db),
-    redis: Redis = Depends(get_redis),
-):
-    if current_user.id != user_id:
-        raise HTTPException(status_code=403, detail="User mismatch")
-
-    return await text_chat_controller(
-        user_id=user_id,
-        child_id=child_id,
-        session_id=session_id,
-        text=body.text,
-        context=body.context,
-        stream=body.stream,
-        client=client,
-        external_client=external_client,
-        db=db,
-        redis=redis,
-    )
-
 
 @router.get("/history/{user_id}/{child_id}")
 @limiter.limit(settings.RATE_LIMIT)
@@ -172,4 +105,82 @@ async def clear_history(
         child_id=child_id,
         session_id=session_id,
         user_id=user_id,
+    )
+
+
+@router.post(
+    "/{user_id}/{child_id}/{session_id}/message",
+    summary="Send chat message (SSE)",
+    description="Send a chat message and receive AI response via SSE streaming.",
+)
+@limiter.limit(settings.RATE_LIMIT)
+async def chat_message(
+    request: Request,
+    user_id: UUID,
+    child_id: UUID,
+    session_id: UUID,
+    body: TextChatRequest,
+    current_user: User = Depends(get_current_user),
+    external_client: httpx.AsyncClient = Depends(get_external_client),
+    db: Session = Depends(get_db),
+    redis: Redis = Depends(get_redis),
+):
+    """SSE events emitted:
+
+    - event: start → {"message_id": str, "type": "chat", "child_id": str}
+    - event: delta → {"text": str}
+    - event: end → {"finish_reason": str, "message_id": str}
+    - event: error → {"code": str, "message": str, "message_id": str}
+    """
+
+    if current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    return await chat_message_controller(
+        db=db,
+        redis=redis,
+        user_id=user_id,
+        child_id=child_id,
+        session_id=session_id,
+        text=body.text,
+        context=body.context,
+        input_source=body.input_source,
+        stream=body.stream,
+        external_client=external_client,
+    )
+
+
+@router.post(
+    "/{user_id}/{child_id}/{session_id}/quiz",
+    response_model=QuizResponse,
+    summary="Generate a quiz",
+    description="Generate an educational quiz for a child based on subject, topic, and level.",
+)
+@limiter.limit(settings.RATE_LIMIT)
+async def quiz_generate(
+    request: Request,
+    user_id: UUID,
+    child_id: UUID,
+    session_id: UUID,
+    body: QuizRequest,
+    current_user: User = Depends(get_current_user),
+    external_client: httpx.AsyncClient = Depends(get_external_client),
+    db: Session = Depends(get_db),
+    redis: Redis = Depends(get_redis),
+):
+    if current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    return await quiz_generate_controller(
+        db=db,
+        redis=redis,
+        user_id=user_id,
+        child_id=child_id,
+        session_id=session_id,
+        subject=body.subject,
+        topic=body.topic,
+        level=body.level,
+        question_count=body.question_count,
+        context=body.context,
+        external_client=external_client,
     )

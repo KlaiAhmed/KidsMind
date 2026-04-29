@@ -7,6 +7,7 @@ Domain: Chat
 """
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
@@ -19,6 +20,7 @@ class TextChatRequest(BaseModel):
 
     text: str
     context: str = ""
+    input_source: Literal["voice", "keyboard"] | None = None
     stream: bool = False
 
 

@@ -1,7 +1,7 @@
 """
 chat
 
-Responsibility: Orchestrate voice and text chat workflows by coordinating upstream services.
+Responsibility: Orchestrate chat workflows.
 Layer: Controller
 Domain: Chat
 """
@@ -11,46 +11,37 @@ import time
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import httpx
-from fastapi import HTTPException, UploadFile
+from fastapi import HTTPException
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from core.config import settings
+from core.exceptions import AIRateLimitError
 from models.access_window import AccessWindow
 from models.chat_history import ChatHistory
 from models.chat_session import ChatSession
 from models.child_profile import ChildProfile
+from models.quiz import Quiz
+from models.quiz_question import QuizQuestion
 from models.user import User
 from schemas.chat_schema import ChatSessionClose, ChatSessionCreate
+from services.ai_service import ai_service
 from services.badge_award_service import evaluate_and_award
 from services.chat_history import chat_history_service
+from services.chat_session_service import create_session_for_child
 from services.child_profile_context_cache import get_child_profile_context
 from services.gamification_service import process_first_chat, process_login
-from services.generate_content import generate_content, stream_content
-from services.upload_file import remove_audio, upload_audio
-from utils.handle_service_errors import handle_service_errors
+from utils.get_moderation_service import get_moderation_service
 from utils.logger import logger
+from utils.sse import format_chat_delta, format_chat_end, format_chat_error, format_chat_start, new_message_id
+from utils.validate_token_limit import validate_token_limit_by_source
 
-SLOW_CALL_THRESHOLD_SECONDS = 3.0
 DEFAULT_CHAT_HISTORY_LIMIT = 200
 MAX_CHAT_HISTORY_LIMIT = 500
-
-
-def _serialize_history_content(value: object) -> str:
-    if isinstance(value, str):
-        return value
-
-    if value is None:
-        return ""
-
-    try:
-        return json.dumps(value, ensure_ascii=False)
-    except TypeError:
-        return str(value)
 
 
 def _resolve_owned_child_profile(
@@ -60,15 +51,17 @@ def _resolve_owned_child_profile(
 ) -> ChildProfile:
     child_profile = db.query(ChildProfile).filter(
         ChildProfile.id == child_id,
-        ChildProfile.parent_id == user_id,
     ).first()
 
     if not child_profile:
+        raise HTTPException(status_code=404, detail="Child profile not found")
+
+    if child_profile.parent_id != user_id:
         logger.warning(
             "Unauthorized access attempt to child chat profile",
             extra={"user_id": str(user_id), "child_id": str(child_id)},
         )
-        raise HTTPException(status_code=404, detail="Child profile not found")
+        raise HTTPException(status_code=403, detail="Forbidden")
 
     return child_profile
 
@@ -183,112 +176,34 @@ def _load_owned_history_rows(
 
     return str(child_profile.id), rows, has_more
 
-
-async def _persist_streamed_turn(
-    *,
-    db: Session,
-    user_id: str,
-    child_id: str,
-    session_id: UUID,
-    user_message: str,
-    stream_label: str,
-    stream_completed: bool,
-    accumulated_payload: dict[str, object],
-) -> None:
-    if not stream_completed:
-        logger.warning(
-            f"Skipping {stream_label} stream persistence because stream did not complete",
-            extra={
-                "user_id": user_id,
-                "child_id": child_id,
-                "session_id": str(session_id),
-            },
-        )
-        return
-
-    assistant_content = _serialize_history_content(accumulated_payload)
-    if not assistant_content:
-        logger.warning(
-            f"Skipping {stream_label} stream persistence because assistant content is empty",
-            extra={
-                "user_id": user_id,
-                "child_id": child_id,
-                "session_id": str(session_id),
-            },
-        )
-        return
-
+async def _run_gamification(db: Session, child_id: UUID, parent_id: UUID) -> None:
     try:
-        await chat_history_service.save_turn_to_db(
-            db=db,
-            session_id=session_id,
-            user_message=user_message,
-            ai_response=assistant_content,
-        )
-        db.commit()
-        logger.info(
-            f"{stream_label.capitalize()} stream turn persisted",
-            extra={
-                "user_id": user_id,
-                "child_id": child_id,
-                "session_id": str(session_id),
-                "assistant_content_length": len(assistant_content),
-            },
-        )
+        was_first_chat = await run_in_threadpool(process_first_chat, db, child_id)
+        if was_first_chat:
+            await run_in_threadpool(evaluate_and_award, db, child_id, parent_id)
+            db.commit()
     except Exception:
         db.rollback()
         logger.exception(
-            f"Failed persisting {stream_label} stream chat turn",
-            extra={
-                "user_id": user_id,
-                "child_id": child_id,
-                "session_id": str(session_id),
-            },
+            "Gamification processing failed — chat unaffected",
+            extra={"child_id": str(child_id)},
         )
 
-
-async def _stream_with_persistence(
-    source_stream: AsyncGenerator[bytes, None],
-    *,
+async def _resolve_or_create_session(
     db: Session,
-    user_id: str,
-    child_id: str,
-    session_id: UUID,
-    user_message: str,
-    stream_label: str,
-) -> AsyncGenerator[bytes, None]:
-    stream_completed = False
-    accumulated_payload: dict[str, object] = {}
+    child_id: UUID,
+    session_id: UUID | None,
+) -> ChatSession:
+    if session_id is not None:
+        chat_session = db.query(ChatSession).filter(
+            ChatSession.id == session_id,
+            ChatSession.child_profile_id == child_id,
+        ).first()
+        if chat_session:
+            return chat_session
 
-    try:
-        async for chunk in source_stream:
-            decoded = chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk
-            if "data: [DONE]" in decoded:
-                stream_completed = True
-            for line in decoded.splitlines():
-                if not line.startswith("data:"):
-                    continue
-                data = line[5:].strip()
-                if not data or data == "[DONE]":
-                    continue
-                try:
-                    parsed = json.loads(data)
-                    if isinstance(parsed, dict) and "error" not in parsed:
-                        accumulated_payload.update(parsed)
-                except json.JSONDecodeError:
-                    continue
-            yield chunk
-    finally:
-        await _persist_streamed_turn(
-            db=db,
-            user_id=user_id,
-            child_id=child_id,
-            session_id=session_id,
-            user_message=user_message,
-            stream_label=stream_label,
-            stream_completed=stream_completed,
-            accumulated_payload=accumulated_payload,
-        )
+    effective_session_id = session_id or uuid4()
+    return await run_in_threadpool(create_session_for_child, db, child_id, effective_session_id)
 
 
 async def create_chat_session_controller(
@@ -368,309 +283,6 @@ async def close_chat_session_controller(
     db.commit()
     db.refresh(chat_session)
     return chat_session
-
-
-async def voice_chat_controller(
-    user_id: UUID,
-    child_id: UUID,
-    session_id: UUID,
-    audio_file: UploadFile,
-    context: str,
-    stream: bool,
-    store_audio: bool,
-    client: httpx.AsyncClient,
-    external_client: httpx.AsyncClient,
-    db: Session,
-    redis: Any,
-) -> dict | StreamingResponse:
-    filename = None
-    try:
-        async with handle_service_errors():
-            request_start = time.perf_counter()
-
-            logger.info(
-                "Processing voice chat request",
-                extra={
-                    "user_id": str(user_id),
-                    "child_id": str(child_id),
-                    "session_id": str(session_id),
-                    "stream": stream,
-                    "store_audio": store_audio,
-                },
-            )
-
-            child_profile, chat_session, profile_context = await _load_owned_chat_session_context(
-                db=db,
-                redis=redis,
-                user_id=user_id,
-                child_id=child_id,
-                session_id=session_id,
-            )
-            normalized_user_id = str(user_id)
-            normalized_child_id = str(child_profile.id)
-            normalized_session_id = str(chat_session.id)
-
-            upload_start = time.perf_counter()
-            upload_result = await run_in_threadpool(
-                upload_audio,
-                audio_file,
-                user_id=normalized_user_id,
-                child_id=normalized_child_id,
-                session_id=normalized_session_id,
-                store_audio=store_audio,
-            )
-
-            upload_duration = time.perf_counter() - upload_start
-
-            if upload_duration > SLOW_CALL_THRESHOLD_SECONDS:
-                logger.warning(
-                    "Slow audio upload",
-                    extra={"duration_seconds": round(upload_duration, 3)},
-                )
-
-            filename = str(upload_result["filename"])
-            audio_url = str(upload_result["url"])
-
-            stt_start = time.perf_counter()
-            stt_response = await client.post(
-                f"{settings.STT_SERVICE_URL}/v1/stt/transcriptions",
-                json={"audio_url": audio_url, "context": context},
-                timeout=30.0,
-            )
-            stt_response.raise_for_status()
-            stt_duration = time.perf_counter() - stt_start
-
-            logger.info(
-                "STT service call completed",
-                extra={
-                    "status_code": stt_response.status_code,
-                    "duration_seconds": round(stt_duration, 3),
-                    "slow": stt_duration > SLOW_CALL_THRESHOLD_SECONDS,
-                },
-            )
-
-            text = stt_response.json().get("text", "")
-            if not text:
-                logger.warning(
-                    "STT Service returned empty transcription",
-                    extra={"user_id": normalized_user_id, "child_id": normalized_child_id},
-                )
-                raise HTTPException(status_code=500, detail="STT Service did not return text")
-
-            logger.info("Transcription received", extra={"text_length": len(text)})
-
-        if stream:
-            source_stream = stream_content(
-                user_id=normalized_user_id,
-                child_id=normalized_child_id,
-                session_id=normalized_session_id,
-                text=text,
-                context=context,
-                nickname=profile_context["nickname"],
-                age_group=profile_context["age_group"],
-                education_stage=profile_context["education_stage"],
-                is_accelerated=profile_context["is_accelerated"],
-                is_below_expected_stage=profile_context["is_below_expected_stage"],
-                moderation_client=external_client,
-            )
-
-            return StreamingResponse(
-                _stream_with_persistence(
-                    source_stream,
-                    db=db,
-                    user_id=normalized_user_id,
-                    child_id=normalized_child_id,
-                    session_id=chat_session.id,
-                    user_message=text,
-                    stream_label="voice",
-                ),
-                media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "X-Accel-Buffering": "no",
-                },
-            )
-
-        else:
-            ai_start = time.perf_counter()
-            ai_response = await generate_content(
-                user_id=normalized_user_id,
-                child_id=normalized_child_id,
-                session_id=normalized_session_id,
-                text=text,
-                context=context,
-                nickname=profile_context["nickname"],
-                age_group=profile_context["age_group"],
-                education_stage=profile_context["education_stage"],
-                is_accelerated=profile_context["is_accelerated"],
-                is_below_expected_stage=profile_context["is_below_expected_stage"],
-                moderation_client=external_client,
-            )
-            ai_duration = time.perf_counter() - ai_start
-
-            assistant_content = _serialize_history_content(ai_response)
-            await chat_history_service.save_turn_to_db(
-                db=db,
-                session_id=chat_session.id,
-                user_message=text,
-                ai_response=assistant_content,
-            )
-            db.commit()
-
-            was_first_chat = await run_in_threadpool(process_first_chat, db, child_profile.id)
-            if was_first_chat:
-                try:
-                    await run_in_threadpool(evaluate_and_award, db, child_profile.id, user_id)
-                    db.commit()
-                except Exception:
-                    db.rollback()
-                    logger.exception(
-                        "Badge evaluation failed during voice chat — chat unaffected",
-                        extra={"child_id": normalized_child_id},
-                    )
-
-            request_duration = time.perf_counter() - request_start
-            logger.info(
-                "Voice chat completed",
-                extra={
-                    "user_id": normalized_user_id,
-                    "child_id": normalized_child_id,
-                    "session_id": normalized_session_id,
-                    "total_duration_seconds": round(request_duration, 3),
-                    "ai_duration_seconds": round(ai_duration, 3),
-                    "upload_duration_seconds": round(upload_duration, 3),
-                    "stt_duration_seconds": round(stt_duration, 3),
-                },
-            )
-            return ai_response
-    finally:
-        if filename and not store_audio:
-            await run_in_threadpool(remove_audio, filename)
-
-
-async def text_chat_controller(
-    user_id: UUID,
-    child_id: UUID,
-    session_id: UUID,
-    text: str,
-    context: str,
-    stream: bool,
-    client: httpx.AsyncClient,
-    external_client: httpx.AsyncClient,
-    db: Session,
-    redis: Any,
-) -> dict | StreamingResponse:
-    async with handle_service_errors():
-        request_start = time.perf_counter()
-
-        child_profile, chat_session, profile_context = await _load_owned_chat_session_context(
-            db=db,
-            redis=redis,
-            user_id=user_id,
-            child_id=child_id,
-            session_id=session_id,
-        )
-        normalized_user_id = str(user_id)
-        normalized_child_id = str(child_profile.id)
-        normalized_session_id = str(chat_session.id)
-
-        logger.info(
-            "Processing text chat request",
-            extra={
-                "user_id": normalized_user_id,
-                "child_id": normalized_child_id,
-                "session_id": normalized_session_id,
-                "text_length": len(text),
-                "context_length": len(context) if context else 0,
-                "stream": stream,
-            },
-        )
-
-        if stream:
-            source_stream = stream_content(
-                user_id=normalized_user_id,
-                child_id=normalized_child_id,
-                session_id=normalized_session_id,
-                text=text,
-                context=context,
-                nickname=profile_context["nickname"],
-                age_group=profile_context["age_group"],
-                education_stage=profile_context["education_stage"],
-                is_accelerated=profile_context["is_accelerated"],
-                is_below_expected_stage=profile_context["is_below_expected_stage"],
-                moderation_client=external_client,
-            )
-
-            return StreamingResponse(
-                _stream_with_persistence(
-                    source_stream,
-                    db=db,
-                    user_id=normalized_user_id,
-                    child_id=normalized_child_id,
-                    session_id=chat_session.id,
-                    user_message=text,
-                    stream_label="text",
-                ),
-                media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "X-Accel-Buffering": "no",
-                },
-            )
-
-        else:
-            ai_start = time.perf_counter()
-            ai_response = await generate_content(
-                user_id=normalized_user_id,
-                child_id=normalized_child_id,
-                session_id=normalized_session_id,
-                text=text,
-                context=context,
-                nickname=profile_context["nickname"],
-                age_group=profile_context["age_group"],
-                education_stage=profile_context["education_stage"],
-                is_accelerated=profile_context["is_accelerated"],
-                is_below_expected_stage=profile_context["is_below_expected_stage"],
-                moderation_client=external_client,
-            )
-            ai_duration = time.perf_counter() - ai_start
-
-            assistant_content = _serialize_history_content(ai_response)
-            await chat_history_service.save_turn_to_db(
-                db=db,
-                session_id=chat_session.id,
-                user_message=text,
-                ai_response=assistant_content,
-            )
-            db.commit()
-
-            was_first_chat = await run_in_threadpool(process_first_chat, db, child_profile.id)
-            if was_first_chat:
-                try:
-                    await run_in_threadpool(evaluate_and_award, db, child_profile.id, user_id)
-                    db.commit()
-                except Exception:
-                    db.rollback()
-                    logger.exception(
-                        "Badge evaluation failed during text chat — chat unaffected",
-                        extra={"child_id": normalized_child_id},
-                    )
-
-            request_duration = time.perf_counter() - request_start
-            logger.info(
-                "Text chat completed",
-                extra={
-                    "user_id": normalized_user_id,
-                    "child_id": normalized_child_id,
-                    "session_id": normalized_session_id,
-                    "total_duration_seconds": round(request_duration, 3),
-                    "ai_duration_seconds": round(ai_duration, 3),
-                    "response_size_bytes": len(str(ai_response)),
-                },
-            )
-
-            return ai_response
-
 
 async def get_history_controller(
     db: Session,
@@ -768,3 +380,239 @@ async def clear_history_controller(
             extra={"user_id": str(user_id), "child_id": str(child_id), "session_id": str(session_id)},
         )
         raise HTTPException(status_code=500, detail="Internal Server Error")
+
+async def chat_message_controller(
+    *,
+    db: Session,
+    redis: Any,
+    user_id: UUID,
+    child_id: UUID,
+    session_id: UUID | None,
+    text: str,
+    context: str,
+    input_source: str | None,
+    stream: bool,
+    external_client: httpx.AsyncClient,
+) -> dict | StreamingResponse:
+    
+    request_start = time.perf_counter()
+
+    child_profile, profile_context = await _load_owned_child_profile_context(
+        db=db, redis=redis, user_id=user_id, child_id=child_id,
+    )
+    if child_profile.is_paused:
+        raise HTTPException(status_code=403, detail="Child profile is paused — chat is disabled")
+
+    validate_token_limit_by_source(text=text, context=context, input_source=input_source)
+
+    moderation_fn = get_moderation_service()
+    await moderation_fn(message=text, context=context, client=external_client, language=profile_context.get("language", settings.DEFAULT_LANGUAGE))
+
+    chat_session = await _resolve_or_create_session(db, child_profile.id, session_id)
+
+    normalized_user_id = str(user_id)
+    normalized_child_id = str(child_profile.id)
+    normalized_session_id = str(chat_session.id)
+
+    user_dict = {
+        "id": normalized_user_id,
+        "child_id": normalized_child_id,
+        "session_id": normalized_session_id,
+    }
+
+    if stream:
+        msg_id = new_message_id()
+        start_event = format_chat_start(message_id=msg_id, child_id=normalized_child_id)
+        end_event = format_chat_end(message_id=msg_id)
+        error_event_fn = lambda code, msg: format_chat_error(code, msg, msg_id)
+
+        async def _sse_generator() -> AsyncGenerator[bytes, None]:
+            stream_completed = False
+            accumulated_text = ""
+            try:
+                yield start_event
+                async for chunk_text in ai_service.stream_chat_text(
+                    user=user_dict,
+                    profile_context=profile_context,
+                    text=text,
+                    context=context,
+                ):
+                    if not chunk_text:
+                        continue
+                    accumulated_text += chunk_text
+                    delta = format_chat_delta(chunk_text)
+                    yield delta
+                stream_completed = True
+                yield end_event
+            except AIRateLimitError:
+                yield error_event_fn("rate_limit", "AI service rate limit exceeded")
+                return
+            except Exception:
+                logger.exception(
+                    "Chat message stream failed",
+                    extra={"user_id": normalized_user_id, "child_id": normalized_child_id},
+                )
+                yield error_event_fn("internal_error", "Stream interrupted")
+                return
+            finally:
+                if stream_completed and accumulated_text.strip():
+                    try:
+                        await chat_history_service.save_turn_to_db(
+                            db=db,
+                            session_id=chat_session.id,
+                            user_message=text,
+                            ai_response=accumulated_text,
+                        )
+                        db.commit()
+                    except Exception:
+                        db.rollback()
+                        logger.exception(
+                            "Failed persisting chat message stream turn",
+                            extra={"child_id": normalized_child_id, "session_id": normalized_session_id},
+                        )
+                    await _run_gamification(db, child_profile.id, user_id)
+
+        return StreamingResponse(
+            _sse_generator(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    ai_start = time.perf_counter()
+    full_text = ""
+    async for chunk_text in ai_service.stream_chat_text(
+        user=user_dict,
+        profile_context=profile_context,
+        text=text,
+        context=context,
+    ):
+        full_text += chunk_text
+    ai_duration = time.perf_counter() - ai_start
+
+    try:
+        await chat_history_service.save_turn_to_db(
+            db=db,
+            session_id=chat_session.id,
+            user_message=text,
+            ai_response=full_text,
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "Failed persisting chat message turn",
+            extra={"child_id": normalized_child_id, "session_id": normalized_session_id},
+        )
+
+    await _run_gamification(db, child_profile.id, user_id)
+
+    request_duration = time.perf_counter() - request_start
+    logger.info(
+        "Chat message completed",
+        extra={
+            "user_id": normalized_user_id,
+            "child_id": normalized_child_id,
+            "session_id": normalized_session_id,
+            "total_duration_seconds": round(request_duration, 3),
+            "ai_duration_seconds": round(ai_duration, 3),
+            "stream": False,
+        },
+    )
+
+    return {
+        "message_id": new_message_id(),
+        "child_id": normalized_child_id,
+        "session_id": normalized_session_id,
+        "content": full_text,
+    }
+
+
+async def quiz_generate_controller(
+    *,
+    db: Session,
+    redis: Any,
+    user_id: UUID,
+    child_id: UUID,
+    session_id: UUID,
+    subject: str,
+    topic: str,
+    level: str,
+    question_count: int,
+    context: str,
+    external_client: httpx.AsyncClient,
+) -> dict:
+    request_start = time.perf_counter()
+
+    child_profile, profile_context = await _load_owned_child_profile_context(
+        db=db, redis=redis, user_id=user_id, child_id=child_id,
+    )
+
+    validate_token_limit_by_source(text=context, context="", input_source=None)
+
+    moderation_fn = get_moderation_service()
+    await moderation_fn(message=f"Quiz: {subject} - {topic}", context=context, client=external_client, language=profile_context.get("language", settings.DEFAULT_LANGUAGE))
+
+    normalized_user_id = str(user_id)
+    normalized_child_id = str(child_profile.id)
+
+    try:
+        quiz_data = await ai_service.generate_quiz(
+            profile_context=profile_context,
+            subject=subject,
+            topic=topic,
+            level=level,
+            question_count=question_count,
+            context=context,
+        )
+    except AIRateLimitError:
+        raise HTTPException(status_code=429, detail="AI service rate limit exceeded")
+    except TimeoutError:
+        raise HTTPException(status_code=504, detail="Quiz generation timed out")
+
+    ai_duration = time.perf_counter() - request_start
+    logger.info(
+        "Quiz generation completed",
+        extra={
+            "user_id": normalized_user_id,
+            "child_id": normalized_child_id,
+            "subject": subject,
+            "topic": topic,
+            "level": level,
+            "duration_seconds": round(ai_duration, 3),
+        },
+    )
+
+    quiz_id_str = quiz_data.get("quiz_id", str(uuid4()))
+    try:
+        quiz_uuid = UUID(quiz_id_str)
+    except ValueError:
+        quiz_uuid = uuid4()
+        quiz_data["quiz_id"] = str(quiz_uuid)
+
+    quiz_obj = Quiz(
+        id=quiz_uuid,
+        child_profile_id=child_id,
+        subject=subject,
+        topic=topic,
+        level=level,
+        intro=quiz_data.get("intro", ""),
+    )
+    db.add(quiz_obj)
+
+    for q in quiz_data.get("questions", []):
+        options_str = None
+        if q.get("options"):
+            options_str = json.dumps(q["options"])
+        db.add(QuizQuestion(
+            id=q.get("id"),
+            quiz_id=quiz_uuid,
+            type=q.get("type", "mcq"),
+            prompt=q.get("prompt", ""),
+            options=options_str,
+            answer=q.get("answer", ""),
+            explanation=q.get("explanation", ""),
+        ))
+
+    db.commit()
+
+    return quiz_data
