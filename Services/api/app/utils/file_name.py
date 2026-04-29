@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-def generate_audioFile_storage_path(original_filename: str, user_id: str = "", child_id: str = "", session_id: str = "", store_audio: bool = True) -> str:
+def generate_audio_file_storage_path(original_filename: str, user_id: str = "", child_id: str = "", session_id: str = "", store_audio: bool = True) -> str:
     """Build a unique object-storage path for an uploaded audio file.
 
     Args:

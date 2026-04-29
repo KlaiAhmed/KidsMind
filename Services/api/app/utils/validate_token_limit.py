@@ -1,27 +1,33 @@
 from fastapi import HTTPException
-from schemas.chat_request import ChatRequest
 from utils.token_count import get_token_count
 from utils.logger import logger
 
-def validate_token_limit(
-    payload: ChatRequest,
-    text_limit: int = 600,
-    context_limit: int = 600
-):
+VOICE_TEXT_TOKEN_LIMIT = 300
+DEFAULT_TEXT_TOKEN_LIMIT = 600
+DEFAULT_CONTEXT_TOKEN_LIMIT = 600
 
-    text_tokens = get_token_count(payload.text)
+def validate_token_limit_by_source(
+    text: str,
+    context: str = "",
+    input_source: str | None = None,
+    context_limit: int = DEFAULT_CONTEXT_TOKEN_LIMIT,
+):
+    text_limit = VOICE_TEXT_TOKEN_LIMIT if input_source == "voice" else DEFAULT_TEXT_TOKEN_LIMIT
+
+    text_tokens = get_token_count(text)
     if text_tokens > text_limit:
         logger.warning(
             "Text token count exceeds limit",
             extra={
                 "token_count": text_tokens,
                 "limit": text_limit,
+                "input_source": input_source,
             },
         )
         raise HTTPException(status_code=422, detail=f"text exceeds token limit of {text_limit}.")
 
-    if payload.context:
-        context_tokens = get_token_count(payload.context)
+    if context:
+        context_tokens = get_token_count(context)
         if context_tokens > context_limit:
             logger.warning(
                 "Context token count exceeds limit",
