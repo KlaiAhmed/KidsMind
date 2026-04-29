@@ -92,6 +92,10 @@ def init_db() -> None:
         import models.chat_session
         import models.badge
         import models.parent_badge_notification
+        import models.quiz
+        import models.quiz_question
+        import models.quiz_result
+        import models.voice_transcription
 
         Base.metadata.create_all(bind=engine)
 

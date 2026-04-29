@@ -75,6 +75,11 @@ class Settings(BaseSettings):
 
     # Service URLs
     STT_SERVICE_URL: str = "http://stt-service:8000"
+    STT_REQUEST_TIMEOUT_SECONDS: float = 15.0
+    HTTP_CLIENT_CONNECT_TIMEOUT: float = 5.0
+    HTTP_CLIENT_READ_TIMEOUT: float = 60.0
+    HTTP_CLIENT_WRITE_TIMEOUT: float = 10.0
+    HTTP_CLIENT_POOL_TIMEOUT: float = 5.0
     STORAGE_SERVICE_ENDPOINT: str = "http://file-storage:9000"
     DB_SERVICE_ENDPOINT: str = "http://database:5432"
     CACHE_SERVICE_ENDPOINT: str = "redis://cache:6379"
@@ -83,6 +88,16 @@ class Settings(BaseSettings):
     MODEL_NAME: str
     API_KEY: str
     BASE_URL: str
+    LLM_TEMPERATURE: float = 0.3
+    LLM_MAX_TOKENS: int = 1500
+    LLM_TIMEOUT_SECONDS: int = 60
+    LLM_MAX_RETRIES: int = 2
+    LLM_AGE_GROUP_MAX_TOKENS: dict = Field(
+        default={"3-6": 300, "7-11": 600, "12-15": 1000},
+        description="Max LLM response tokens per age group",
+    )
+    AI_INVOKE_TIMEOUT_SECONDS: int = 70
+    AI_QUIZ_TIMEOUT_SECONDS: int = 30
 
     # Production moderation (OpenAI)
     GUARD_API_KEY: Optional[str] = None
@@ -93,25 +108,41 @@ class Settings(BaseSettings):
     DEV_GUARD_API_KEY: Optional[str] = None
     DEV_GUARD_API_URL: Optional[str] = None
     DEV_API_USER: Optional[str] = None
+    DEV_GUARD_CONNECT_TIMEOUT: float = 5.0
+    DEV_GUARD_READ_TIMEOUT: float = 10.0
+    DEV_GUARD_WRITE_TIMEOUT: float = 5.0
+    DEV_GUARD_POOL_TIMEOUT: float = 3.0
 
-    # AI history settings
+    # Conversation HISTORY settings (persisted in Postgres)
+    # HISTORY = long-term storage, inactive, for retrieval and analytics
     MAX_HISTORY_MESSAGES: int = 40
     MAX_LOADED_HISTORY_MESSAGES: int = 10
-    MAX_HISTORY_TOKENS: int = 1500
-    HISTORY_TTL: int = Field(default=3600, alias="HISTORY_TTL_SECONDS")
+
+    # Session MEMORY settings (active in Redis, injected into LLM context)
+    # MEMORY = active context window, what the LLM "sees" during conversation
+    MAX_SESSION_MEMORY_TOKENS: int = 1500
+    SESSION_MEMORY_TTL: int = Field(default=14400, alias="SESSION_MEMORY_TTL_SECONDS")
 
     # File Upload Configuration
-    MAX_SIZE: int = Field(default=10 * 1024 * 1024)
+    # Voice recording uploads: higher limit to accommodate longer audio clips
+    # (children speaking for up to 30 seconds in various formats)
+    MAX_SIZE: int = Field(default=26_214_400)  # 25 MiB
     ALLOWED_CONTENT_TYPES: Set[str] = {
-        "audio/mpeg", 
-        "audio/wav", 
-        "audio/x-wav", 
-        "audio/mp3"
+        "audio/mpeg",
+        "audio/mp3",
+        "audio/wav",
+        "audio/x-wav",
+        "audio/webm",
+        "audio/ogg",
+        "audio/mp4",
+        "audio/x-m4a",
+        "audio/m4a",
+        "audio/flac",
     }
 
-    # Generic media upload configuration
+    # Generic media upload configuration (avatars, attachments): smaller limit
     MEDIA_MAX_IMAGE_SIZE_BYTES: int = Field(default=10 * 1024 * 1024)
-    MEDIA_MAX_AUDIO_SIZE_BYTES: int = Field(default=10 * 1024 * 1024)
+    MEDIA_MAX_AUDIO_SIZE_BYTES: int = Field(default=10 * 1024 * 1024)  # 10 MiB
     MEDIA_ALLOWED_IMAGE_CONTENT_TYPES: Set[str] = {
         "image/webp",
         "image/png",
@@ -119,13 +150,15 @@ class Settings(BaseSettings):
     }
     MEDIA_ALLOWED_AUDIO_CONTENT_TYPES: Set[str] = {
         "audio/mpeg",
+        "audio/mp3",
         "audio/wav",
         "audio/x-wav",
-        "audio/mp3",
+        "audio/webm",
         "audio/ogg",
-        "audio/flac",
         "audio/mp4",
         "audio/x-m4a",
+        "audio/m4a",
+        "audio/flac",
     }
 
     # Credentials :
@@ -144,6 +177,9 @@ class Settings(BaseSettings):
     # LOGGING
     LOG_LEVEL: str = "INFO"
     
+    # Default language for child AI interactions (used when child_rules.default_language is NULL)
+    DEFAULT_LANGUAGE: str = "en"
+
     # App Config
     DEV_MULTIPLIER: int = 1000
 
@@ -187,13 +223,21 @@ class Settings(BaseSettings):
     RL_T4_USER_1M: int = 60
     RL_T4_USER_1H: int = 1200
 
-    # Tier 5 (AI cost-controlled)
-    RL_T5_TEXT_BURST_1M: int = 6
-    RL_T5_TEXT_SUSTAINED_1H: int = 60
-    RL_T5_TEXT_DAILY: int = 200
-    RL_T5_VOICE_BURST_1M: int = 3
-    RL_T5_VOICE_SUSTAINED_1H: int = 30
-    RL_T5_VOICE_DAILY: int = 100
+    # STT tier
+    RL_STT_BURST_1M: int = 10
+    RL_STT_SUSTAINED_1H: int = 60
+    RL_STT_DAILY: int = 200
+
+    # Chat tier
+    RL_CHAT_BURST_1M: int = 6
+    RL_CHAT_SUSTAINED_1H: int = 30
+    RL_CHAT_DAILY: int = 100
+
+    # Quiz tier
+    RL_QUIZ_BURST_1M: int = 5
+    RL_QUIZ_SUSTAINED_1H: int = 20
+    RL_QUIZ_DAILY: int = 50
+
     RL_STORE_UNAVAILABLE_MODE: Literal["fail_open", "fail_closed"] = "fail_open"
 
     CAPTCHA_ENABLED: bool = True
@@ -240,6 +284,15 @@ class Settings(BaseSettings):
         if not v.strip():
             raise ValueError("SECRET_KEY cannot be empty")
         return v
+
+    @field_validator("DEFAULT_LANGUAGE")
+    @classmethod
+    def validate_default_language(cls, v: str) -> str:
+        allowed = {"ar", "en", "es", "fr", "it", "zh"}
+        normalized = v.strip().lower()
+        if normalized not in allowed:
+            raise ValueError(f"DEFAULT_LANGUAGE must be one of {sorted(allowed)}, got '{normalized}'")
+        return normalized
 
     @field_validator("SERVICE_TOKEN")
     @classmethod

@@ -144,8 +144,10 @@ def _raw_endpoint_rules() -> list[EndpointRule]:
         EndpointRule("POST", "/api/mobile/auth/refresh", "T2", "mobile_auth_refresh", "refresh_mobile"),
         EndpointRule("POST", "/api/mobile/auth/logout", "T3", "mobile_auth_logout", "logout"),
 
-        EndpointRule("POST", "/api/v1/chat/voice/{user_id}/{child_id}/{session_id}", "T5", "chat_voice", "chat_voice"),
-        EndpointRule("POST", "/api/v1/chat/text/{user_id}/{child_id}/{session_id}", "T5", "chat_text", "chat_text"),
+        EndpointRule("POST", "/api/v1/voice/{user_id}/{child_id}/{session_id}/transcribe", "T5", "stt_transcribe", "stt_transcribe"),
+        EndpointRule("POST", "/api/v1/voice/{user_id}/{child_id}/{session_id}/transcribe/sync", "T5", "stt_transcribe", "stt_transcribe"),
+        EndpointRule("POST", "/api/v1/chat/message/{child_id}", "T5", "chat_message", "chat_message"),
+        EndpointRule("POST", "/api/v1/chat/quiz", "T5", "chat_quiz", "chat_quiz"),
         EndpointRule("GET", "/api/v1/chat/history/{user_id}/{child_id}/{session_id}", "T1", "chat_history_get", "chat_history_get"),
         EndpointRule("DELETE", "/api/v1/chat/history/{user_id}/{child_id}/{session_id}", "T4", "chat_history_delete", "chat_history_delete"),
 
@@ -290,46 +292,67 @@ def build_resolved_rate_limit_policy() -> ResolvedRateLimitPolicy:
     _validate_t3_policy_coverage(endpoint_rules=endpoint_rules, t3_policies=t3_policies)
 
     t5_policies = {
-        "chat_text": T5EndpointPolicy(
-            endpoint_id="chat_text",
+        "stt_transcribe": T5EndpointPolicy(
+            endpoint_id="stt_transcribe",
             burst=WindowPolicy(
                 name="burst",
                 mode="sliding",
                 seconds=60,
-                limit=resolve_limit(settings.RL_T5_TEXT_BURST_1M, is_prod=is_prod, dev_multiplier=dev_multiplier),
+                limit=resolve_limit(settings.RL_STT_BURST_1M, is_prod=is_prod, dev_multiplier=dev_multiplier),
             ),
             sustained=WindowPolicy(
                 name="sustained",
                 mode="sliding",
                 seconds=60 * 60,
-                limit=resolve_limit(settings.RL_T5_TEXT_SUSTAINED_1H, is_prod=is_prod, dev_multiplier=dev_multiplier),
+                limit=resolve_limit(settings.RL_STT_SUSTAINED_1H, is_prod=is_prod, dev_multiplier=dev_multiplier),
             ),
             daily=WindowPolicy(
                 name="daily",
                 mode="fixed",
                 seconds=24 * 60 * 60,
-                limit=resolve_limit(settings.RL_T5_TEXT_DAILY, is_prod=is_prod, dev_multiplier=dev_multiplier),
+                limit=resolve_limit(settings.RL_STT_DAILY, is_prod=is_prod, dev_multiplier=dev_multiplier),
             ),
         ),
-        "chat_voice": T5EndpointPolicy(
-            endpoint_id="chat_voice",
+        "chat_message": T5EndpointPolicy(
+            endpoint_id="chat_message",
             burst=WindowPolicy(
                 name="burst",
                 mode="sliding",
                 seconds=60,
-                limit=resolve_limit(settings.RL_T5_VOICE_BURST_1M, is_prod=is_prod, dev_multiplier=dev_multiplier),
+                limit=resolve_limit(settings.RL_CHAT_BURST_1M, is_prod=is_prod, dev_multiplier=dev_multiplier),
             ),
             sustained=WindowPolicy(
                 name="sustained",
                 mode="sliding",
                 seconds=60 * 60,
-                limit=resolve_limit(settings.RL_T5_VOICE_SUSTAINED_1H, is_prod=is_prod, dev_multiplier=dev_multiplier),
+                limit=resolve_limit(settings.RL_CHAT_SUSTAINED_1H, is_prod=is_prod, dev_multiplier=dev_multiplier),
             ),
             daily=WindowPolicy(
                 name="daily",
                 mode="fixed",
                 seconds=24 * 60 * 60,
-                limit=resolve_limit(settings.RL_T5_VOICE_DAILY, is_prod=is_prod, dev_multiplier=dev_multiplier),
+                limit=resolve_limit(settings.RL_CHAT_DAILY, is_prod=is_prod, dev_multiplier=dev_multiplier),
+            ),
+        ),
+        "chat_quiz": T5EndpointPolicy(
+            endpoint_id="chat_quiz",
+            burst=WindowPolicy(
+                name="burst",
+                mode="sliding",
+                seconds=60,
+                limit=resolve_limit(settings.RL_QUIZ_BURST_1M, is_prod=is_prod, dev_multiplier=dev_multiplier),
+            ),
+            sustained=WindowPolicy(
+                name="sustained",
+                mode="sliding",
+                seconds=60 * 60,
+                limit=resolve_limit(settings.RL_QUIZ_SUSTAINED_1H, is_prod=is_prod, dev_multiplier=dev_multiplier),
+            ),
+            daily=WindowPolicy(
+                name="daily",
+                mode="fixed",
+                seconds=24 * 60 * 60,
+                limit=resolve_limit(settings.RL_QUIZ_DAILY, is_prod=is_prod, dev_multiplier=dev_multiplier),
             ),
         ),
     }
