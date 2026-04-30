@@ -1,10 +1,11 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import type { ComponentProps } from 'react';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import Animated, {
+  cancelAnimation,
   Easing,
   interpolate,
   interpolateColor,
@@ -18,8 +19,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomNavTokens } from '@/components/navigation/bottomNavTokens';
 import { Colors } from '@/constants/theme';
-import { useChildSessionGate } from '@/hooks/useChildSessionGate';
-import { showToast } from '@/services/toastClient';
 import type { AgeGroup } from '@/types/child';
 
 type IconName = ComponentProps<typeof MaterialCommunityIcons>['name'];
@@ -48,7 +47,6 @@ interface ChildBottomNavItemProps {
   inactiveIcon: IconName;
   activeIcon: IconName;
   isActive: boolean;
-  isLocked: boolean;
   isQubie: boolean;
   showLiveDot: boolean;
   onPress: () => void;
@@ -57,37 +55,13 @@ interface ChildBottomNavItemProps {
   testID?: string;
 }
 
-const LOCKED_TOAST_DEBOUNCE_MS = 5000;
-
 const AnimatedIcon = Animated.createAnimatedComponent(MaterialCommunityIcons);
-
-function resolveQubieIconPair(ageGroup: AgeGroup | undefined, voiceEnabled: boolean): { inactive: IconName; active: IconName } {
-  if (ageGroup === '3-6') {
-    if (voiceEnabled) {
-      return {
-        inactive: 'microphone-outline',
-        active: 'microphone',
-      };
-    }
-
-    return {
-      inactive: 'chat-processing-outline',
-      active: 'chat-processing',
-    };
-  }
-
-  return {
-    inactive: 'robot-outline',
-    active: 'robot',
-  };
-}
 
 function ChildBottomNavItem({
   label,
   inactiveIcon,
   activeIcon,
   isActive,
-  isLocked,
   isQubie,
   showLiveDot,
   onPress,
@@ -109,7 +83,11 @@ function ChildBottomNavItem({
   }, [activeProgress, isActive]);
 
   useEffect(() => {
-    if (!isQubie) {
+    if (!isQubie || !isActive) {
+      cancelAnimation(pulseProgress);
+      cancelAnimation(liveDotPulse);
+      pulseProgress.value = 0;
+      liveDotPulse.value = 0;
       return;
     }
 
@@ -130,7 +108,7 @@ function ChildBottomNavItem({
       -1,
       true,
     );
-  }, [isQubie, liveDotPulse, pulseProgress]);
+  }, [isActive, isQubie, liveDotPulse, pulseProgress]);
 
   const handlePressIn = () => {
     pressProgress.value = withTiming(1, {
@@ -170,29 +148,29 @@ function ChildBottomNavItem({
   const interactionAnimatedStyle = useAnimatedStyle(() => {
     const pressedScale = interpolate(pressProgress.value, [0, 1], [1, 0.92]);
     const pressedOpacity = interpolate(pressProgress.value, [0, 1], [1, 0.7]);
-    const baseOpacity = isLocked ? 0.25 : 1;
 
     return {
       transform: [{ scale: pressedScale * bounceScale.value }],
-      opacity: baseOpacity * pressedOpacity,
+      opacity: pressedOpacity,
     };
-  }, [isLocked]);
+  });
 
   const tintAnimatedStyle = useAnimatedStyle(() => {
-    const inactiveColor = isLocked ? BottomNavTokens.colors.disabled : BottomNavTokens.colors.inactive;
-    const activeColor = isLocked ? BottomNavTokens.colors.disabled : BottomNavTokens.colors.active;
-
     return {
-      color: interpolateColor(activeProgress.value, [0, 1], [inactiveColor, activeColor]),
+      color: interpolateColor(
+        activeProgress.value,
+        [0, 1],
+        [BottomNavTokens.colors.inactive, BottomNavTokens.colors.active],
+      ),
     };
-  }, [isLocked]);
+  });
 
   const pulseRingAnimatedStyle = useAnimatedStyle(() => {
     return {
-      opacity: isLocked ? 0.1 : interpolate(pulseProgress.value, [0, 1], [0.2, 0.5]),
+      opacity: interpolate(pulseProgress.value, [0, 1], [0.2, 0.5]),
       transform: [{ scale: interpolate(pulseProgress.value, [0, 1], [1, 1.24]) }],
     };
-  }, [isLocked]);
+  });
 
   const liveDotAnimatedStyle = useAnimatedStyle(() => {
     return {
@@ -201,12 +179,8 @@ function ChildBottomNavItem({
     };
   });
 
-  const iconColor = isLocked
-    ? BottomNavTokens.colors.disabled
-    : isActive
-      ? BottomNavTokens.colors.active
-      : BottomNavTokens.colors.inactive;
-  const iconName = isLocked ? inactiveIcon : isActive ? activeIcon : inactiveIcon;
+  const iconColor = isActive ? BottomNavTokens.colors.active : BottomNavTokens.colors.inactive;
+  const iconName = isActive ? activeIcon : inactiveIcon;
 
   return (
     <Pressable
@@ -224,7 +198,7 @@ function ChildBottomNavItem({
       <Animated.View style={[styles.itemShell, interactionAnimatedStyle]}>
         <View style={styles.content}>
           <View style={styles.iconWrap}>
-            {isQubie ? <Animated.View style={[styles.qubiePulseRing, pulseRingAnimatedStyle]} /> : null}
+            {isQubie && isActive ? <Animated.View style={[styles.qubiePulseRing, pulseRingAnimatedStyle]} /> : null}
             <AnimatedIcon name={iconName} color={iconColor} size={BottomNavTokens.size.icon} />
             {isQubie && showLiveDot ? <Animated.View style={[styles.liveDot, liveDotAnimatedStyle]} /> : null}
           </View>
@@ -234,7 +208,7 @@ function ChildBottomNavItem({
             style={[
               styles.label,
               {
-                fontFamily: isActive && !isLocked
+                fontFamily: isActive
                   ? BottomNavTokens.text.activeFontFamily
                   : BottomNavTokens.text.inactiveFontFamily,
               },
@@ -253,16 +227,13 @@ export function ChildBottomNavContainer({
   state,
   descriptors,
   navigation,
-  childId,
   ageGroup,
   voiceEnabled = false,
   hidden,
 }: ChildBottomNavContainerProps) {
   const insets = useSafeAreaInsets();
-  const { isSessionActive, nextSessionStartLabel, hasError } = useChildSessionGate(childId);
 
   const hiddenProgress = useSharedValue(hidden ? 1 : 0);
-  const lastToastAtRef = useRef(0);
 
   useEffect(() => {
     hiddenProgress.value = withTiming(hidden ? 1 : 0, {
@@ -270,8 +241,6 @@ export function ChildBottomNavContainer({
       easing: Easing.out(Easing.cubic),
     });
   }, [hidden, hiddenProgress]);
-
-  const qubieIconPair = useMemo(() => resolveQubieIconPair(ageGroup, voiceEnabled), [ageGroup, voiceEnabled]);
 
   const navItems = useMemo<ChildTabConfig[]>(
     () => [
@@ -300,20 +269,12 @@ export function ChildBottomNavContainer({
         slot: 'qubie',
         routeName: 'chat',
         label: 'Qubie',
-        inactiveIcon: qubieIconPair.inactive,
-        activeIcon: qubieIconPair.active,
+        inactiveIcon: 'robot-outline',
+        activeIcon: 'robot',
       },
     ],
-    [qubieIconPair.active, qubieIconPair.inactive],
+    [],
   );
-
-  const lockedRouteNames = useMemo(() => {
-    if (isSessionActive) {
-      return new Set<ChildRouteName>();
-    }
-
-    return new Set<ChildRouteName>(['explore', 'chat']);
-  }, [isSessionActive]);
 
   const bottomPadding = Math.max(insets.bottom, BottomNavTokens.spacing.minBottomOffset);
 
@@ -326,28 +287,7 @@ export function ChildBottomNavContainer({
 
   const currentRouteKey = state.routes[state.index]?.key;
 
-  const showLockedToast = () => {
-    const now = Date.now();
-    if (now - lastToastAtRef.current < LOCKED_TOAST_DEBOUNCE_MS) {
-      return;
-    }
-
-    lastToastAtRef.current = now;
-
-    const message = hasError || !nextSessionStartLabel
-      ? "Your session isn't active right now."
-      : `You're outside your session. Come back at ${nextSessionStartLabel}!`;
-
-    // Locked-tab feedback toast is debounced so rapid taps do not stack multiple toasts.
-    showToast({
-      type: 'info',
-      text1: message,
-      visibilityTime: 3500,
-      autoHide: true,
-    });
-  };
-
-  const showLiveVoiceDot = Boolean(isSessionActive && ageGroup === '3-6' && voiceEnabled);
+  const showLiveVoiceDot = Boolean(ageGroup === '3-6' && voiceEnabled);
 
   return (
     <View
@@ -371,15 +311,8 @@ export function ChildBottomNavContainer({
 
           const descriptor = descriptors[route.key];
           const isFocused = route.key === currentRouteKey;
-          const isLocked = lockedRouteNames.has(item.routeName);
 
           const onPress = () => {
-            if (isLocked) {
-              void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
-              showLockedToast();
-              return;
-            }
-
             const event = navigation.emit({
               type: 'tabPress',
               target: route.key,
@@ -396,14 +329,10 @@ export function ChildBottomNavContainer({
               void Haptics.selectionAsync().catch(() => undefined);
             }
 
-            navigation.navigate(route.name as never, route.params as never);
+            navigation.navigate(route.name, route.params);
           };
 
           const onLongPress = () => {
-            if (isLocked) {
-              return;
-            }
-
             navigation.emit({
               type: 'tabLongPress',
               target: route.key,
@@ -417,9 +346,8 @@ export function ChildBottomNavContainer({
               inactiveIcon={item.inactiveIcon}
               activeIcon={item.activeIcon}
               isActive={isFocused}
-              isLocked={isLocked}
               isQubie={item.slot === 'qubie'}
-              showLiveDot={item.slot === 'qubie' && showLiveVoiceDot}
+              showLiveDot={item.slot === 'qubie' && isFocused && showLiveVoiceDot}
               accessibilityLabel={
                 descriptor.options.tabBarAccessibilityLabel
                   ? String(descriptor.options.tabBarAccessibilityLabel)

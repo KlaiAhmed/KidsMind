@@ -52,7 +52,7 @@ import { AppState } from 'react-native';
 // ─── Types ────────────────────────────────────────────────────────
 
 export interface User {
-  id: number;
+  id: string;
   email: string;
   username?: string;
   fullName?: string;

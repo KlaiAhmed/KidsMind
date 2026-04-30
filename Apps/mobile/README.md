@@ -136,9 +136,9 @@ EXPO_PUBLIC_API_BASE_IP_URL=http://192.123.1.1:8000
 ### Navigation behavior
 
 - Parent tabs use `BottomNavContainer` with 4 tabs.
-- Child tabs use `ChildBottomNavContainer` with locked navigation.
+- Child tabs use `ChildBottomNavContainer` with all four tabs always available.
 - `useChildNavigationLock` prevents Android hardware back from exiting child space.
-- `useChildSessionGate` checks the child's weekly schedule and blocks access outside allowed windows.
+- `useChildSessionGate` checks the child's weekly schedule and gates Learn/Qubie content outside allowed windows.
 
 ### Validation strategy
 
@@ -178,7 +178,7 @@ apps/mobile/
 │   │   ├── chat.tsx            # ConversationHistoryScreen
 │   │   ├── explore.tsx         # ChildProgressScreen
 │   │   └── profile.tsx         # ParentalControlsScreen
-│   └── (child-tabs)/           # Child tab group (locked navigation)
+│   └── (child-tabs)/           # Child tab group (feature-gated Learn/Qubie)
 │       ├── _layout.tsx         # Child bottom nav (ChildBottomNavContainer)
 │       ├── index.tsx           # ChildHomeDashboard
 │       ├── chat.tsx            # AIChatScreen (Qubie)

@@ -1,8 +1,21 @@
-// Apps/mobile/hooks/useChatSession.ts
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { endChatSession, sendChatMessage, startChatSession } from '@/services/chatService';
+import {
+  endChatSession,
+  sendChatMessage,
+  sendQuizRequest as requestQuiz,
+  startChatSession,
+} from '@/services/chatService';
+import { transcribeVoiceRecording } from '@/services/voiceService';
 import type { AgeGroup } from '@/types/child';
-import type { ChatState, ConversationContextEntry, Message, Session } from '@/types/chat';
+import type {
+  ChatInputSource,
+  ChatQuizResponse,
+  ChatState,
+  ConversationContextEntry,
+  Message,
+  QuizLevel,
+  Session,
+} from '@/types/chat';
 
 const MAX_CONTEXT_MESSAGES = 20;
 const MIN_TYPING_INDICATOR_MS = 500;
@@ -26,9 +39,11 @@ interface UseChatSessionResult {
   session: Session | null;
   elapsedSeconds: number;
   minutesRemaining: number | null;
-  startSession: () => Promise<void>;
+  startSession: () => Promise<Session | null>;
   endSession: () => Promise<void>;
-  sendMessage: (text: string) => Promise<void>;
+  sendMessage: (text: string, inputSource?: ChatInputSource) => Promise<void>;
+  sendQuizRequest: (topic: string) => Promise<void>;
+  transcribeRecording: (audioUri: string) => Promise<string>;
   setInputText: (text: string) => void;
   clearError: () => void;
 }
@@ -45,6 +60,47 @@ function buildConversationWindow(messages: Message[]): ConversationContextEntry[
     content: message.content,
     createdAt: message.createdAt,
   }));
+}
+
+function buildSerializedContext(
+  ageGroup: AgeGroup,
+  gradeLevel: string,
+  subjectContext: SubjectContext | undefined,
+  messages: Message[],
+): string {
+  return JSON.stringify({
+    age_group: ageGroup,
+    grade_level: gradeLevel,
+    subject_id: subjectContext?.subjectId ?? null,
+    subject_name: subjectContext?.subjectName ?? null,
+    topic_id: subjectContext?.topicId ?? null,
+    conversation: buildConversationWindow(messages).map((entry) => ({
+      sender: entry.sender,
+      content: entry.content,
+      created_at: entry.createdAt,
+    })),
+  });
+}
+
+function getQuizLevel(ageGroup: AgeGroup): QuizLevel {
+  if (ageGroup === '3-6') {
+    return 'easy';
+  }
+
+  if (ageGroup === '12-15') {
+    return 'hard';
+  }
+
+  return 'medium';
+}
+
+function formatQuizResponse(response: ChatQuizResponse): string {
+  const questionLines = response.questions.map((question, index) => {
+    const options = question.options?.length ? `\n${question.options.map((option) => `- ${option}`).join('\n')}` : '';
+    return `${index + 1}. ${question.prompt}${options}`;
+  });
+
+  return [`Quiz: ${response.topic}`, response.intro, ...questionLines].filter(Boolean).join('\n\n');
 }
 
 function buildInitialChatState(): ChatState {
@@ -103,9 +159,9 @@ export function useChatSession({
     }));
   }, []);
 
-  const startSession = useCallback(async () => {
+  const startSession = useCallback(async (): Promise<Session | null> => {
     if (!childId || sessionRef.current) {
-      return;
+      return sessionRef.current;
     }
 
     setState((current) => ({
@@ -117,10 +173,11 @@ export function useChatSession({
     try {
       const startedSession = await startChatSession(childId);
       if (!mountedRef.current) {
-        return;
+        return startedSession;
       }
 
       endingRef.current = false;
+      sessionRef.current = startedSession;
       setSession(startedSession);
       setState((current) => ({
         ...current,
@@ -129,12 +186,12 @@ export function useChatSession({
         isLoading: false,
         error: null,
       }));
+      return startedSession;
     } catch {
       if (!mountedRef.current) {
-        return;
+        return null;
       }
 
-      // Local fallback keeps the chat UI responsive even when network is unavailable.
       const localSession: Session = {
         id: `local-session-${Date.now()}`,
         childId,
@@ -142,6 +199,7 @@ export function useChatSession({
       };
 
       endingRef.current = false;
+      sessionRef.current = localSession;
       setSession(localSession);
       setState((current) => ({
         ...current,
@@ -150,6 +208,7 @@ export function useChatSession({
         isLoading: false,
         error: 'Live session could not be started. Messages may not sync until connection returns.',
       }));
+      return localSession;
     }
   }, [childId]);
 
@@ -162,34 +221,34 @@ export function useChatSession({
     endingRef.current = true;
 
     try {
-      const response = await endChatSession(activeSession.id);
+      const response = activeSession.id.startsWith('local-session-')
+        ? { endedAt: new Date().toISOString(), totalSeconds: elapsedSeconds }
+        : await endChatSession(activeSession.id);
       if (!mountedRef.current) {
         return;
       }
 
-      setSession((current) =>
-        current && current.id === activeSession.id
-          ? {
-              ...current,
-              endedAt: response.endedAt ?? new Date().toISOString(),
-              totalSeconds: response.totalSeconds ?? elapsedSeconds,
-            }
-          : current
-      );
+      const endedSession = {
+        ...activeSession,
+        endedAt: response.endedAt ?? new Date().toISOString(),
+        totalSeconds: response.totalSeconds ?? elapsedSeconds,
+      };
+
+      sessionRef.current = endedSession;
+      setSession((current) => (current && current.id === activeSession.id ? endedSession : current));
     } catch {
       if (!mountedRef.current) {
         return;
       }
 
-      setSession((current) =>
-        current && current.id === activeSession.id
-          ? {
-              ...current,
-              endedAt: new Date().toISOString(),
-              totalSeconds: elapsedSeconds,
-            }
-          : current
-      );
+      const endedSession = {
+        ...activeSession,
+        endedAt: new Date().toISOString(),
+        totalSeconds: elapsedSeconds,
+      };
+
+      sessionRef.current = endedSession;
+      setSession((current) => (current && current.id === activeSession.id ? endedSession : current));
     } finally {
       if (mountedRef.current) {
         setState((current) => ({
@@ -202,17 +261,13 @@ export function useChatSession({
   }, [elapsedSeconds]);
 
   const sendMessage = useCallback(
-    async (rawText: string) => {
+    async (rawText: string, inputSource: ChatInputSource = 'keyboard') => {
       const text = rawText.trim();
       if (!text || !childId) {
         return;
       }
 
-      if (!sessionRef.current) {
-        await startSession();
-      }
-
-      const activeSession = sessionRef.current;
+      const activeSession = sessionRef.current ?? (await startSession());
       if (!activeSession) {
         setState((current) => ({
           ...current,
@@ -248,6 +303,7 @@ export function useChatSession({
           childId,
           sessionId: activeSession.id,
           text,
+          inputSource,
           context: {
             ageGroup,
             gradeLevel,
@@ -305,8 +361,136 @@ export function useChatSession({
     [ageGroup, childId, gradeLevel, startSession, subjectContext?.subjectId, subjectContext?.subjectName, subjectContext?.topicId]
   );
 
+  const sendQuizRequest = useCallback(
+    async (rawTopic: string) => {
+      const topic = rawTopic.trim();
+      if (!topic || !childId) {
+        return;
+      }
+
+      const activeSession = sessionRef.current ?? (await startSession());
+      if (!activeSession) {
+        setState((current) => ({
+          ...current,
+          error: 'Unable to start quiz mode right now. Please try again in a moment.',
+        }));
+        return;
+      }
+
+      const optimisticMessage: Message = {
+        id: `child-quiz-${Date.now()}`,
+        sessionId: activeSession.id,
+        sender: 'child',
+        content: `Quiz me about ${topic}`,
+        safetyFlags: [],
+        createdAt: new Date().toISOString(),
+      };
+
+      const contextualMessages = [...messagesRef.current, optimisticMessage];
+      messagesRef.current = contextualMessages;
+
+      setState((current) => ({
+        ...current,
+        messages: contextualMessages,
+        inputText: '',
+        isAwaitingResponse: true,
+        error: null,
+      }));
+
+      const startedRequestAt = Date.now();
+
+      try {
+        const response = await requestQuiz({
+          childId,
+          sessionId: activeSession.id,
+          subject: subjectContext?.subjectName ?? 'General knowledge',
+          topic,
+          level: getQuizLevel(ageGroup),
+          questionCount: 3,
+          context: buildSerializedContext(
+            ageGroup,
+            gradeLevel,
+            {
+              subjectId: subjectContext?.subjectId,
+              subjectName: subjectContext?.subjectName,
+              topicId: subjectContext?.topicId,
+            },
+            contextualMessages,
+          ),
+        });
+
+        const elapsed = Date.now() - startedRequestAt;
+        if (elapsed < MIN_TYPING_INDICATOR_MS) {
+          await waitMs(MIN_TYPING_INDICATOR_MS - elapsed);
+        }
+
+        if (!mountedRef.current) {
+          return;
+        }
+
+        const aiMessage: Message = {
+          id: response.quizId,
+          sessionId: activeSession.id,
+          sender: 'ai',
+          content: formatQuizResponse(response),
+          safetyFlags: [],
+          createdAt: new Date().toISOString(),
+        };
+
+        const nextMessages = [...messagesRef.current, aiMessage];
+        messagesRef.current = nextMessages;
+
+        setState((current) => ({
+          ...current,
+          messages: nextMessages,
+          isAwaitingResponse: false,
+          error: null,
+        }));
+      } catch {
+        const elapsed = Date.now() - startedRequestAt;
+        if (elapsed < MIN_TYPING_INDICATOR_MS) {
+          await waitMs(MIN_TYPING_INDICATOR_MS - elapsed);
+        }
+
+        if (!mountedRef.current) {
+          return;
+        }
+
+        setState((current) => ({
+          ...current,
+          isAwaitingResponse: false,
+          error: 'I had trouble making that quiz. Please try again.',
+        }));
+      }
+    },
+    [ageGroup, childId, gradeLevel, startSession, subjectContext?.subjectId, subjectContext?.subjectName, subjectContext?.topicId]
+  );
+
+  const transcribeRecording = useCallback(
+    async (audioUri: string): Promise<string> => {
+      if (!childId) {
+        throw new Error('Choose a child profile before using voice.');
+      }
+
+      const activeSession = sessionRef.current ?? (await startSession());
+      if (!activeSession || activeSession.id.startsWith('local-session-')) {
+        throw new Error('Voice is unavailable until a live chat session starts.');
+      }
+
+      const response = await transcribeVoiceRecording({
+        childId,
+        sessionId: activeSession.id,
+        audioUri,
+      });
+
+      return response.text;
+    },
+    [childId, startSession]
+  );
+
   useEffect(() => {
     if (!childId) {
+      sessionRef.current = null;
       setSession(null);
       setState(buildInitialChatState());
       setElapsedSeconds(0);
@@ -353,6 +537,8 @@ export function useChatSession({
     startSession,
     endSession,
     sendMessage,
+    sendQuizRequest,
+    transcribeRecording,
     setInputText,
     clearError,
   };

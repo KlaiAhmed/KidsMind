@@ -1,8 +1,16 @@
 import { apiRequest } from '@/services/apiClient';
 import { useAuthStore } from '@/store/authStore';
-import type { ChatMessageResponse, ChatRequestPayload, Session } from '@/types/chat';
+import type {
+  ChatMessageResponse,
+  ChatQuizQuestion,
+  ChatQuizResponse,
+  ChatRequestPayload,
+  QuizRequestPayload,
+  Session,
+} from '@/types/chat';
 
 interface ChatResponsePayload {
+  message_id?: unknown;
   response?: unknown;
   explanation?: unknown;
   example?: unknown;
@@ -14,6 +22,31 @@ interface ChatResponsePayload {
   safety_flags?: unknown;
 }
 
+interface ChatSessionApiResponse {
+  id?: unknown;
+  child_profile_id?: unknown;
+  started_at?: unknown;
+  ended_at?: unknown;
+}
+
+interface QuizQuestionApiResponse {
+  id?: unknown;
+  type?: unknown;
+  prompt?: unknown;
+  options?: unknown;
+  answer?: unknown;
+  explanation?: unknown;
+}
+
+interface QuizApiResponse {
+  quiz_id?: unknown;
+  subject?: unknown;
+  topic?: unknown;
+  level?: unknown;
+  intro?: unknown;
+  questions?: unknown;
+}
+
 function normalizeOptionalString(value: unknown): string | null {
   if (typeof value !== 'string') {
     return null;
@@ -23,17 +56,31 @@ function normalizeOptionalString(value: unknown): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
-function generateSessionId(): string {
-  return `session-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function getCurrentUserId(): number {
+function getCurrentUserId(): string {
   const userId = useAuthStore.getState().user?.id;
   if (!userId) {
     throw new Error('You must be signed in to start a chat session.');
   }
 
   return userId;
+}
+
+function normalizeSession(payload: ChatSessionApiResponse, fallbackChildId: string): Session {
+  const id = normalizeOptionalString(payload.id);
+  const childId = normalizeOptionalString(payload.child_profile_id) ?? fallbackChildId;
+  const startedAt = normalizeOptionalString(payload.started_at) ?? new Date().toISOString();
+  const endedAt = normalizeOptionalString(payload.ended_at) ?? undefined;
+
+  if (!id) {
+    throw new Error('The chat session response was missing an id.');
+  }
+
+  return {
+    id,
+    childId,
+    startedAt,
+    endedAt,
+  };
 }
 
 function flattenResponsePayload(payload: ChatResponsePayload): string {
@@ -87,26 +134,89 @@ function flattenResponsePayload(payload: ChatResponsePayload): string {
   return '';
 }
 
-export async function startChatSession(childId: string): Promise<Session> {
+function normalizeQuizQuestion(value: unknown, fallbackId: number): ChatQuizQuestion | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const question = value as QuizQuestionApiResponse;
+  const prompt = normalizeOptionalString(question.prompt);
+  const answer = normalizeOptionalString(question.answer);
+  const explanation = normalizeOptionalString(question.explanation) ?? '';
+  const rawType = normalizeOptionalString(question.type);
+  const type =
+    rawType === 'true_false' || rawType === 'short_answer' || rawType === 'mcq'
+      ? rawType
+      : 'mcq';
+  const options = Array.isArray(question.options)
+    ? question.options.filter((option): option is string => typeof option === 'string')
+    : null;
+
+  if (!prompt || !answer) {
+    return null;
+  }
+
   return {
-    id: generateSessionId(),
-    childId,
-    startedAt: new Date().toISOString(),
+    id: typeof question.id === 'number' ? question.id : fallbackId,
+    type,
+    prompt,
+    options,
+    answer,
+    explanation,
   };
 }
 
-export async function endChatSession(
-  _sessionId: string,
-): Promise<{ endedAt?: string; totalSeconds?: number }> {
+function normalizeQuizResponse(value: unknown): ChatQuizResponse {
+  const payload = value && typeof value === 'object' ? (value as QuizApiResponse) : {};
+  const questions = Array.isArray(payload.questions)
+    ? payload.questions
+        .map((question, index) => normalizeQuizQuestion(question, index + 1))
+        .filter((question): question is ChatQuizQuestion => Boolean(question))
+    : [];
+
   return {
-    endedAt: new Date().toISOString(),
+    quizId: normalizeOptionalString(payload.quiz_id) ?? `quiz-${Date.now()}`,
+    subject: normalizeOptionalString(payload.subject) ?? 'General knowledge',
+    topic: normalizeOptionalString(payload.topic) ?? 'Practice',
+    level: normalizeOptionalString(payload.level) ?? 'easy',
+    intro: normalizeOptionalString(payload.intro) ?? 'Here is a quiz to try.',
+    questions,
+  };
+}
+
+export async function startChatSession(childId: string): Promise<Session> {
+  const response = await apiRequest<ChatSessionApiResponse>('/api/v1/chat/sessions', {
+    method: 'POST',
+    body: {
+      child_profile_id: childId,
+    },
+  });
+
+  return normalizeSession(response, childId);
+}
+
+export async function endChatSession(
+  sessionId: string,
+): Promise<{ endedAt?: string; totalSeconds?: number }> {
+  const response = await apiRequest<ChatSessionApiResponse>(
+    `/api/v1/chat/sessions/${encodeURIComponent(sessionId)}/close`,
+    {
+      method: 'POST',
+      body: {
+        ended_at: new Date().toISOString(),
+      },
+    },
+  );
+
+  return {
+    endedAt: normalizeOptionalString(response.ended_at) ?? new Date().toISOString(),
   };
 }
 
 export async function sendChatMessage(payload: ChatRequestPayload): Promise<ChatMessageResponse> {
   const userId = getCurrentUserId();
   const response = await apiRequest<unknown>(
-    `/api/v1/chat/text/${userId}/${encodeURIComponent(payload.childId)}/${encodeURIComponent(payload.sessionId)}`,
+    `/api/v1/chat/${encodeURIComponent(userId)}/${encodeURIComponent(payload.childId)}/${encodeURIComponent(payload.sessionId)}/message`,
     {
       method: 'POST',
       body: {
@@ -123,6 +233,7 @@ export async function sendChatMessage(payload: ChatRequestPayload): Promise<Chat
             created_at: entry.createdAt,
           })),
         }),
+        input_source: payload.inputSource ?? 'keyboard',
         stream: false,
       },
     },
@@ -133,11 +244,32 @@ export async function sendChatMessage(payload: ChatRequestPayload): Promise<Chat
       : { message: typeof response === 'string' ? response : '' };
 
   return {
-    messageId: `msg-${Date.now()}`,
+    messageId: normalizeOptionalString(normalizedResponse.message_id) ?? `msg-${Date.now()}`,
     content: flattenResponsePayload(normalizedResponse),
     safetyFlags: Array.isArray(normalizedResponse.safety_flags)
       ? normalizedResponse.safety_flags.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
       : [],
     createdAt: new Date().toISOString(),
   };
+}
+
+export async function sendQuizRequest(payload: QuizRequestPayload): Promise<ChatQuizResponse> {
+  const userId = getCurrentUserId();
+  const response = await apiRequest<unknown>(
+    `/api/v1/chat/${encodeURIComponent(userId)}/${encodeURIComponent(payload.childId)}/${encodeURIComponent(payload.sessionId)}/quiz`,
+    {
+      method: 'POST',
+      body: {
+        child_id: payload.childId,
+        subject: payload.subject,
+        topic: payload.topic,
+        level: payload.level,
+        question_count: payload.questionCount,
+        context: payload.context,
+      },
+      timeoutMs: 45000,
+    },
+  );
+
+  return normalizeQuizResponse(response);
 }

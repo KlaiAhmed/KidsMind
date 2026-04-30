@@ -12,10 +12,13 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { SessionGateOverlay } from '@/components/session/SessionGateOverlay';
 import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
 import { SearchBar } from '@/components/browser/SearchBar';
 import { SubjectCard } from '@/components/browser/SubjectCard';
 import { TopicTile } from '@/components/browser/TopicTile';
+import { useChildProfile } from '@/hooks/useChildProfile';
+import { useChildSessionGate } from '@/hooks/useChildSessionGate';
 import { useSubjects } from '@/hooks/useSubjects';
 import { getChildTabSceneBottomPadding } from '@/components/navigation/bottomNavTokens';
 import type { Subject, TopicFilter } from '@/types/child';
@@ -48,17 +51,44 @@ function subjectMatchesFilter(subject: Subject, filter: TopicFilter): boolean {
 }
 
 export default function SubjectTopicBrowser() {
-  const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { profile } = useChildProfile();
+  const childTabSceneBottomPadding = getChildTabSceneBottomPadding(insets.bottom);
+  const { isSessionActive, nextSessionTimeLabel } = useChildSessionGate(profile?.id ?? null, {
+    weekSchedule: profile?.rules?.weekSchedule ?? null,
+  });
+
+  if (!isSessionActive) {
+    return (
+      <SessionGateOverlay
+        illustration="🕐"
+        title="Not available right now"
+        subtitle={
+          nextSessionTimeLabel
+            ? `Come back at ${nextSessionTimeLabel} to keep learning!`
+            : 'Come back when your learning time opens to keep learning!'
+        }
+        bottomPadding={childTabSceneBottomPadding}
+      />
+    );
+  }
+
+  return <SubjectTopicBrowserContent childTabSceneBottomPadding={childTabSceneBottomPadding} />;
+}
+
+interface SubjectTopicBrowserContentProps {
+  childTabSceneBottomPadding: number;
+}
+
+function SubjectTopicBrowserContent({ childTabSceneBottomPadding }: SubjectTopicBrowserContentProps) {
+  const router = useRouter();
   const params = useLocalSearchParams<{
     subjectId?: string;
     topicId?: string;
     filter?: string;
   }>();
-  const childTabSceneBottomPadding = getChildTabSceneBottomPadding(insets.bottom);
 
   const {
-    allSubjects,
     getSubjectById,
     getRankedSubjects,
     filterTopics,

@@ -19,10 +19,13 @@ import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
 import { ChatInput } from '@/components/chat/ChatInput';
 import { MessageBubble } from '@/components/chat/MessageBubble';
 import { SessionHeader } from '@/components/chat/SessionHeader';
+import { SessionGateOverlay } from '@/components/session/SessionGateOverlay';
 import { useChatSession } from '@/hooks/useChatSession';
 import { useChildProfile } from '@/hooks/useChildProfile';
+import { useChildSessionGate } from '@/hooks/useChildSessionGate';
 import { useSubjects } from '@/hooks/useSubjects';
 import { getChildTabSceneBottomPadding } from '@/components/navigation/bottomNavTokens';
+import type { ChildProfile } from '@/types/child';
 import type { Message } from '@/types/chat';
 
 interface ChatRouteParams {
@@ -45,12 +48,72 @@ type ChatListItem =
 const TYPING_PLACEHOLDER_ID = 'typing-placeholder';
 
 export default function AIChatScreen() {
-  const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams() as ChatRouteParams;
   const { profile } = useChildProfile();
-  const { getSubjectById } = useSubjects();
   const childTabSceneBottomPadding = getChildTabSceneBottomPadding(insets.bottom);
+  const { isSessionActive, nextSessionTimeLabel } = useChildSessionGate(profile?.id ?? null, {
+    weekSchedule: profile?.rules?.weekSchedule ?? null,
+  });
+
+  if (!isSessionActive) {
+    return (
+      <QubieGateOverlay
+        bottomPadding={childTabSceneBottomPadding}
+        nextSessionTimeLabel={nextSessionTimeLabel}
+      />
+    );
+  }
+
+  return (
+    <AIChatSessionGate
+      childTabSceneBottomPadding={childTabSceneBottomPadding}
+      params={params}
+      profile={profile}
+    />
+  );
+}
+
+interface QubieGateOverlayProps {
+  bottomPadding: number;
+  dailyLimitReached?: boolean;
+  nextSessionTimeLabel: string | null;
+}
+
+function QubieGateOverlay({
+  bottomPadding,
+  dailyLimitReached,
+  nextSessionTimeLabel,
+}: QubieGateOverlayProps) {
+  const subtitle = dailyLimitReached
+    ? 'Your learning time for today is done! Great job! 🌟'
+    : nextSessionTimeLabel
+      ? `You can chat at ${nextSessionTimeLabel}. See you soon!`
+      : 'You can chat when your learning time opens. See you soon!';
+
+  return (
+    <SessionGateOverlay
+      illustration="🤖"
+      title="Qubie is resting right now"
+      subtitle={subtitle}
+      bottomPadding={bottomPadding}
+    />
+  );
+}
+
+interface AIChatSessionGateProps {
+  childTabSceneBottomPadding: number;
+  params: ChatRouteParams;
+  profile: ChildProfile | null;
+}
+
+function AIChatSessionGate({
+  childTabSceneBottomPadding,
+  params,
+  profile,
+}: AIChatSessionGateProps) {
+  const navigation = useNavigation();
+  const { getSubjectById } = useSubjects();
 
   const resolvedSubjectName =
     params.subjectName ??
@@ -61,7 +124,17 @@ export default function AIChatScreen() {
       ? profile.rules.dailyLimitMinutes
       : undefined;
 
-  const { state, elapsedSeconds, minutesRemaining, sendMessage, setInputText, endSession, clearError } =
+  const {
+    state,
+    elapsedSeconds,
+    minutesRemaining,
+    sendMessage,
+    sendQuizRequest,
+    transcribeRecording,
+    setInputText,
+    endSession,
+    clearError,
+  } =
     useChatSession({
       childId: profile?.id ?? null,
       ageGroup: profile?.ageGroup ?? '7-11',
@@ -73,6 +146,10 @@ export default function AIChatScreen() {
       },
       dailyLimitMinutes,
     });
+  const sessionGate = useChildSessionGate(profile?.id ?? null, {
+    weekSchedule: profile?.rules?.weekSchedule ?? null,
+    minutesRemaining,
+  });
 
   useEffect(() => {
     const unsubscribe = navigation.addListener('beforeRemove', () => {
@@ -87,6 +164,77 @@ export default function AIChatScreen() {
       void endSession();
     };
   }, [endSession]);
+
+  useEffect(() => {
+    if (!sessionGate.isSessionActive && !sessionGate.isLoading) {
+      void endSession();
+    }
+  }, [endSession, sessionGate.isLoading, sessionGate.isSessionActive]);
+
+  if (!sessionGate.isSessionActive) {
+    return (
+      <QubieGateOverlay
+        bottomPadding={childTabSceneBottomPadding}
+        dailyLimitReached={sessionGate.isDailyLimitReached}
+        nextSessionTimeLabel={sessionGate.nextSessionTimeLabel}
+      />
+    );
+  }
+
+  return (
+    <AIChatInteractiveContent
+      chatSession={{
+        state,
+        elapsedSeconds,
+        minutesRemaining,
+        sendMessage,
+        sendQuizRequest,
+        transcribeRecording,
+        setInputText,
+        clearError,
+      }}
+      childTabSceneBottomPadding={childTabSceneBottomPadding}
+      profile={profile}
+      resolvedSubjectName={resolvedSubjectName}
+    />
+  );
+}
+
+type AIChatSessionController = Pick<
+  ReturnType<typeof useChatSession>,
+  | 'state'
+  | 'elapsedSeconds'
+  | 'minutesRemaining'
+  | 'sendMessage'
+  | 'sendQuizRequest'
+  | 'transcribeRecording'
+  | 'setInputText'
+  | 'clearError'
+>;
+
+interface AIChatInteractiveContentProps {
+  chatSession: AIChatSessionController;
+  childTabSceneBottomPadding: number;
+  profile: ChildProfile | null;
+  resolvedSubjectName: string | undefined;
+}
+
+function AIChatInteractiveContent({
+  chatSession,
+  childTabSceneBottomPadding,
+  profile,
+  resolvedSubjectName,
+}: AIChatInteractiveContentProps) {
+  const {
+    state,
+    elapsedSeconds,
+    minutesRemaining,
+    sendMessage,
+    sendQuizRequest,
+    transcribeRecording,
+    setInputText,
+    clearError,
+  } = chatSession;
 
   const listData = useMemo<ChatListItem[]>(() => {
     const messageItems = [...state.messages].reverse().map((message) => ({
@@ -121,11 +269,19 @@ export default function AIChatScreen() {
   );
 
   const handleSend = useCallback(
-    async (text: string) => {
+    async (text: string, inputSource: 'keyboard' | 'voice' = 'keyboard') => {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
-      await sendMessage(text);
+      await sendMessage(text, inputSource);
     },
     [sendMessage]
+  );
+
+  const handleSendQuiz = useCallback(
+    async (topic: string) => {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+      await sendQuizRequest(topic);
+    },
+    [sendQuizRequest]
   );
 
   const handleLongPressMessage = useCallback((content: string) => {
@@ -195,6 +351,8 @@ export default function AIChatScreen() {
             isLoading={state.isAwaitingResponse || state.isLoading}
             onChangeText={setInputText}
             onSend={handleSend}
+            onSendQuiz={handleSendQuiz}
+            onTranscribeAudio={transcribeRecording}
           />
         </View>
       </KeyboardAvoidingView>

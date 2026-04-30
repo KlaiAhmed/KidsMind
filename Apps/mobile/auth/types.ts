@@ -1,5 +1,5 @@
 export interface AuthUser {
-  id: number;
+  id: string;
   email: string;
   username?: string;
   fullName?: string;
@@ -36,7 +36,7 @@ export interface AuthTokenResponse {
 }
 
 export interface UserSummaryResponse {
-  id: number;
+  id: string;
   email: string;
   username: string;
   role: string;

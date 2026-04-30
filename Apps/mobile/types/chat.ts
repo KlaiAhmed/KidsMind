@@ -4,6 +4,8 @@ import type { AgeGroup } from '@/types/child';
 export type MessageSender = 'child' | 'ai';
 
 export type SafetyFlag = string;
+export type ChatInputSource = 'keyboard' | 'voice';
+export type QuizLevel = 'easy' | 'medium' | 'hard';
 
 export interface Message {
   id: string;
@@ -52,6 +54,7 @@ export interface ChatRequestPayload {
   sessionId: string;
   text: string;
   context: ChatRequestContext;
+  inputSource?: ChatInputSource;
 }
 
 export interface ChatMessageResponse {
@@ -59,4 +62,32 @@ export interface ChatMessageResponse {
   content: string;
   safetyFlags: SafetyFlag[];
   createdAt: string;
+}
+
+export interface QuizRequestPayload {
+  childId: string;
+  sessionId: string;
+  subject: string;
+  topic: string;
+  level: QuizLevel;
+  questionCount: number;
+  context: string;
+}
+
+export interface ChatQuizQuestion {
+  id: number;
+  type: 'mcq' | 'true_false' | 'short_answer';
+  prompt: string;
+  options: string[] | null;
+  answer: string;
+  explanation: string;
+}
+
+export interface ChatQuizResponse {
+  quizId: string;
+  subject: string;
+  topic: string;
+  level: string;
+  intro: string;
+  questions: ChatQuizQuestion[];
 }
