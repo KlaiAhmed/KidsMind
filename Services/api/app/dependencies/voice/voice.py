@@ -11,11 +11,11 @@ from fastapi import Depends, HTTPException
 from redis.asyncio import Redis
 from sqlalchemy.orm import Session
 
-from dependencies.auth import get_current_user
-from dependencies.infrastructure import get_db, get_redis
-from models.child_profile import ChildProfile
-from models.user import User
-from services.child_profile_context_cache import get_child_profile_context
+from dependencies.auth.auth import get_current_user
+from dependencies.infrastructure.infrastructure import get_db, get_redis
+from models.child.child_profile import ChildProfile
+from models.user.user import User
+from services.child.child_profile_context_cache import get_child_profile_context
 
 
 async def check_voice_mode_enabled(

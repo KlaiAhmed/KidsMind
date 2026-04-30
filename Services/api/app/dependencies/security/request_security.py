@@ -9,7 +9,7 @@ import hmac
 from fastapi import Cookie, Header, HTTPException, Request
 
 from core.config import settings
-from utils.csrf import verify_csrf_token
+from utils.auth.csrf import verify_csrf_token
 
 
 async def verify_csrf_dep(

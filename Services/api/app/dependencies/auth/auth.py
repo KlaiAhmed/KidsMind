@@ -12,11 +12,11 @@ from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from core.config import settings
-from dependencies.infrastructure import get_db
-from dependencies.request_security import verify_csrf_dep
-from models.user import User, UserRole
-from services.auth_service import TokenType, verify_token
-from utils.token_blocklist import is_access_token_blocklisted
+from dependencies.infrastructure.infrastructure import get_db
+from dependencies.security.request_security import verify_csrf_dep
+from models.user.user import User, UserRole
+from services.auth.auth_service import TokenType, verify_token
+from utils.auth.token_blocklist import is_access_token_blocklisted
 
 
 def _extract_bearer_token(authorization: str | None) -> str | None:
