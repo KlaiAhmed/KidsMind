@@ -2,7 +2,8 @@
 Application Configuration
 
 Responsibility: Centralizes all application settings using pydantic-settings.
-               All environment variables and configuration values are defined here.
+All environment variables and configuration values are defined here.
+
 Layer: Core
 Domain: Configuration
 """
@@ -11,7 +12,7 @@ from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Literal, Optional, Set
 
-from utils.logger import logger
+from utils.shared.logger import logger
 
 
 def _validate_explicit_dev_mode(is_prod: bool, explicit_dev_mode: str, service_name: str) -> None:

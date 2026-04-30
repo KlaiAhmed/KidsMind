@@ -40,26 +40,27 @@ _load_env_file(SERVICE_ROOT / "app" / ".env")
 # Import ORM metadata and all models so Base.metadata is complete.
 from core.config import settings
 from core.database import Base
-import models.child_profile
-import models.child_rules
-import models.child_allowed_subject
-import models.child_gamification_stats
-import models.access_window
-import models.access_window_subject
-import models.avatar_tier_threshold
-import models.avatar
-import models.media_asset
-import models.refresh_token_session
-import models.chat_history
-import models.chat_session
-import models.badge
-import models.notification_prefs
-import models.parent_badge_notification
-import models.quiz
-import models.quiz_question
-import models.quiz_result
-import models.voice_transcription
-import models.user
+import models.user.user
+import models.auth.refresh_token_session
+import models.child.child_profile
+import models.child.child_rules
+import models.child.child_allowed_subject
+import models.child.access_window
+import models.child.access_window_subject
+import models.gamification.child_gamification_stats
+import models.gamification.badge
+import models.gamification.notification_prefs
+import models.gamification.parent_badge_notification
+import models.chat.chat_history
+import models.chat.chat_session
+import models.media.avatar
+import models.media.avatar_tier_threshold
+import models.media.media_asset
+import models.quiz.quiz
+import models.quiz.quiz_question
+import models.quiz.quiz_result
+import models.voice.voice_transcription
+import models.audit.audit_log
 
 
 config = context.config

@@ -19,8 +19,8 @@ from core.rate_limit_policy import (
     get_resolved_rate_limit_policy,
     match_endpoint_rule,
 )
-from utils.logger import logger
-from utils.rate_limit_keys import (
+from utils.shared.logger import logger
+from utils.auth.rate_limit_keys import (
     build_lockout_counter_key,
     build_lockout_key,
     build_window_key,
@@ -32,7 +32,7 @@ from utils.rate_limit_keys import (
     hash_identifier,
     parse_json_body,
 )
-from utils.rate_limit_store import (
+from utils.shared.rate_limit_store import (
     RateLimitStore,
     RateLimitStoreUnavailable,
     T5MultiWindowResult,

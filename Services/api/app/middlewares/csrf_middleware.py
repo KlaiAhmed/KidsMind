@@ -13,8 +13,8 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from core.config import settings
-from utils.csrf import verify_csrf_token
-from utils.logger import logger
+from utils.auth.csrf import verify_csrf_token
+from utils.shared.logger import logger
 
 
 class CSRFMiddleware(BaseHTTPMiddleware):

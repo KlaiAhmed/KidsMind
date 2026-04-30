@@ -36,23 +36,23 @@ from core.rate_limit_policy import (
 )
 from middlewares.rate_limit_middleware import RateLimitMiddleware
 from middlewares.csrf_middleware import CSRFMiddleware
-from routers.mobile_auth import router as mobile_auth_router
-from routers.admin_media import router as admin_media_router
-from routers.admin_users import router as admin_users_router
-from routers.chat import router as chat_router
-from routers.children import router as children_router
-from routers.health import router as health_router
-from routers.media import router as media_router
-from routers.quiz import router as quiz_router
-from routers.safety_and_rules import router as safety_and_rules_router
-from routers.users import router as users_router
-from routers.web_auth import router as web_auth_router
-from routers.voice import router as voice_router
-from services.bootstrap_admin import ensure_super_admin_exists
-from services.media_cache_service import warm_base_avatar_cache
-from utils.limiter import limiter
-from utils.logger import logger
-from utils.upstream_headers import build_service_headers
+from routers.auth.mobile_auth import router as mobile_auth_router
+from routers.admin.admin_media import router as admin_media_router
+from routers.admin.admin_users import router as admin_users_router
+from routers.chat.chat import router as chat_router
+from routers.child.children import router as children_router
+from routers.system.health import router as health_router
+from routers.media.media import router as media_router
+from routers.quiz.quiz import router as quiz_router
+from routers.safety.safety_and_rules import router as safety_and_rules_router
+from routers.user.users import router as users_router
+from routers.auth.web_auth import router as web_auth_router
+from routers.voice.voice import router as voice_router
+from services.admin.bootstrap_admin import ensure_super_admin_exists
+from services.media.media_cache_service import warm_base_avatar_cache
+from utils.shared.limiter import limiter
+from utils.shared.logger import logger
+from utils.shared.upstream_headers import build_service_headers
 
 
 # ---------------------------------------------------------------------------

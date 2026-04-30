@@ -14,7 +14,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 from core.config import settings
-from utils.logger import logger
+from utils.shared.logger import logger
 
 
 def _resolve_database_host_port() -> tuple[str, int]:
@@ -77,25 +77,26 @@ def init_db() -> None:
     Creates all tables defined by ORM models that inherit from Base.
     """
     if not settings.IS_PROD:
-        import models.user
-        import models.child_profile
-        import models.child_rules
-        import models.child_allowed_subject
-        import models.child_gamification_stats
-        import models.access_window
-        import models.access_window_subject
-        import models.avatar_tier_threshold
-        import models.avatar
-        import models.media_asset
-        import models.refresh_token_session
-        import models.chat_history
-        import models.chat_session
-        import models.badge
-        import models.parent_badge_notification
-        import models.quiz
-        import models.quiz_question
-        import models.quiz_result
-        import models.voice_transcription
+        import models.user.user
+        import models.child.child_profile
+        import models.child.child_rules
+        import models.child.child_allowed_subject
+        import models.gamification.child_gamification_stats
+        import models.child.access_window
+        import models.child.access_window_subject
+        import models.media.avatar_tier_threshold
+        import models.media.avatar
+        import models.media.media_asset
+        import models.auth.refresh_token_session
+        import models.chat.chat_history
+        import models.chat.chat_session
+        import models.gamification.badge
+        import models.gamification.parent_badge_notification
+        import models.quiz.quiz
+        import models.quiz.quiz_question
+        import models.quiz.quiz_result
+        import models.voice.voice_transcription
+        import models.audit.audit_log
 
         Base.metadata.create_all(bind=engine)
 

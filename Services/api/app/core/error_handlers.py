@@ -11,8 +11,8 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import Request
 
-from schemas.error_schema import ErrorItem, ErrorResponse
-from utils.logger import logger
+from schemas.shared.error_schema import ErrorItem, ErrorResponse
+from utils.shared.logger import logger
 
 
 def _build_error_response(
