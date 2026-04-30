@@ -12,10 +12,10 @@ from fastapi import HTTPException
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from models.user import User
-from schemas.badge_schema import BadgeCatalogResponse
-from services.badge_service import BadgeService
-from utils.logger import logger
+from models.user.user import User
+from schemas.gamification.badge_schema import BadgeCatalogResponse
+from services.gamification.badge_service import BadgeService
+from utils.shared.logger import logger
 
 
 async def get_badge_catalog_controller(

@@ -10,15 +10,15 @@ Domain: Safety and Rules
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from models.user import User
-from schemas.safety_and_rules_schema import (
+from models.user.user import User
+from schemas.safety.safety_and_rules_schema import (
     SafetyAndRulesPatchRequest,
     SafetyAndRulesPatchResponse,
     SafetyAndRulesVerifyPinRequest,
     SafetyAndRulesVerifyPinResponse,
 )
-from services.safety_and_rules_service import SafetyAndRulesService
-from utils.logger import logger
+from services.safety.safety_and_rules_service import SafetyAndRulesService
+from utils.shared.logger import logger
 
 
 async def patch_safety_and_rules_controller(

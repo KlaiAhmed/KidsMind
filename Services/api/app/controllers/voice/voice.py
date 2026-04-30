@@ -8,17 +8,17 @@ from fastapi import HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
-from controllers.chat import _resolve_owned_child_profile
+from controllers.chat.chat import _resolve_owned_child_profile
 from core.config import settings
 from core.database import SessionLocal
 from core.storage import minio_client
-from models.chat_session import ChatSession
-from models.voice_transcription import VoiceTranscription
-from services.chat_session_service import create_session_for_child
-from services.child_profile_context_cache import get_child_profile_context
-from utils.file_name import generate_audio_file_storage_path
-from utils.logger import logger
-from utils.sse import format_sse
+from models.chat.chat_session import ChatSession
+from models.voice.voice_transcription import VoiceTranscription
+from services.chat.chat_session_service import create_session_for_child
+from services.child.child_profile_context_cache import get_child_profile_context
+from utils.media.file_name import generate_audio_file_storage_path
+from utils.shared.logger import logger
+from utils.chat.sse import format_sse
 
 
 def _resolve_or_create_chat_session(

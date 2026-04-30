@@ -13,16 +13,16 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
-from models.child_profile import ChildProfile
-from models.quiz import Quiz
-from models.quiz_question import QuizQuestion
-from models.quiz_result import QuizResult
-from models.user import User
-from schemas.badge_schema import BadgeRead
-from schemas.quiz_schema import QuizSubmitRequest
-from services.badge_award_service import evaluate_and_award
-from services.gamification_service import process_quiz_completion
-from utils.logger import logger
+from models.child.child_profile import ChildProfile
+from models.quiz.quiz import Quiz
+from models.quiz.quiz_question import QuizQuestion
+from models.quiz.quiz_result import QuizResult
+from models.user.user import User
+from schemas.gamification.badge_schema import BadgeRead
+from schemas.quiz.quiz_schema import QuizSubmitRequest
+from services.gamification.badge_award_service import evaluate_and_award
+from services.gamification.gamification_service import process_quiz_completion
+from utils.shared.logger import logger
 
 
 def _normalize_answer(answer: str, question_type: str) -> str:

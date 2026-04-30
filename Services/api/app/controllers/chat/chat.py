@@ -14,31 +14,34 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import httpx
-from fastapi import HTTPException
+from fastapi import BackgroundTasks, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from core.config import settings
 from core.exceptions import AIRateLimitError
-from models.access_window import AccessWindow
-from models.chat_history import ChatHistory
-from models.chat_session import ChatSession
-from models.child_profile import ChildProfile
-from models.quiz import Quiz
-from models.quiz_question import QuizQuestion
-from models.user import User
-from schemas.chat_schema import ChatSessionClose, ChatSessionCreate
-from services.ai_service import ai_service
-from services.badge_award_service import evaluate_and_award
-from services.chat_history import chat_history_service
-from services.chat_session_service import create_session_for_child
-from services.child_profile_context_cache import get_child_profile_context
-from services.gamification_service import process_first_chat, process_login
-from utils.get_moderation_service import get_moderation_service
-from utils.logger import logger
-from utils.sse import format_chat_delta, format_chat_end, format_chat_error, format_chat_start, new_message_id
-from utils.validate_token_limit import validate_token_limit_by_source
+from services.audit.constants import AuditAction
+from services.audit.service import write_audit_log
+from models.child.access_window import AccessWindow
+from models.chat.chat_history import ChatHistory
+from models.chat.chat_session import ChatSession
+from models.audit.audit_log import AuditActorRole
+from models.child.child_profile import ChildProfile
+from models.quiz.quiz import Quiz
+from models.quiz.quiz_question import QuizQuestion
+from models.user.user import User
+from schemas.chat.chat_schema import ChatSessionClose, ChatSessionCreate
+from services.chat.ai_service import ai_service
+from services.gamification.badge_award_service import evaluate_and_award
+from services.chat.chat_history import chat_history_service
+from services.chat.chat_session_service import create_session_for_child
+from services.child.child_profile_context_cache import get_child_profile_context
+from services.gamification.gamification_service import process_first_chat, process_login
+from utils.safety.get_moderation_service import get_moderation_service
+from utils.shared.logger import logger
+from utils.chat.sse import format_chat_delta, format_chat_end, format_chat_error, format_chat_start, new_message_id
+from utils.chat.validate_token_limit import validate_token_limit_by_source
 
 DEFAULT_CHAT_HISTORY_LIMIT = 200
 MAX_CHAT_HISTORY_LIMIT = 500
@@ -393,6 +396,7 @@ async def chat_message_controller(
     input_source: str | None,
     stream: bool,
     external_client: httpx.AsyncClient,
+    background_tasks: BackgroundTasks,
 ) -> dict | StreamingResponse:
     
     request_start = time.perf_counter()
@@ -406,7 +410,41 @@ async def chat_message_controller(
     validate_token_limit_by_source(text=text, context=context, input_source=input_source)
 
     moderation_fn = get_moderation_service()
-    await moderation_fn(message=text, context=context, client=external_client, language=profile_context.get("language", settings.DEFAULT_LANGUAGE))
+    moderation_result = await moderation_fn(
+        message=text,
+        context=context,
+        client=external_client,
+        language=profile_context.get("language", settings.DEFAULT_LANGUAGE),
+    )
+    if moderation_result.get("blocked"):
+        block_category = str(moderation_result.get("category") or "blocked")
+        background_tasks.add_task(
+            write_audit_log,
+            actor_id=user_id,
+            actor_role=AuditActorRole.SYSTEM,
+            action=AuditAction.MODERATION_BLOCK,
+            resource="chat_session",
+            resource_id=session_id,
+            after_state={
+                "child_id": str(child_profile.id),
+                "block_category": block_category,
+            },
+        )
+
+        if stream:
+            message_id = new_message_id()
+
+            async def _blocked_stream() -> AsyncGenerator[bytes, None]:
+                yield format_chat_error("moderation_block", "Message blocked by moderation", message_id)
+
+            return StreamingResponse(
+                _blocked_stream(),
+                media_type="text/event-stream",
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+                background=background_tasks,
+            )
+
+        raise HTTPException(status_code=400, detail="text contains inappropriate content for your age.")
 
     chat_session = await _resolve_or_create_session(db, child_profile.id, session_id)
 
@@ -476,6 +514,7 @@ async def chat_message_controller(
             _sse_generator(),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            background=background_tasks,
         )
 
     ai_start = time.perf_counter()

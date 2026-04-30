@@ -11,7 +11,7 @@ from typing import TypeVar
 from fastapi import HTTPException
 from fastapi.concurrency import run_in_threadpool
 
-from utils.logger import logger
+from utils.shared.logger import logger
 
 
 T = TypeVar("T")

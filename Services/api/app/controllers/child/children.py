@@ -12,17 +12,17 @@ from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from controllers.controller_guard import guarded_controller_call
-from models.user import User
-from schemas.child_profile_schema import (
+from controllers.shared.controller_guard import guarded_controller_call
+from models.user.user import User
+from schemas.child.child_profile_schema import (
     ChildProfileCreate,
     ChildProfileOut,
     ChildProfileRead,
     ChildProfileUpdate,
     ChildRulesUpdate,
 )
-from services.child_profile_service import ChildProfileService
-from utils.logger import logger
+from services.child.child_profile_service import ChildProfileService
+from utils.shared.logger import logger
 
 
 async def create_child_controller(

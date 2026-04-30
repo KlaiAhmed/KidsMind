@@ -11,9 +11,9 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from controllers.controller_guard import guarded_controller_call
-from models.user import User
-from schemas.parent_dashboard_schema import (
+from controllers.shared.controller_guard import guarded_controller_call
+from models.user.user import User
+from schemas.child.parent_dashboard_schema import (
     BulkDeleteRequest,
     BulkDeleteResponse,
     ControlAuditResponse,
@@ -25,7 +25,7 @@ from schemas.parent_dashboard_schema import (
     ParentOverviewResponse,
     ParentProgressResponse,
 )
-from services.parent_dashboard_service import ParentDashboardService
+from services.child.parent_dashboard_service import ParentDashboardService
 
 
 async def get_overview_controller(

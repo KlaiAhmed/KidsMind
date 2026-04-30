@@ -18,11 +18,11 @@ from sqlalchemy.orm import Session
 
 from core.config import settings
 from core.storage import minio_client
-from models.badge import Badge
-from schemas.badge_schema import BadgeAdminResponse
-from services.media_cache_service import invalidate_signed_url_cache
-from utils.badge_conditions import parse_condition
-from utils.logger import logger
+from models.gamification.badge import Badge
+from schemas.gamification.badge_schema import BadgeAdminResponse
+from services.media.media_cache_service import invalidate_signed_url_cache
+from utils.gamification.badge_conditions import parse_condition
+from utils.shared.logger import logger
 
 BADGES_BUCKET = "media-public"
 IMAGE_CONTENT_TYPES = {"image/webp", "image/png", "image/jpeg"}

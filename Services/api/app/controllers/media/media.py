@@ -15,12 +15,12 @@ from redis.exceptions import RedisError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from models.avatar import Avatar
-from models.user import User
-from schemas.media_schema import AvatarTierUpdateItem, AvatarUpdateRequest, AvatarUploadFormData
-from services.media_cache_service import invalidate_base_avatar_cache
-from services.media_service import MediaService
-from utils.logger import logger
+from models.media.avatar import Avatar
+from models.user.user import User
+from schemas.media.media_schema import AvatarTierUpdateItem, AvatarUpdateRequest, AvatarUploadFormData
+from services.media.media_cache_service import invalidate_base_avatar_cache
+from services.media.media_service import MediaService
+from utils.shared.logger import logger
 
 
 def _raise_mapped_media_error(

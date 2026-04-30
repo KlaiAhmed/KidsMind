@@ -11,13 +11,13 @@ from fastapi import HTTPException
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from models.user import User
-from schemas.notification_schema import (
+from models.user.user import User
+from schemas.gamification.notification_schema import (
     MarkNotificationsReadRequest,
     ParentBadgeNotificationListResponse,
 )
-from services.parent_notification_service import ParentNotificationService
-from utils.logger import logger
+from services.child.parent_notification_service import ParentNotificationService
+from utils.shared.logger import logger
 
 
 async def list_notifications_controller(
