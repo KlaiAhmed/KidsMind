@@ -12,7 +12,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from schemas.child_profile_schema import ChildSubject, ChildWeekday
+from schemas.child.child_profile_schema import ChildSubject, ChildWeekday
 
 
 class SafetyAndRulesChildSettings(BaseModel):

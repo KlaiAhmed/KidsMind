@@ -14,8 +14,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
-from schemas.media_schema import AvatarResponse
-from utils.child_profile_logic import (
+from schemas.media.media_schema import AvatarResponse
+from utils.child.child_profile_logic import (
     MAX_PROFILE_AGE,
     MIN_PROFILE_AGE,
     EducationStage,

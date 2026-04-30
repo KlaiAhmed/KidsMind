@@ -14,7 +14,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
-from models.user import UserRole
+from models.user.user import UserRole
 
 
 class AccountDeletionMode(str, enum.Enum):
