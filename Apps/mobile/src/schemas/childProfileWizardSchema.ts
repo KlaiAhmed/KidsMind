@@ -7,19 +7,17 @@ import {
   buildDefaultWeekSchedule,
   computeEndTimeFromStart,
   deriveBlockedSubjects,
+  ALL_SUBJECT_VALUES,
   isChildProfileAgeInRange,
   parseTimeToMinutes,
   parseIsoDateOnly,
-  SUBJECT_OPTIONS,
 } from '@/src/utils/childProfileWizard';
 
 const educationLevelValues = ['kindergarten', 'primary_school', 'secondary_school'] as const;
-const subjectValues = SUBJECT_OPTIONS.map((entry) => entry.value) as [
-  SubjectKey,
-  ...SubjectKey[],
-];
+const subjectValues = ALL_SUBJECT_VALUES;
 const scheduleModeValues = ['simple', 'advanced'] as const;
 const languageCodeValues = ['ar', 'en', 'es', 'fr', 'it', 'zh'] as const;
+type LanguageCode = (typeof languageCodeValues)[number];
 
 const educationLevelSchema = z.enum(educationLevelValues);
 const subjectSchema = z.enum(subjectValues);
@@ -280,6 +278,10 @@ function extractDobParts(birthDate: string | undefined): { day: string; month: s
   };
 }
 
+function normalizeLanguageCode(value: string | null | undefined): LanguageCode {
+  return languageCodeValues.includes(value as LanguageCode) ? value as LanguageCode : 'en';
+}
+
 function normalizeExistingWeekSchedule(
   weekSchedule: WeekSchedule | null | undefined,
   allowedSubjects: SubjectKey[],
@@ -344,7 +346,9 @@ export function buildChildProfileWizardDefaultValues(
     allowedSubjects,
     profile?.rules?.timeWindowStart ?? null,
   );
-  const blockedSubjects = deriveBlockedSubjects(allowedSubjects);
+  const blockedSubjects = profile?.rules?.blockedSubjects?.length
+    ? profile.rules.blockedSubjects
+    : deriveBlockedSubjects(allowedSubjects);
   const dob = extractDobParts(profile?.birthDate);
 
   return {
@@ -367,7 +371,7 @@ export function buildChildProfileWizardDefaultValues(
       weekSchedule,
     },
     rules: {
-      defaultLanguage: profile?.rules?.defaultLanguage ?? profile?.languages?.[0] ?? 'en',
+      defaultLanguage: normalizeLanguageCode(profile?.rules?.defaultLanguage ?? profile?.languages?.[0]),
       blockedSubjects,
       homeworkModeEnabled: profile?.rules?.homeworkModeEnabled ?? true,
       voiceModeEnabled: profile?.rules?.voiceModeEnabled ?? true,

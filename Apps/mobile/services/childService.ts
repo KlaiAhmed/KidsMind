@@ -84,7 +84,17 @@ function normalizeEducationStage(value: string): 'KINDERGARTEN' | 'PRIMARY' | 'S
 }
 
 const SUBJECT_VALUES: readonly SubjectKey[] = Object.values([
-  'math', 'reading', 'french', 'english', 'science', 'history', 'art',
+  'math',
+  'reading',
+  'science',
+  'writing',
+  'social_studies',
+  'art',
+  'music',
+  'health',
+  'french',
+  'english',
+  'history',
 ] satisfies SubjectKey[]);
 
 const WEEKDAY_KEYS: WeekdayKey[] = [
@@ -492,14 +502,61 @@ export async function patchChildProfile(
   const resolvedChildId = normalizeChildId(childId);
   const avatarField = buildAvatarIdField(input.avatarId);
 
- const body = {
- nickname: input.nickname,
- birth_date: input.birthDate,
- education_stage: input.educationStage,
- ...avatarField,
- };
+  const body = {
+    nickname: input.nickname,
+    birth_date: input.birthDate,
+    education_stage: input.educationStage,
+    is_accelerated: input.isAccelerated,
+    is_below_expected_stage: input.isBelowExpectedStage,
+    ...avatarField,
+  };
 
   const response = await apiRequest<ChildProfileApiResponse>(`/api/v1/children/${resolvedChildId}`, {
+    method: 'PATCH',
+    body,
+  });
+
+  return normalizeChildProfile(response);
+}
+
+export async function updateChildRules(
+  childId: string | number,
+  input: UpdateChildRulesInput,
+): Promise<ChildProfile> {
+  const resolvedChildId = normalizeChildId(childId);
+  const body: Record<string, unknown> = {};
+
+  if (input.defaultLanguage !== undefined) {
+    body.default_language = input.defaultLanguage;
+  }
+
+  if (input.homeworkModeEnabled !== undefined) {
+    body.homework_mode_enabled = input.homeworkModeEnabled;
+  }
+
+  if (input.voiceModeEnabled !== undefined) {
+    body.voice_mode_enabled = input.voiceModeEnabled;
+  }
+
+  if (input.audioStorageEnabled !== undefined) {
+    body.audio_storage_enabled = input.audioStorageEnabled;
+  }
+
+  if (input.conversationHistoryEnabled !== undefined) {
+    body.conversation_history_enabled = input.conversationHistoryEnabled;
+  }
+
+  if (input.allowedSubjects !== undefined) {
+    body.allowed_subjects = input.allowedSubjects.map((subject) => ({ subject }));
+  }
+
+  if (input.weekSchedule !== undefined) {
+    body.week_schedule = input.weekSchedule === null
+      ? null
+      : buildWeekSchedulePatchPayload(input.weekSchedule);
+  }
+
+  const response = await apiRequest<ChildProfileApiResponse>(`/api/v1/children/${resolvedChildId}/rules`, {
     method: 'PATCH',
     body,
   });
@@ -511,24 +568,7 @@ export async function patchChildRules(
   childId: string | number,
   input: UpdateChildRulesInput,
 ): Promise<ChildProfile> {
-  const resolvedChildId = normalizeChildId(childId);
-
-  const body = {
-    default_language: input.defaultLanguage,
-    homework_mode_enabled: input.homeworkModeEnabled,
-    voice_mode_enabled: input.voiceModeEnabled,
-    audio_storage_enabled: input.audioStorageEnabled,
-    conversation_history_enabled: input.conversationHistoryEnabled,
-    allowed_subjects: input.allowedSubjects.map((subject) => ({ subject })),
-    week_schedule: buildWeekSchedulePatchPayload(input.weekSchedule),
-  };
-
-  const response = await apiRequest<ChildProfileApiResponse>(`/api/v1/children/${resolvedChildId}/rules`, {
-    method: 'PATCH',
-    body,
-  });
-
-  return normalizeChildProfile(response);
+  return updateChildRules(childId, input);
 }
 
 export async function listChildProfiles(): Promise<ChildProfile[]> {

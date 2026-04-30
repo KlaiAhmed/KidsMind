@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
 
@@ -7,6 +8,7 @@ interface LabeledToggleRowProps {
   value: boolean;
   disabled?: boolean;
   accessibilityLabel?: string;
+  leadingAccessory?: ReactNode;
   onValueChange: (nextValue: boolean) => void;
 }
 
@@ -16,6 +18,7 @@ export function LabeledToggleRow({
   value,
   disabled = false,
   accessibilityLabel,
+  leadingAccessory,
   onValueChange,
 }: LabeledToggleRowProps) {
   return (
@@ -35,6 +38,7 @@ export function LabeledToggleRow({
         pressed ? styles.containerPressed : null,
       ]}
     >
+      {leadingAccessory}
       <View style={styles.textWrap}>
         <Text style={styles.label}>{label}</Text>
         {description ? <Text style={styles.description}>{description}</Text> : null}

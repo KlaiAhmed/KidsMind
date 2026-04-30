@@ -15,11 +15,15 @@ export type BackendEducationStage = 'KINDERGARTEN' | 'PRIMARY' | 'SECONDARY';
 export type SubjectKey =
   | 'math'
   | 'reading'
+  | 'science'
+  | 'writing'
+  | 'social_studies'
+  | 'art'
+  | 'music'
+  | 'health'
   | 'french'
   | 'english'
-  | 'science'
-  | 'history'
-  | 'art';
+  | 'history';
 
 export type ContentSafetyLevel = 'strict' | 'moderate';
 
@@ -134,25 +138,27 @@ export interface CreateChildProfileInput {
 }
 
 export interface UpdateChildProfileInput {
- nickname?: string;
- birthDate?: string;
- educationStage?: BackendEducationStage;
- avatarId?: string | null;
+  nickname?: string;
+  birthDate?: string;
+  educationStage?: BackendEducationStage;
+  isAccelerated?: boolean;
+  isBelowExpectedStage?: boolean;
+  avatarId?: string | null;
 }
 
 export interface UpdateChildRulesInput {
-  defaultLanguage: string;
-  dailyLimitMinutes: number | null;
-  allowedSubjects: SubjectKey[];
-  blockedSubjects: SubjectKey[];
-  weekSchedule: WeekSchedule;
-  timeWindowStart: string | null;
-  timeWindowEnd: string | null;
-  homeworkModeEnabled: boolean;
-  voiceModeEnabled: boolean;
-  audioStorageEnabled: boolean;
-  conversationHistoryEnabled: boolean;
-  contentSafetyLevel: ContentSafetyLevel;
+  defaultLanguage?: string;
+  dailyLimitMinutes?: number | null;
+  allowedSubjects?: SubjectKey[];
+  blockedSubjects?: SubjectKey[];
+  weekSchedule?: WeekSchedule | null;
+  timeWindowStart?: string | null;
+  timeWindowEnd?: string | null;
+  homeworkModeEnabled?: boolean;
+  voiceModeEnabled?: boolean;
+  audioStorageEnabled?: boolean;
+  conversationHistoryEnabled?: boolean;
+  contentSafetyLevel?: ContentSafetyLevel;
 }
 
 export interface RecentActivity {

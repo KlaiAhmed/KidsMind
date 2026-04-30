@@ -4,6 +4,7 @@ import type { ComponentProps } from 'react';
 import type { Badge } from '@/types/badge';
 import type { Subject, SubjectKey } from '@/types/child';
 import type { SubjectGridItem } from '@/src/components/SubjectGrid';
+import { Colors } from '@/constants/theme';
 import { ProfileColors } from '@/src/components/profile/profileTokens';
 
 type IconName = ComponentProps<typeof MaterialCommunityIcons>['name'];
@@ -99,11 +100,39 @@ const SUBJECT_VISUALS: SubjectVisual[] = [
     percentageColor: ProfileColors.scienceText,
   },
   {
+    keys: ['writing'],
+    name: 'Writing',
+    iconName: 'pencil-outline',
+    barColor: '#2563EB',
+    percentageColor: '#2563EB',
+  },
+  {
+    keys: ['social_studies'],
+    name: 'Social Studies',
+    iconName: 'earth',
+    barColor: '#0F766E',
+    percentageColor: '#0F766E',
+  },
+  {
     keys: ['art'],
     name: 'Art',
     iconName: 'palette-outline',
     barColor: '#E25F86',
     percentageColor: '#E25F86',
+  },
+  {
+    keys: ['music'],
+    name: 'Music',
+    iconName: 'music-note',
+    barColor: '#A21CAF',
+    percentageColor: '#A21CAF',
+  },
+  {
+    keys: ['health'],
+    name: 'Health',
+    iconName: 'heart-pulse',
+    barColor: '#DC2626',
+    percentageColor: '#DC2626',
   },
   {
     keys: ['history'],
@@ -270,7 +299,7 @@ export function buildWeeklyInsight(params: {
   return `Amazing work, ${firstName}! Every session is helping your ${params.levelTitle.toLowerCase()} journey grow stronger.`;
 }
 
-interface SubjectGridVisual {
+export interface SubjectGridVisual {
   name: string;
   iconName: IconName;
   iconColor: string;
@@ -301,6 +330,30 @@ const SUBJECT_GRID_VISUALS: Record<string, SubjectGridVisual> = {
     iconName: 'book-open-variant',
     iconColor: '#D97706',
     iconBackground: '#FFFBEB',
+  },
+  writing: {
+    name: 'Writing',
+    iconName: 'pencil-outline',
+    iconColor: '#2563EB',
+    iconBackground: '#EFF6FF',
+  },
+  social_studies: {
+    name: 'Social Studies',
+    iconName: 'earth',
+    iconColor: '#0F766E',
+    iconBackground: '#F0FDFA',
+  },
+  music: {
+    name: 'Music',
+    iconName: 'music-note',
+    iconColor: '#A21CAF',
+    iconBackground: '#FAE8FF',
+  },
+  health: {
+    name: 'Health',
+    iconName: 'heart-pulse',
+    iconColor: '#DC2626',
+    iconBackground: '#FEF2F2',
   },
   french: {
     name: 'French',
@@ -335,4 +388,13 @@ export function buildSubjectGridItems(subjectKeys: SubjectKey[]): SubjectGridIte
         iconBackground: visual.iconBackground,
       };
     });
+}
+
+export function getSubjectGridVisual(subjectKey: SubjectKey): SubjectGridVisual {
+  return SUBJECT_GRID_VISUALS[subjectKey] ?? {
+    name: subjectKey,
+    iconName: 'book-open-page-variant',
+    iconColor: Colors.primary,
+    iconBackground: Colors.primaryFixed,
+  };
 }

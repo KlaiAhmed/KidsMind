@@ -23,14 +23,29 @@ export const EDUCATION_LEVEL_ORDER: Record<EducationLevel, number> = {
 export const SUBJECT_OPTIONS: { value: SubjectKey; label: string }[] = [
   { value: 'math', label: 'Math' },
   { value: 'reading', label: 'Reading' },
-  { value: 'french', label: 'French' },
-  { value: 'english', label: 'English' },
   { value: 'science', label: 'Science' },
-  { value: 'history', label: 'History' },
+  { value: 'writing', label: 'Writing' },
+  { value: 'social_studies', label: 'Social Studies' },
   { value: 'art', label: 'Art' },
+  { value: 'music', label: 'Music' },
+  { value: 'health', label: 'Health' },
 ];
 
-export const SUBJECT_LABEL_MAP: Record<SubjectKey, string> = SUBJECT_OPTIONS.reduce(
+const LEGACY_SUBJECT_OPTIONS: { value: SubjectKey; label: string }[] = [
+  { value: 'french', label: 'French' },
+  { value: 'english', label: 'English' },
+  { value: 'history', label: 'History' },
+];
+
+export const ALL_SUBJECT_VALUES = [
+  ...SUBJECT_OPTIONS.map((entry) => entry.value),
+  ...LEGACY_SUBJECT_OPTIONS.map((entry) => entry.value),
+] as [SubjectKey, ...SubjectKey[]];
+
+export const SUBJECT_LABEL_MAP: Record<SubjectKey, string> = [
+  ...SUBJECT_OPTIONS,
+  ...LEGACY_SUBJECT_OPTIONS,
+].reduce(
   (acc, subject) => {
     acc[subject.value] = subject.label;
     return acc;

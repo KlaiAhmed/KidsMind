@@ -2,6 +2,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Controller, FormProvider, useForm, useWatch } from 'react-hook-form';
 import {
+  ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -46,7 +48,7 @@ import {
   parseIsoDateOnly,
   WEEKDAY_OPTIONS,
 } from '@/src/utils/childProfileWizard';
-import { patchChildRules } from '@/services/childService';
+import { updateChildRules } from '@/services/childService';
 import { ApiClientError } from '@/services/apiClient';
 import type { WeekdayKey } from '@/types/child';
 
@@ -275,6 +277,18 @@ function NicknameChar({ char, index, total }: NicknameCharProps) {
   );
 }
 
+function WizardErrorCard({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  return (
+    <View style={styles.errorCard}>
+      <MaterialCommunityIcons color={Colors.errorText} name="alert-circle-outline" size={18} />
+      <Text style={styles.errorCardText}>{message}</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel="Dismiss error" onPress={onDismiss}>
+        <MaterialCommunityIcons color={Colors.errorText} name="close" size={18} />
+      </Pressable>
+    </View>
+  );
+}
+
 function validateStepOne(childInfo: ChildProfileWizardFormValues['childInfo'] | undefined): boolean {
   if (!childInfo) {
     return false;
@@ -296,16 +310,21 @@ function validateStepOne(childInfo: ChildProfileWizardFormValues['childInfo'] | 
 
 export default function ChildProfileWizard() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ mode?: string; source?: string }>();
+  const params = useLocalSearchParams<{ childId?: string; mode?: string; source?: string }>();
   const isEditMode = params.mode === 'edit';
   const launchedFromParentDashboard = params.source === 'parent-dashboard';
+  const requestedEditChildId = typeof params.childId === 'string' ? params.childId : null;
 
   const {
     profile,
     profiles,
+    selectedChildId,
     avatars,
     defaultAvatarId,
+    isLoading,
+    selectProfile,
     saveChildProfile,
+    updateProfile,
     refreshChildData,
   } = useChildProfile();
 
@@ -313,9 +332,24 @@ export default function ChildProfileWizard() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  const editProfile = useMemo(() => {
+    if (!isEditMode) {
+      return null;
+    }
+
+    if (requestedEditChildId) {
+      return profiles.find((entry) => entry.id === requestedEditChildId)
+        ?? (profile?.id === requestedEditChildId ? profile : null);
+    }
+
+    return profile;
+  }, [isEditMode, profile, profiles, requestedEditChildId]);
+
+  const formProfile = isEditMode ? editProfile : null;
+
   const defaultValues = useMemo(
-    () => buildChildProfileWizardDefaultValues(profile, defaultAvatarId),
-    [defaultAvatarId, profile],
+    () => buildChildProfileWizardDefaultValues(formProfile, defaultAvatarId),
+    [defaultAvatarId, formProfile],
   );
 
   const methods = useForm<ChildProfileWizardFormValues>({
@@ -337,10 +371,16 @@ export default function ChildProfileWizard() {
     methodsRef.current.reset(defaultValues);
   }, [defaultValues]);
 
+  useEffect(() => {
+    if (isEditMode && requestedEditChildId && requestedEditChildId !== selectedChildId) {
+      selectProfile(requestedEditChildId);
+    }
+  }, [isEditMode, requestedEditChildId, selectProfile, selectedChildId]);
+
   const hasChildProfiles = profiles.length > 0;
   const showStepOneBackButton = launchedFromParentDashboard && hasChildProfiles;
   const showBackButton = isEditMode || step > 1 || showStepOneBackButton;
-  const nextLabel = step === 5 ? (isEditMode ? 'Save Changes' : 'Start Learning') : 'Next';
+  const nextLabel = step === 5 ? (isEditMode ? 'Save Changes' : 'Create Profile') : 'Next';
   const isNextDisabled =
     isSubmitting ||
     (step === 1 && !isStepOneValid) ||
@@ -363,6 +403,21 @@ export default function ChildProfileWizard() {
     }
 
     router.replace('/(auth)/login' as never);
+  }
+
+  function handleCancelEdit() {
+    Alert.alert(
+      'Discard changes?',
+      "Your edits won't be saved",
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: () => router.dismissTo('/(tabs)/profile' as never),
+        },
+      ],
+    );
   }
 
   async function handleStepAdvance() {
@@ -425,11 +480,17 @@ export default function ChildProfileWizard() {
     setIsSubmitting(true);
 
     try {
- const hasExistingProfile = isEditMode && Boolean(profile?.id);
- const blockedSubjects = deriveBlockedSubjects(values.schedule.allowedSubjects);
- const { timeWindowStart, timeWindowEnd } = deriveTimeWindowFromWeekSchedule(
- values.schedule.weekSchedule,
- );
+      const targetChildId = isEditMode ? requestedEditChildId ?? editProfile?.id ?? null : null;
+      const hasExistingProfile = isEditMode && Boolean(targetChildId);
+      const blockedSubjects = deriveBlockedSubjects(values.schedule.allowedSubjects);
+      const { timeWindowStart, timeWindowEnd } = deriveTimeWindowFromWeekSchedule(
+        values.schedule.weekSchedule,
+      );
+
+      if (isEditMode && !targetChildId) {
+        setSubmitError('Unable to find the child profile to update.');
+        return;
+      }
 
       const savedProfile = await saveChildProfile({
         nickname: values.childInfo.nickname.trim(),
@@ -448,11 +509,11 @@ export default function ChildProfileWizard() {
         allowedSubjects: values.schedule.allowedSubjects,
         weekSchedule: values.schedule.weekSchedule,
       }, {
-        childId: hasExistingProfile ? profile?.id : null,
+        childId: hasExistingProfile ? targetChildId : null,
       });
 
       if (hasExistingProfile) {
-        await patchChildRules(savedProfile.id, {
+        const nextProfile = await updateChildRules(savedProfile.id, {
           defaultLanguage: values.rules.defaultLanguage,
           dailyLimitMinutes: values.schedule.dailyLimitMinutes,
           allowedSubjects: values.schedule.allowedSubjects,
@@ -466,13 +527,15 @@ export default function ChildProfileWizard() {
           conversationHistoryEnabled: values.rules.conversationHistoryEnabled,
           contentSafetyLevel: values.rules.contentSafetyLevel,
         });
+
+        const { id: _id, ...updates } = nextProfile;
+        updateProfile(updates);
       }
 
-      await refreshChildData();
-
       if (isEditMode) {
-        router.replace('/(tabs)/profile' as never);
+        router.dismissTo('/(tabs)/profile' as never);
       } else {
+        await refreshChildData();
         router.replace('/(tabs)' as never);
       }
     } catch (error) {
@@ -508,7 +571,7 @@ export default function ChildProfileWizard() {
               setStep(firstInvalidStep);
             }
 
-            setSubmitError('Please review the highlighted fields.');
+            setSubmitError(toApiErrorMessage(error));
             return;
           }
 
@@ -518,20 +581,16 @@ export default function ChildProfileWizard() {
               message: error.message,
             });
             setStep(2);
-            setSubmitError('Please review the highlighted fields.');
+            setSubmitError(toApiErrorMessage(error));
             return;
           }
 
-          setSubmitError(error.message || 'Validation failed. Please review your entries.');
+          setSubmitError(toApiErrorMessage(error));
           return;
         }
 
         if (error.status === 403) {
-          const forbiddenMessage =
-            error.message.trim().length > 0
-              ? error.message
-              : 'You are not allowed to create or update this child profile.';
-          setSubmitError(forbiddenMessage);
+          setSubmitError(toApiErrorMessage(error));
           return;
         }
       }
@@ -607,6 +666,29 @@ export default function ChildProfileWizard() {
           void handleStepAdvance();
         };
 
+  if (isEditMode && !editProfile) {
+    return (
+      <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+        <View style={styles.loadingState}>
+          {isLoading ? <ActivityIndicator color={Colors.primary} size="large" /> : null}
+          <Text style={styles.loadingText}>
+            {isLoading ? 'Loading child profile...' : 'Child profile could not be found.'}
+          </Text>
+          {!isLoading ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Return to controls"
+              onPress={() => router.dismissTo('/(tabs)/profile' as never)}
+              style={({ pressed }) => [styles.loadingAction, pressed ? styles.backButtonPressed : null]}
+            >
+              <Text style={styles.loadingActionText}>Back to Controls</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <KeyboardAvoidingView
@@ -618,8 +700,13 @@ export default function ChildProfileWizard() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Go back"
+              disabled={isSubmitting}
               onPress={handleBack}
-              style={({ pressed }) => [styles.backButton, pressed ? styles.backButtonPressed : null]}
+              style={({ pressed }) => [
+                styles.backButton,
+                isSubmitting ? styles.headerButtonDisabled : null,
+                pressed ? styles.backButtonPressed : null,
+              ]}
             >
               <MaterialCommunityIcons name="arrow-left" size={22} color={Colors.text} />
             </Pressable>
@@ -629,17 +716,36 @@ export default function ChildProfileWizard() {
           <Text style={styles.headerTitle}>
             {isEditMode ? 'Edit Child Profile' : 'Set up your child profile'}
           </Text>
+          {isEditMode ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Cancel editing"
+              disabled={isSubmitting}
+              onPress={handleCancelEdit}
+              style={({ pressed }) => [
+                styles.cancelButton,
+                isSubmitting ? styles.headerButtonDisabled : null,
+                pressed ? styles.backButtonPressed : null,
+              ]}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </Pressable>
+          ) : (
+            <View style={styles.headerRightSpacer} />
+          )}
         </View>
 
         <View style={styles.wizardBody}>
           <WizardStepIndicator step={step} totalSteps={TOTAL_STEPS} />
 
           <FormProvider {...methods}>
-            <View style={styles.stepCard}>
+            <View pointerEvents={isSubmitting ? 'none' : 'auto'} style={styles.stepCard}>
               {step === 2 ? (
                 <View style={[styles.stepContent, styles.stepContentFill]}>
+                  {submitError ? (
+                    <WizardErrorCard message={submitError} onDismiss={() => setSubmitError(null)} />
+                  ) : null}
                   {renderStepContent()}
-                  {submitError ? <Text style={styles.inlineError}>{submitError}</Text> : null}
                 </View>
               ) : (
                 <ScrollView
@@ -648,21 +754,23 @@ export default function ChildProfileWizard() {
                   showsVerticalScrollIndicator={false}
                   style={styles.stepScrollView}
                 >
+                  {submitError ? (
+                    <WizardErrorCard message={submitError} onDismiss={() => setSubmitError(null)} />
+                  ) : null}
                   {renderStepContent()}
-                  {submitError ? <Text style={styles.inlineError}>{submitError}</Text> : null}
                 </ScrollView>
               )}
             </View>
           </FormProvider>
         </View>
 
-      <PrimaryButton
-        label={nextLabel}
-        loading={isSubmitting}
-        disabled={isNextDisabled}
-        onPress={onNextPress}
-        style={styles.nextButton}
-      />
+        <PrimaryButton
+          label={nextLabel}
+          loading={isSubmitting}
+          disabled={isNextDisabled}
+          onPress={onNextPress}
+          style={styles.nextButton}
+        />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -697,14 +805,32 @@ const styles = StyleSheet.create({
   backButtonPressed: {
     transform: [{ scale: 0.97 }],
   },
+  headerButtonDisabled: {
+    opacity: 0.6,
+  },
   backButtonSpacer: {
     width: 56,
     height: 56,
+  },
+  cancelButton: {
+    width: 72,
+    minHeight: 56,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  cancelButtonText: {
+    ...Typography.label,
+    color: Colors.primary,
+  },
+  headerRightSpacer: {
+    width: 72,
+    minHeight: 56,
   },
   headerTitle: {
     ...Typography.title,
     color: Colors.text,
     flex: 1,
+    textAlign: 'center',
   },
   wizardBody: {
     flex: 1,
@@ -774,6 +900,45 @@ const styles = StyleSheet.create({
   },
   nextButton: {
     marginTop: Spacing.md,
+  },
+  errorCard: {
+    borderRadius: Radii.lg,
+    backgroundColor: Colors.errorContainer,
+    padding: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+  },
+  errorCardText: {
+    ...Typography.caption,
+    color: Colors.errorText,
+    flex: 1,
+  },
+  loadingState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.lg,
+    gap: Spacing.md,
+  },
+  loadingText: {
+    ...Typography.body,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+  loadingAction: {
+    minHeight: 48,
+    minWidth: 160,
+    borderRadius: Radii.full,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.lg,
+  },
+  loadingActionText: {
+    ...Typography.bodySemiBold,
+    color: Colors.primary,
   },
   inlineError: {
     ...Typography.caption,
