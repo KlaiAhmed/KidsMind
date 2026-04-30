@@ -95,10 +95,6 @@ function minutesToLabel(totalMinutes: number | null | undefined): string {
   return `${hours}h ${minutes}m`;
 }
 
-function firstName(value: string): string {
-  return value.trim().split(/\s+/)[0] ?? value;
-}
-
 function timeToOffset(time: string): number {
   const [hoursValue, minutesValue] = time.split(':').map(Number);
   return (hoursValue + minutesValue / 60) / 24;
@@ -461,13 +457,27 @@ export default function ParentalControlsScreen({
     <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
         <View style={styles.heroCard}>
-          <View style={styles.heroCopy}>
-            <Text style={styles.screenTitle}>Settings for {firstName(activeChild.nickname ?? activeChild.name)}</Text>
-            <Text style={styles.heroSubtitle}>Manage learning preferences and safety boundaries.</Text>
-            <Text style={styles.heroMeta}>{activeChild.gradeLevel} | Age {activeChild.age}</Text>
-          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Edit ${activeChild.nickname ?? activeChild.name} profile`}
+            onPress={() => router.push('/(auth)/child-profile-wizard?mode=edit' as never)}
+            style={({ pressed }) => [styles.heroIdentity, pressed ? styles.pressed : null]}
+          >
+            <View style={styles.heroAvatarWrap}>
+              <Image contentFit="cover" source={getChildAvatarSource(activeChild)} style={styles.heroAvatar} />
+              <View style={styles.editBadge}>
+                <MaterialCommunityIcons color={Colors.white} name="pencil" size={12} />
+              </View>
+            </View>
 
-          <Image contentFit="cover" source={getChildAvatarSource(activeChild)} style={styles.heroAvatar} />
+            <View style={styles.heroCopy}>
+              <Text style={styles.screenTitle}>{activeChild.nickname ?? activeChild.name}</Text>
+              <Text style={styles.heroSubtitle}>{activeChild.gradeLevel}</Text>
+              <Text style={styles.heroMeta}>Tap to edit profile details</Text>
+            </View>
+          </Pressable>
+
+          {rulesMutation.isPending ? <ActivityIndicator color={Colors.primary} size="small" /> : null}
         </View>
 
         <ParentChildSwitcher
@@ -698,16 +708,44 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   heroCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: Spacing.md,
     borderRadius: Radii.xl,
     borderWidth: 1,
     borderColor: Colors.outline,
     backgroundColor: Colors.surfaceContainerLowest,
     padding: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
     ...Shadows.card,
+  },
+  heroIdentity: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  heroAvatarWrap: {
+    position: 'relative',
+  },
+  heroAvatar: {
+    width: 84,
+    height: 84,
+    borderRadius: Radii.full,
+    backgroundColor: Colors.surfaceContainerHigh,
+  },
+  editBadge: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 28,
+    height: 28,
+    borderRadius: Radii.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary,
+    borderWidth: 2,
+    borderColor: Colors.surface,
   },
   heroCopy: {
     flex: 1,

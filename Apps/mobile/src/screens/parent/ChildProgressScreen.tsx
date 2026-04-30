@@ -182,28 +182,14 @@ export default function ChildProgressScreen({
   return (
     <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
-        <View style={styles.heroCard}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Edit ${activeChild.nickname ?? activeChild.name} profile`}
-            onPress={() => router.push('/(auth)/child-profile-wizard?mode=edit' as never)}
-            style={({ pressed }) => [styles.heroIdentity, pressed ? styles.pressed : null]}
-          >
-            <View style={styles.heroAvatarWrap}>
-              <Image contentFit="cover" source={getChildAvatarSource(activeChild)} style={styles.heroAvatar} />
-              <View style={styles.editBadge}>
-                <MaterialCommunityIcons color={Colors.white} name="pencil" size={12} />
-              </View>
-            </View>
-
-            <View style={styles.heroCopy}>
-              <Text style={styles.screenTitle}>{activeChild.nickname ?? activeChild.name}</Text>
-              <Text style={styles.heroSubtitle}>{activeChild.gradeLevel}</Text>
-              <Text style={styles.heroMeta}>Tap to edit profile details</Text>
-            </View>
-          </Pressable>
-
-          {historyQuery.isFetching ? <ActivityIndicator color={Colors.primary} size="small" /> : null}
+        <View style={styles.heroWrap}>
+          <View style={styles.heroCopy}>
+            <Text style={styles.screenTitle}>Progress Report</Text>
+            <Text style={styles.heroSubtitle}>
+              Real-time insights into {activeChild.nickname ?? activeChild.name}'s progress.
+            </Text>
+          </View>
+          <Image contentFit="cover" source={getChildAvatarSource(activeChild)} style={styles.childAvatar} />
         </View>
 
         <ParentChildSwitcher
@@ -424,6 +410,18 @@ const styles = StyleSheet.create({
   heroCopy: {
     flex: 1,
     gap: Spacing.xs,
+  },
+  heroWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+  },
+  childAvatar: {
+    width: 58,
+    height: 58,
+    borderRadius: Radii.full,
+    backgroundColor: Colors.surfaceContainerHigh,
   },
   screenTitle: {
     ...Typography.headline,
