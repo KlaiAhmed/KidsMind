@@ -49,13 +49,13 @@ interface PinDotProps {
   isFilled: boolean;
   isError: boolean;
   isSuccess: boolean;
-  dotScale: SharedValue<number>;
+  dotOpacity: SharedValue<number>;
   successCheckmarkStyle: Animated.AnimateStyle<typeof Animated.View>;
 }
 
-function PinDot({ index, isFilled, isError, isSuccess, dotScale, successCheckmarkStyle }: PinDotProps) {
+function PinDot({ index, isFilled, isError, isSuccess, dotOpacity, successCheckmarkStyle }: PinDotProps) {
   const dotAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: dotScale.value }],
+    opacity: dotOpacity.value,
   }));
 
   return (
@@ -106,33 +106,33 @@ export function ParentPINGate({
   const [gateState, setGateState] = useState<PinGateState>('idle');
   const [errorMessage, setErrorMessage] = useState<string>('');
 
-  const modalScale = useSharedValue(0.95);
+  const modalTranslateY = useSharedValue(300);
   const modalOpacity = useSharedValue(0);
   const shakeTranslateX = useSharedValue(0);
-  const dotScale0 = useSharedValue(1);
-  const dotScale1 = useSharedValue(1);
-  const dotScale2 = useSharedValue(1);
-  const dotScale3 = useSharedValue(1);
-  const dotScaleValues = useMemo(() => [dotScale0, dotScale1, dotScale2, dotScale3], [dotScale0, dotScale1, dotScale2, dotScale3]);
+  const dotOpacity0 = useSharedValue(1);
+  const dotOpacity1 = useSharedValue(1);
+  const dotOpacity2 = useSharedValue(1);
+  const dotOpacity3 = useSharedValue(1);
+  const dotOpacityValues = useMemo(() => [dotOpacity0, dotOpacity1, dotOpacity2, dotOpacity3], [dotOpacity0, dotOpacity1, dotOpacity2, dotOpacity3]);
   const successScale = useSharedValue(0);
 
   useEffect(() => {
     if (visible) {
-      modalScale.value = withSpring(1, { damping: 15, stiffness: 150 });
-      modalOpacity.value = withTiming(1, { duration: 200, easing: Easing.out(Easing.cubic) });
+      modalTranslateY.value = withTiming(0, { duration: 350, easing: Easing.out(Easing.cubic) });
+      modalOpacity.value = withTiming(1, { duration: 250, easing: Easing.out(Easing.cubic) });
       const timer = setTimeout(() => {}, 300);
       return () => clearTimeout(timer);
     } else {
       setPin('');
       setGateState('idle');
       setErrorMessage('');
-      modalScale.value = 0.95;
+      modalTranslateY.value = 300;
       modalOpacity.value = 0;
       shakeTranslateX.value = 0;
-      dotScaleValues.forEach((sv) => { sv.value = 1; });
+      dotOpacityValues.forEach((sv) => { sv.value = 1; });
       successScale.value = 0;
     }
-  }, [visible, modalScale, modalOpacity, shakeTranslateX, dotScaleValues, successScale]);
+  }, [visible, modalTranslateY, modalOpacity, shakeTranslateX, dotOpacityValues, successScale]);
 
   useEffect(() => {
     if (!visible) return;
@@ -156,12 +156,10 @@ export function ParentPINGate({
   const animateDotEntry = useCallback(
     (index: number) => {
       'worklet';
-      dotScaleValues[index].value = withSequence(
-        withSpring(1.3, { damping: 8, stiffness: 400 }),
-        withSpring(1, { damping: 12, stiffness: 200 }),
-      );
+      dotOpacityValues[index].value = withTiming(0.5, { duration: 80 });
+      dotOpacityValues[index].value = withTiming(1, { duration: 150 });
     },
-    [dotScaleValues],
+    [dotOpacityValues],
   );
 
   const handleDigitPress = useCallback(
@@ -192,8 +190,8 @@ export function ParentPINGate({
             if (isValid) {
               setGateState('success');
               successScale.value = withSequence(
-                withSpring(1.2, { damping: 8, stiffness: 400 }),
-                withSpring(1, { damping: 12, stiffness: 200 }),
+                withTiming(1.2, { duration: 150 }),
+                withTiming(1, { duration: 150 }),
               );
               await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
                 () => undefined,
@@ -223,7 +221,7 @@ export function ParentPINGate({
   }, [onCancel]);
 
   const modalAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: modalScale.value }],
+    transform: [{ translateY: modalTranslateY.value }],
     opacity: modalOpacity.value,
   }));
 
@@ -283,7 +281,7 @@ export function ParentPINGate({
       <BlurView intensity={50} style={StyleSheet.absoluteFill} tint="dark" />
       <View style={styles.overlay} />
 
-      <View style={[styles.container, { paddingBottom: insets.bottom + Spacing.md }]}>
+      <View style={[styles.container, { paddingBottom: insets.bottom }]}>
         <Animated.View style={[styles.modalContent, modalAnimatedStyle]}>
           <View style={styles.header}>
             <View style={styles.iconContainer}>
@@ -297,19 +295,19 @@ export function ParentPINGate({
             )}
           </View>
 
-          <Animated.View style={[styles.pinDisplay, shakeAnimatedStyle]}>
-            {Array.from({ length: 4 }).map((_, index) => (
-              <PinDot
-                key={index}
-                index={index}
-                isFilled={index < pin.length}
-                isError={gateState === 'error' && pin.length === 0}
-                isSuccess={gateState === 'success'}
-                dotScale={dotScaleValues[index]}
-                successCheckmarkStyle={successCheckmarkStyle}
-              />
-            ))}
-          </Animated.View>
+<Animated.View style={[styles.pinDisplay, shakeAnimatedStyle]}>
+        {Array.from({ length: 4 }).map((_, index) => (
+          <PinDot
+            key={index}
+            index={index}
+            isFilled={index < pin.length}
+            isError={gateState === 'error' && pin.length === 0}
+            isSuccess={gateState === 'success'}
+            dotOpacity={dotOpacityValues[index]}
+            successCheckmarkStyle={successCheckmarkStyle}
+          />
+        ))}
+      </Animated.View>
 
           {errorMessage && gateState === 'error' && (
             <View style={styles.errorContainer}>
@@ -354,6 +352,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     justifyContent: 'flex-end',
+    paddingBottom: 0,
   },
   modalContent: {
     backgroundColor: Colors.surface,
@@ -361,7 +360,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: Radii.xxl,
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.lg,
-    paddingBottom: Spacing.xl,
+    paddingBottom: Spacing.md,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
