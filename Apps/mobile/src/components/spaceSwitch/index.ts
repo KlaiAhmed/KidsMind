@@ -11,6 +11,7 @@
 export { ParentPINGate } from './ParentPINGate';
 export { ChildSwitchModal } from './ChildSwitchModal';
 export { ChildSpaceHeader } from './ChildSpaceHeader';
+export { PINGateHeaderButton } from './PINGateHeaderButton';
 export {
   useChildNavigationLock,
   childSpaceScreenOptions,

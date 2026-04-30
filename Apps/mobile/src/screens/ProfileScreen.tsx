@@ -2,11 +2,11 @@ import { useMemo } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useBadges } from '@/hooks/useBadges';
 import { useChildProfile } from '@/hooks/useChildProfile';
 import { useSubjects } from '@/hooks/useSubjects';
-import { ProfileHeader } from '@/src/components/profile/ProfileHeader';
 import { ProfileHero } from '@/src/components/profile/ProfileHero';
 import { RecentBadges } from '@/src/components/profile/RecentBadges';
 import { SubjectProgress } from '@/src/components/profile/SubjectProgress';
@@ -26,6 +26,7 @@ function formatMetric(value: number): string {
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const {
     profile,
     defaultAvatarId,
@@ -159,14 +160,8 @@ export default function ProfileScreen() {
         showsVerticalScrollIndicator={false}
         style={styles.scrollView}
       >
-        <View style={styles.heroShell}>
-          <ProfileHeader
-            avatarSource={avatarSource}
-            loading={heroLoading}
-            username={displayName}
-          />
-
-          <ProfileHero
+      <View style={[styles.heroShell, { paddingTop: insets.top }]}>
+        <ProfileHero
             avatarSource={avatarSource}
             level={activeProfile?.level ?? 1}
             loading={heroLoading}

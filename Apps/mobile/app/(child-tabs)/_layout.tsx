@@ -18,6 +18,7 @@ import { verifyParentPin } from '@/services/parentAccessService';
 import { showToast } from '@/services/toastClient';
 import { ChildSpaceBoundaryProvider } from '@/src/components/spaceSwitch/ChildSpaceBoundary';
 import { ParentPINGate } from '@/src/components/spaceSwitch/ParentPINGate';
+import { PINGateHeaderButton } from '@/src/components/spaceSwitch/PINGateHeaderButton';
 
 const childTabScreenOptions = {
   headerShown: false,
@@ -220,6 +221,8 @@ export default function ChildTabLayout() {
           options={hiddenBadgesScreenOptions}
         />
       </Tabs>
+
+      <PINGateHeaderButton />
 
       <ParentPINGate
         onCancel={handleParentPinCancel}
