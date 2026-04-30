@@ -13,6 +13,11 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 
 import { ParentChildSwitcher } from '@/src/components/parent/ParentChildSwitcher';
+import {
+  DailyUsageDonutCard,
+  SevenDayActivityChart,
+  type SevenDayActivityPoint,
+} from '@/src/components/parent/ParentDashboardMetrics';
 import { Colors, Radii, Shadows, Spacing, Typography } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { getParentProgress } from '@/services/parentDashboardService';
@@ -28,26 +33,11 @@ export interface ChildProgressScreenProps {
 }
 
 function getDateKey(value: Date): string {
-  return value.toISOString().slice(0, 10);
-}
+  const year = value.getFullYear();
+  const month = `${value.getMonth() + 1}`.padStart(2, '0');
+  const day = `${value.getDate()}`.padStart(2, '0');
 
-function formatMinutes(minutes: number | null | undefined): string {
-  if (typeof minutes !== 'number' || minutes <= 0) {
-    return '0m';
-  }
-
-  const hours = Math.floor(minutes / 60);
-  const remainder = minutes % 60;
-
-  if (hours === 0) {
-    return `${remainder}m`;
-  }
-
-  if (remainder === 0) {
-    return `${hours}h`;
-  }
-
-  return `${hours}h ${remainder}m`;
+  return `${year}-${month}-${day}`;
 }
 
 function formatDateTime(value: string | null | undefined): string {
@@ -63,17 +53,14 @@ function formatDateTime(value: string | null | undefined): string {
   }).format(new Date(value));
 }
 
-function formatPercent(value: number | null): string {
-  return typeof value === 'number' ? `${Math.round(value)}%` : 'No scores';
-}
-
 function getSubjectLabel(subject: string): string {
   const normalized = subject.toLowerCase() as SubjectKey;
   return SUBJECT_LABEL_MAP[normalized] ?? subject;
 }
 
-function buildSevenDayActivitySeries(activity: ProgressDashboard['sessionActivity']) {
+function buildSevenDayActivitySeries(activity: ProgressDashboard['sessionActivity']): SevenDayActivityPoint[] {
   const today = new Date();
+  const todayKey = getDateKey(today);
   const days = Array.from({ length: 7 }).map((_, index) => {
     const date = new Date(today);
     date.setDate(today.getDate() - (6 - index));
@@ -83,46 +70,20 @@ function buildSevenDayActivitySeries(activity: ProgressDashboard['sessionActivit
       key,
       label: new Intl.DateTimeFormat(undefined, { weekday: 'narrow' }).format(date),
       sessions: 0,
-      messages: 0,
-      durationSeconds: 0,
+      isToday: key === todayKey,
     };
   });
 
   const lookup = new Map(days.map((day) => [day.key, day]));
 
   for (const point of activity) {
-    const day = lookup.get(point.date);
+    const day = lookup.get(point.date.slice(0, 10));
     if (day) {
       day.sessions += point.sessions;
-      day.messages += point.messages;
-      day.durationSeconds += point.durationSeconds;
     }
   }
 
   return days;
-}
-
-function computeDailyStreak(activity: ProgressDashboard['sessionActivity']): number {
-  const activeDays = new Set(
-    activity
-      .filter((point) => point.sessions > 0)
-      .map((point) => point.date),
-  );
-  const today = new Date();
-  let streak = 0;
-
-  for (let index = 0; index < 365; index += 1) {
-    const date = new Date(today);
-    date.setDate(today.getDate() - index);
-
-    if (!activeDays.has(getDateKey(date))) {
-      break;
-    }
-
-    streak += 1;
-  }
-
-  return streak;
 }
 
 function ProgressSkeleton() {
@@ -161,32 +122,15 @@ export default function ChildProgressScreen({
   const progress = progressQuery.data;
   const todayKey = getDateKey(new Date());
   const todayActivity = useMemo(
-    () => progress?.sessionActivity.filter((point) => point.date === todayKey) ?? [],
+    () => progress?.sessionActivity.filter((point) => point.date.slice(0, 10) === todayKey) ?? [],
     [progress?.sessionActivity, todayKey],
   );
   const todayMinutes = Math.round(
     todayActivity.reduce((sum, point) => sum + point.durationSeconds, 0) / 60,
   );
+  const dailyLimitMinutes = activeChild?.rules?.dailyLimitMinutes ?? activeChild?.dailyGoalMinutes ?? 0;
   const sevenDaySeries = useMemo(
     () => buildSevenDayActivitySeries(progress?.sessionActivity ?? []),
-    [progress?.sessionActivity],
-  );
-  const maxDailyCount = Math.max(...sevenDaySeries.map((day) => day.sessions), 1);
-  const averageScore = useMemo(() => {
-    const results = progress?.results ?? [];
-    if (results.length === 0) {
-      return null;
-    }
-
-    return results.reduce((sum, result) => sum + result.score, 0) / results.length;
-  }, [progress?.results]);
-  const exercisesToday = useMemo(
-    () =>
-      (progress?.results ?? []).filter((result) => result.submittedAt.slice(0, 10) === todayKey).length,
-    [progress?.results, todayKey],
-  );
-  const dailyStreak = useMemo(
-    () => computeDailyStreak(progress?.sessionActivity ?? []),
     [progress?.sessionActivity],
   );
   const recentResults = useMemo(
@@ -203,7 +147,7 @@ export default function ChildProgressScreen({
     void router.replace(`/(tabs)/explore?childId=${encodeURIComponent(childId)}` as never);
   }
 
-  if (initialState === 'loading' || isChildDataResolving || progressQuery.isPending) {
+  if (initialState === 'loading' || isChildDataResolving || (Boolean(activeChild) && progressQuery.isPending)) {
     return (
       <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
         <ProgressSkeleton />
@@ -267,63 +211,11 @@ export default function ChildProgressScreen({
           onSelectChild={handleChildSelect}
         />
 
-        <View style={styles.metricsRow}>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricTitle}>Today&apos;s Minutes</Text>
-            <Text style={styles.metricValue}>{formatMinutes(todayMinutes)}</Text>
-            <Text style={styles.metricSubtitle}>From saved learning sessions today</Text>
-          </View>
-
-          <View style={styles.metricCard}>
-            <Text style={styles.metricTitle}>Exercises Today</Text>
-            <Text style={styles.metricValue}>{exercisesToday}</Text>
-            <Text style={styles.metricSubtitle}>Quiz submissions completed today</Text>
-          </View>
-        </View>
-
-        <View style={styles.metricsRow}>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricTitle}>Average Score</Text>
-            <Text style={styles.metricValue}>{formatPercent(averageScore)}</Text>
-            <Text style={styles.metricSubtitle}>Mean score across all quiz results</Text>
-          </View>
-
-          <View style={styles.metricCard}>
-            <Text style={styles.metricTitle}>Daily Streak</Text>
-            <Text style={styles.metricValue}>{dailyStreak}</Text>
-            <Text style={styles.metricSubtitle}>Consecutive active learning days</Text>
-          </View>
-        </View>
+        <DailyUsageDonutCard dailyLimitMinutes={dailyLimitMinutes} todayMinutes={todayMinutes} />
 
         <View style={styles.surfaceCard}>
           <Text style={styles.sectionTitle}>Activity Last 7 Days</Text>
-          {sevenDaySeries.every((day) => day.sessions === 0) ? (
-            <View style={styles.emptyInlineState}>
-              <MaterialCommunityIcons color={Colors.textSecondary} name="chart-bar" size={28} />
-              <Text style={styles.emptyInlineTitle}>No activity yet</Text>
-              <Text style={styles.emptyInlineBody}>
-                This chart becomes live as soon as learning sessions are recorded.
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.sparkline}>
-              {sevenDaySeries.map((day) => (
-                <View key={day.key} style={styles.sparkColumn}>
-                  <Text style={styles.sparkCount}>{day.sessions}</Text>
-                  <View
-                    style={[
-                      styles.sparkBar,
-                      {
-                        height: Math.max(20, (day.sessions / maxDailyCount) * 120),
-                        backgroundColor: day.sessions > 0 ? Colors.primary : Colors.surfaceContainerHigh,
-                      },
-                    ]}
-                  />
-                  <Text style={styles.sparkLabel}>{day.label}</Text>
-                </View>
-              ))}
-            </View>
-          )}
+          <SevenDayActivityChart series={sevenDaySeries} />
         </View>
 
         <View style={styles.surfaceCard}>
@@ -448,32 +340,6 @@ const styles = StyleSheet.create({
     ...Typography.body,
     color: Colors.textSecondary,
   },
-  metricsRow: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-  },
-  metricCard: {
-    flex: 1,
-    borderRadius: Radii.xl,
-    borderWidth: 1,
-    borderColor: Colors.outline,
-    backgroundColor: Colors.surfaceContainerLowest,
-    padding: Spacing.md,
-    gap: Spacing.sm,
-    ...Shadows.card,
-  },
-  metricTitle: {
-    ...Typography.label,
-    color: Colors.textSecondary,
-  },
-  metricValue: {
-    ...Typography.title,
-    color: Colors.text,
-  },
-  metricSubtitle: {
-    ...Typography.caption,
-    color: Colors.textSecondary,
-  },
   surfaceCard: {
     borderRadius: Radii.xl,
     borderWidth: 1,
@@ -496,29 +362,6 @@ const styles = StyleSheet.create({
   insightBody: {
     ...Typography.body,
     color: Colors.text,
-  },
-  sparkline: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    gap: Spacing.sm,
-  },
-  sparkColumn: {
-    flex: 1,
-    alignItems: 'center',
-    gap: Spacing.xs,
-  },
-  sparkCount: {
-    ...Typography.caption,
-    color: Colors.textSecondary,
-  },
-  sparkBar: {
-    width: '100%',
-    borderRadius: Radii.full,
-  },
-  sparkLabel: {
-    ...Typography.caption,
-    color: Colors.textSecondary,
   },
   masteryList: {
     gap: Spacing.md,

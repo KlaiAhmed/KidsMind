@@ -1,4 +1,3 @@
-import type { ComponentProps } from 'react';
 import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -18,44 +17,27 @@ import * as Haptics from 'expo-haptics';
 
 import { ActivityFlaggedBanner } from '@/src/components/parent/ActivityFlaggedBanner';
 import { ParentChildSwitcher } from '@/src/components/parent/ParentChildSwitcher';
+import {
+  AverageScoreMetricCard,
+  DailyStreakMetricCard,
+  ExercisesMetricCard,
+  ScreenTimeMetricCard,
+} from '@/src/components/parent/ParentDashboardMetrics';
 import { ChildSwitchModal } from '@/src/components/spaceSwitch/ChildSwitchModal';
 import { Colors, Gradients, Radii, Shadows, Spacing, Typography } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
-import { getConversationHistory, getParentOverview } from '@/services/parentDashboardService';
+import {
+  getConversationHistory,
+  getParentProgress,
+  type ParentConversationSession,
+} from '@/services/parentDashboardService';
 import { useParentDashboardChild } from '@/src/hooks/useParentDashboardChild';
+import type { ProgressDashboard } from '@/types/child';
 
 type OverviewScreenState = 'loading' | 'ready' | 'error' | 'empty';
 
 export interface ParentOverviewScreenProps {
   initialState?: OverviewScreenState;
-}
-
-interface OverviewMetric {
-  id: string;
-  title: string;
-  value: string;
-  subtitle: string;
-  icon: ComponentProps<typeof MaterialCommunityIcons>['name'];
-  tint: string;
-}
-
-function formatMinutes(minutes: number | null | undefined): string {
-  if (typeof minutes !== 'number' || minutes <= 0) {
-    return 'Not set';
-  }
-
-  const hours = Math.floor(minutes / 60);
-  const remainder = minutes % 60;
-
-  if (hours === 0) {
-    return `${remainder}m`;
-  }
-
-  if (remainder === 0) {
-    return `${hours}h`;
-  }
-
-  return `${hours}h ${remainder}m`;
 }
 
 function formatDateLabel(value: string | null | undefined): string {
@@ -89,12 +71,139 @@ function getInitials(user: { email: string; fullName?: string; username?: string
   return `${parts[0]?.slice(0, 1) ?? ''}${parts[1]?.slice(0, 1) ?? ''}`.toUpperCase();
 }
 
-function formatSecondsAsMinutes(seconds: number): string {
-  return formatMinutes(Math.round(seconds / 60)).replace('Not set', '0m');
+function getDateKey(value: Date): string {
+  const year = value.getFullYear();
+  const month = `${value.getMonth() + 1}`.padStart(2, '0');
+  const day = `${value.getDate()}`.padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
 }
 
-function formatScore(value: number | null): string {
-  return typeof value === 'number' ? `${Math.round(value)}%` : 'No scores';
+function getDateKeyFromTimestamp(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return getDateKey(date);
+}
+
+function addDaysToKey(dateKey: string, offset: number): string {
+  const [year, month, day] = dateKey.split('-').map((part) => Number.parseInt(part, 10));
+  const date = new Date(year, month - 1, day);
+  date.setDate(date.getDate() + offset);
+
+  return getDateKey(date);
+}
+
+function getSessionTimestampValues(session: ParentConversationSession): number[] {
+  return [session.startedAt, session.lastMessageAt, ...session.messages.map((message) => message.createdAt)]
+    .flatMap((value) => {
+      if (!value) {
+        return [];
+      }
+
+      const timestamp = new Date(value).getTime();
+      return Number.isNaN(timestamp) ? [] : [timestamp];
+    });
+}
+
+function getSessionDateKey(session: ParentConversationSession): string | null {
+  return (
+    getDateKeyFromTimestamp(session.startedAt) ??
+    getDateKeyFromTimestamp(session.lastMessageAt) ??
+    getDateKeyFromTimestamp(session.messages[0]?.createdAt)
+  );
+}
+
+function getSessionDurationSeconds(session: ParentConversationSession): number {
+  const timestamps = getSessionTimestampValues(session);
+
+  if (timestamps.length < 2) {
+    return 0;
+  }
+
+  return Math.max(0, (Math.max(...timestamps) - Math.min(...timestamps)) / 1000);
+}
+
+function countResultsForDate(results: ProgressDashboard['results'], dateKey: string): number {
+  return results.filter((result) => getDateKeyFromTimestamp(result.submittedAt) === dateKey).length;
+}
+
+function computeAverageScore(results: ProgressDashboard['results']): number | null {
+  if (results.length === 0) {
+    return null;
+  }
+
+  return results.reduce((sum, result) => sum + result.score, 0) / results.length;
+}
+
+function buildScoreTrend(results: ProgressDashboard['results']): (number | null)[] {
+  const groupedScores = new Map<string, number[]>();
+
+  for (const result of results) {
+    const dateKey = getDateKeyFromTimestamp(result.submittedAt);
+
+    if (!dateKey) {
+      continue;
+    }
+
+    const currentScores = groupedScores.get(dateKey) ?? [];
+    currentScores.push(result.score);
+    groupedScores.set(dateKey, currentScores);
+  }
+
+  const scores = [...groupedScores.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .slice(-5)
+    .map(([, values]) => values.reduce((sum, score) => sum + score, 0) / values.length);
+  const minimumBars = 4;
+
+  if (scores.length >= minimumBars) {
+    return scores;
+  }
+
+  return [...Array.from({ length: minimumBars - scores.length }, () => null), ...scores];
+}
+
+function computeSessionStreakStats(sessions: ParentConversationSession[], todayKey: string): {
+  current: number;
+  best: number;
+} {
+  const activeDates = new Set(
+    sessions
+      .map(getSessionDateKey)
+      .filter((value): value is string => Boolean(value)),
+  );
+  let current = 0;
+
+  for (let index = 0; index < 365; index += 1) {
+    if (!activeDates.has(addDaysToKey(todayKey, -index))) {
+      break;
+    }
+
+    current += 1;
+  }
+
+  let best = 0;
+  let run = 0;
+  let previousDateKey: string | null = null;
+
+  for (const dateKey of [...activeDates].sort((left, right) => left.localeCompare(right))) {
+    run = previousDateKey && addDaysToKey(previousDateKey, 1) === dateKey ? run + 1 : 1;
+    best = Math.max(best, run);
+    previousDateKey = dateKey;
+  }
+
+  return {
+    best,
+    current,
+  };
 }
 
 function OverviewSkeleton() {
@@ -121,13 +230,6 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
 
   const isChildDataResolving = childProfileStatus === 'unknown' || (childDataLoading && children.length === 0);
 
-  const overviewQuery = useQuery({
-    queryKey: ['parent-dashboard', 'overview', user?.id, activeChild?.id],
-    queryFn: async () => getParentOverview(user!.id, activeChild!.id),
-    enabled: Boolean(user?.id && activeChild?.id),
-    staleTime: 2 * 60 * 1000,
-  });
-
   const historyQuery = useQuery({
     queryKey: ['parent-dashboard', 'overview-history', user?.id, activeChild?.id],
     queryFn: async () => getConversationHistory({ userId: user!.id, childId: activeChild!.id }),
@@ -135,11 +237,16 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
     staleTime: 60 * 1000,
   });
 
-  // Space switching modal state
+  const progressQuery = useQuery({
+    queryKey: ['parent-dashboard', 'progress', user?.id, activeChild?.id],
+    queryFn: async () => getParentProgress(user!.id, activeChild!.id),
+    enabled: Boolean(user?.id && activeChild?.id),
+    staleTime: 2 * 60 * 1000,
+  });
+
   const [isSwitchModalVisible, setIsSwitchModalVisible] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
 
-  // Rocket icon animation
   const iconScale = useSharedValue(1);
 
   const latestFlaggedSession = useMemo(
@@ -147,61 +254,32 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
     [historyQuery.data?.sessions],
   );
 
-  const overviewMetrics = useMemo<OverviewMetric[]>(() => {
-    if (!activeChild) {
-      return [];
-    }
+  const todayKey = getDateKey(new Date());
+  const yesterdayKey = addDaysToKey(todayKey, -1);
+  const sessions = useMemo(() => historyQuery.data?.sessions ?? [], [historyQuery.data?.sessions]);
+  const progressResults = useMemo(() => progressQuery.data?.results ?? [], [progressQuery.data?.results]);
+  const dailyLimitMinutes = activeChild?.rules?.dailyLimitMinutes ?? activeChild?.dailyGoalMinutes ?? 0;
+  const todayScreenTimeMinutes = useMemo(() => {
+    const todaySeconds = sessions
+      .filter((session) => getSessionDateKey(session) === todayKey)
+      .reduce((sum, session) => sum + getSessionDurationSeconds(session), 0);
 
-    const overview = overviewQuery.data;
-    const sessions = historyQuery.data?.sessions ?? [];
-    const latestSessionAt = sessions[0]?.lastMessageAt;
-
-    return [
-      {
-        id: 'screen-time',
-        title: "Today's Screen Time",
-        value: formatSecondsAsMinutes(overview?.screenTimeTodaySeconds ?? 0),
-        subtitle: 'Tracked from dashboard progress',
-        icon: 'clock-outline',
-        tint: Colors.primary,
-      },
-      {
-        id: 'exercises',
-        title: 'Exercises Today',
-        value: `${overview?.exercisesToday ?? 0}`,
-        subtitle: 'Completed quiz submissions today',
-        icon: 'clipboard-check-outline',
-        tint: Colors.secondary,
-      },
-      {
-        id: 'score',
-        title: 'Average Score',
-        value: formatScore(overview?.avgScore ?? null),
-        subtitle: 'All-time average for this child',
-        icon: 'star-check-outline',
-        tint: Colors.tertiary,
-      },
-      {
-        id: 'streak',
-        title: 'Daily Streak',
-        value: `${overview?.dailyStreak ?? 0}`,
-        subtitle: `Personal best ${overview?.streakPersonalBest ?? 0}`,
-        icon: 'fire',
-        tint: Colors.errorText,
-      },
-      {
-        id: 'history',
-        title: 'Conversation Sessions',
-        value: historyQuery.isPending ? 'Loading' : sessions.length > 0 ? `${sessions.length}` : 'No history',
-        subtitle:
-          sessions.length > 0
-            ? `Last activity ${formatDateLabel(latestSessionAt)}`
-            : 'History will appear after the first session',
-        icon: 'message-text-outline',
-        tint: Colors.accentAmber,
-      },
-    ];
-  }, [activeChild, historyQuery.data?.sessions, historyQuery.isPending, overviewQuery.data]);
+    return Math.round(todaySeconds / 60);
+  }, [sessions, todayKey]);
+  const exercisesToday = useMemo(
+    () => countResultsForDate(progressResults, todayKey),
+    [progressResults, todayKey],
+  );
+  const exercisesYesterday = useMemo(
+    () => countResultsForDate(progressResults, yesterdayKey),
+    [progressResults, yesterdayKey],
+  );
+  const averageScore = useMemo(() => computeAverageScore(progressResults), [progressResults]);
+  const scoreTrend = useMemo(() => buildScoreTrend(progressResults), [progressResults]);
+  const streakStats = useMemo(
+    () => computeSessionStreakStats(sessions, todayKey),
+    [sessions, todayKey],
+  );
 
   const recentSessions = historyQuery.data?.sessions.slice(0, 3) ?? [];
   const todayLabel = new Intl.DateTimeFormat(undefined, {
@@ -218,29 +296,23 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
     selectChild(childId);
   }
 
-  // Handle rocket icon press with animation
   function handleRocketPress() {
     if (!activeChild) return;
 
-    // Trigger haptic feedback
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
 
-    // Icon spring animation (150ms)
     iconScale.value = withSpring(0.85, { damping: 12, stiffness: 400 }, () => {
       iconScale.value = withSpring(1, { damping: 15, stiffness: 200 });
     });
 
-    // Open switch modal
     setIsSwitchModalVisible(true);
   }
 
-  // Handle confirm switch to child space
   function handleConfirmSwitch() {
     if (!selectedChildId || !activeChild || isTransitioning) return;
 
     setIsTransitioning(true);
 
-    // Navigate to child space after animation
     setTimeout(() => {
       setIsSwitchModalVisible(false);
       setIsTransitioning(false);
@@ -249,7 +321,6 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
     }, 300);
   }
 
-  // Handle dismiss switch modal
   function handleDismissSwitch() {
     if (isTransitioning) return;
     setIsSwitchModalVisible(false);
@@ -271,7 +342,11 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
     void router.push(`/(tabs)/chat?childId=${encodeURIComponent(activeChild.id)}` as never);
   }
 
-  if (initialState === 'loading' || isChildDataResolving || overviewQuery.isPending) {
+  if (
+    initialState === 'loading' ||
+    isChildDataResolving ||
+    (Boolean(activeChild) && (historyQuery.isPending || progressQuery.isPending))
+  ) {
     return (
       <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
         <OverviewSkeleton />
@@ -315,7 +390,7 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
     );
   }
 
-  if (overviewQuery.isError || initialState === 'error') {
+  if (historyQuery.isError || progressQuery.isError || initialState === 'error') {
     return (
       <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
         <View style={styles.feedbackContainer}>
@@ -326,8 +401,8 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
             accessibilityRole="button"
             accessibilityLabel="Retry loading parent dashboard"
             onPress={() => {
-              void overviewQuery.refetch();
               void historyQuery.refetch();
+              void progressQuery.refetch();
             }}
             style={({ pressed }) => [styles.outlineButton, pressed ? styles.pressed : null]}
           >
@@ -358,24 +433,24 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
             </View>
           </View>
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`Open ${activeChild.nickname ?? activeChild.name}'s space`}
-        disabled={!activeChild || isTransitioning}
-        onPress={handleRocketPress}
-        style={({ pressed }) => [
-          styles.headerButton,
-          pressed && styles.headerButtonPressed,
-          (!activeChild || isTransitioning) && styles.headerButtonDisabled,
-        ]}
-      >
-        <Animated.View style={{ transform: [{ scale: iconScale }] }}>
-          <MaterialCommunityIcons color={Colors.primary} name="rocket-launch-outline" size={20} />
-        </Animated.View>
-      </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Open ${activeChild.nickname ?? activeChild.name}'s space`}
+            disabled={!activeChild || isTransitioning}
+            onPress={handleRocketPress}
+            style={({ pressed }) => [
+              styles.headerButton,
+              pressed && styles.headerButtonPressed,
+              (!activeChild || isTransitioning) && styles.headerButtonDisabled,
+            ]}
+          >
+            <Animated.View style={{ transform: [{ scale: iconScale }] }}>
+              <MaterialCommunityIcons color={Colors.primary} name="rocket-launch-outline" size={20} />
+            </Animated.View>
+          </Pressable>
         </View>
 
-<ParentChildSwitcher
+        <ParentChildSwitcher
           activeChildId={selectedChildId}
           profiles={children}
           getAvatarSource={getChildAvatarSource}
@@ -384,16 +459,21 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
         />
 
         <View style={styles.metricsGrid}>
-          {overviewMetrics.map((metric) => (
-            <View key={metric.id} style={styles.metricCard}>
-              <View style={[styles.metricIconShell, { backgroundColor: `${metric.tint}18` }]}>
-                <MaterialCommunityIcons color={metric.tint} name={metric.icon} size={18} />
-              </View>
-              <Text style={styles.metricTitle}>{metric.title}</Text>
-              <Text style={styles.metricValue}>{metric.value}</Text>
-              <Text style={styles.metricSubtitle}>{metric.subtitle}</Text>
-            </View>
-          ))}
+          <View style={styles.metricsRow}>
+            <ScreenTimeMetricCard dailyLimitMinutes={dailyLimitMinutes} usedMinutes={todayScreenTimeMinutes} />
+            <ExercisesMetricCard
+              count={exercisesToday}
+              deltaFromYesterday={exercisesToday - exercisesYesterday}
+            />
+          </View>
+
+          <View style={styles.metricsRow}>
+            <AverageScoreMetricCard averageScore={averageScore} trendScores={scoreTrend} />
+            <DailyStreakMetricCard
+              isPersonalRecord={streakStats.current > 0 && streakStats.current >= streakStats.best}
+              streakDays={streakStats.current}
+            />
+          </View>
         </View>
 
         <ActivityFlaggedBanner
@@ -416,20 +496,6 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
             <View style={styles.emptyInlineState}>
               <ActivityIndicator color={Colors.primary} size="small" />
               <Text style={styles.emptyInlineTitle}>Loading activity</Text>
-            </View>
-          ) : historyQuery.isError ? (
-            <View style={styles.emptyInlineState}>
-              <MaterialCommunityIcons color={Colors.errorText} name="alert-circle-outline" size={24} />
-              <Text style={styles.emptyInlineTitle}>Activity could not load</Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Retry recent activity"
-                onPress={() => {
-                  void historyQuery.refetch();
-                }}
-              >
-                <Text style={styles.linkLabel}>Retry</Text>
-              </Pressable>
             </View>
           ) : recentSessions.length === 0 ? (
             <View style={styles.emptyInlineState}>
@@ -520,7 +586,6 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
         </View>
       </View>
 
-      {/* Child Switch Modal */}
       <ChildSwitchModal
         childAvatar={activeChild ? getChildAvatarSource(activeChild) : undefined}
         childName={activeChild?.nickname ?? activeChild?.name ?? ''}
@@ -591,38 +656,11 @@ const styles = StyleSheet.create({
     borderColor: Colors.outline,
   },
   metricsGrid: {
+    gap: Spacing.md,
+  },
+  metricsRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.sm,
-  },
-  metricCard: {
-    width: '48%',
-    borderRadius: Radii.xl,
-    borderWidth: 1,
-    borderColor: Colors.outline,
-    backgroundColor: Colors.surfaceContainerLowest,
-    padding: Spacing.md,
-    gap: Spacing.sm,
-    ...Shadows.card,
-  },
-  metricIconShell: {
-    width: 36,
-    height: 36,
-    borderRadius: Radii.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  metricTitle: {
-    ...Typography.label,
-    color: Colors.textSecondary,
-  },
-  metricValue: {
-    ...Typography.title,
-    color: Colors.text,
-  },
-  metricSubtitle: {
-    ...Typography.caption,
-    color: Colors.textSecondary,
+    gap: Spacing.md,
   },
   sectionCard: {
     borderRadius: Radii.xl,
