@@ -13,22 +13,12 @@ import { SubjectGrid } from '@/src/components/SubjectGrid';
 import { ChildSpaceHeader } from '@/src/components/spaceSwitch/ChildSpaceHeader';
 import { getChildTabSceneBottomPadding } from '@/components/navigation/bottomNavTokens';
 import { buildSubjectGridItems } from '@/src/utils/profilePresentation';
-import { useChildNavigationLock } from '@/src/hooks/useChildNavigationLock';
 
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { profile, getAvatarById } = useChildProfile();
   const [showBadgeBanner, setShowBadgeBanner] = useState(true);
-
-  // Navigation lock - prevents Android back button from exiting child space
-  useChildNavigationLock({
-    isLocked: true,
-    onBackAttempt: () => {
-      // Back button will trigger the PIN gate via ChildSpaceHeader
-      // The PIN gate handles the navigation decision
-    },
-  });
 
   const childTabSceneBottomPadding = getChildTabSceneBottomPadding(insets.bottom);
 
@@ -63,7 +53,8 @@ export default function HomeScreen() {
         <FeaturedLesson
           category="SCIENCE • SPACE"
           description="You're halfway through! Discover why Saturn has those beautiful rings today."
-          onTalkToKidsMind={() => router.push('/(tabs)/chat' as never)}
+          // SECURITY: Child lesson chat remains inside child tabs; parent chat history is PIN-gated.
+          onTalkToKidsMind={() => router.push('/(child-tabs)/chat' as never)}
           title="Solar Systems"
         />
 

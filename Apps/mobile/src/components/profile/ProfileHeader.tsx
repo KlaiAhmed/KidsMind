@@ -11,7 +11,7 @@ interface ProfileHeaderProps {
   avatarSource: ImageSourcePropType;
   username: string;
   loading?: boolean;
-  onSettingsPress: () => void;
+  onSettingsPress?: () => void;
 }
 
 export function ProfileHeader({
@@ -28,7 +28,7 @@ export function ProfileHeader({
         <>
           <ProfileSkeletonBlock style={styles.loadingAvatar} />
           <ProfileSkeletonBlock style={styles.loadingName} />
-          <ProfileSkeletonBlock style={styles.loadingSettings} />
+          {onSettingsPress ? <ProfileSkeletonBlock style={styles.loadingSettings} /> : null}
         </>
       ) : (
         <>
@@ -36,15 +36,17 @@ export function ProfileHeader({
           <Text numberOfLines={1} style={styles.usernameText}>
             {username}
           </Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Open settings"
-            hitSlop={10}
-            onPress={onSettingsPress}
-            style={({ pressed }) => [styles.settingsButton, pressed ? styles.settingsButtonPressed : null]}
-          >
-            <MaterialCommunityIcons color={ProfileColors.white} name="cog-outline" size={22} />
-          </Pressable>
+          {onSettingsPress ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Open settings"
+              hitSlop={10}
+              onPress={onSettingsPress}
+              style={({ pressed }) => [styles.settingsButton, pressed ? styles.settingsButtonPressed : null]}
+            >
+              <MaterialCommunityIcons color={ProfileColors.white} name="cog-outline" size={22} />
+            </Pressable>
+          ) : null}
         </>
       )}
     </View>

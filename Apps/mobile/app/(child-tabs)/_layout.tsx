@@ -1,22 +1,72 @@
-import { Redirect, Tabs, useLocalSearchParams } from 'expo-router';
-import React, { useEffect } from 'react';
-import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
+import { Redirect, Tabs, useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  AppState,
+  BackHandler,
+  Platform,
+  StyleSheet,
+  View,
+  type AppStateStatus,
+} from 'react-native';
+import * as Haptics from 'expo-haptics';
 
 import { ChildBottomNavContainer } from '@/components/navigation/ChildBottomNavContainer';
 import { Colors } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
+import { verifyParentPin } from '@/services/parentAccessService';
+import { showToast } from '@/services/toastClient';
+import { ChildSpaceBoundaryProvider } from '@/src/components/spaceSwitch/ChildSpaceBoundary';
+import { ParentPINGate } from '@/src/components/spaceSwitch/ParentPINGate';
+
+const childTabScreenOptions = {
+  headerShown: false,
+  // SECURITY: Disable iOS swipe-back gesture to prevent navigation out of child space.
+  gestureEnabled: false,
+  gestureDirection: 'horizontal' as const,
+  animation: Platform.select({
+    ios: 'fade' as const,
+    android: 'fade' as const,
+  }),
+  tabBarHideOnKeyboard: true,
+  sceneContainerStyle: {
+    backgroundColor: Colors.surface,
+  },
+};
+
+function getLockedChildTabOptions(title: string) {
+  return {
+    title,
+    // SECURITY: Disable gestures for all child screens.
+    gestureEnabled: false,
+  };
+}
+
+const hiddenBadgesScreenOptions = {
+  href: null,
+  title: 'Badges',
+  // SECURITY: Hidden child routes still inherit the sealed child-space navigator.
+  gestureEnabled: false,
+};
 
 export default function ChildTabLayout() {
+  const router = useRouter();
   const {
     isLoading,
     isAuthenticated,
     childProfileStatus,
     childProfile,
+    childProfiles,
+    selectedChildId,
     selectChild,
+    user,
   } = useAuth();
 
   const params = useLocalSearchParams<{ childId?: string }>();
   const routeChildId = typeof params.childId === 'string' ? params.childId.trim() : '';
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const lastKnownChildIdRef = useRef<string | null>(routeChildId || selectedChildId || childProfile?.id || null);
+  const [isParentPinGateOpen, setIsParentPinGateOpen] = useState(false);
 
   useEffect(() => {
     if (!routeChildId) {
@@ -24,7 +74,100 @@ export default function ChildTabLayout() {
     }
 
     selectChild(routeChildId);
-  }, [routeChildId, selectChild]);
+  }, [childProfiles.length, routeChildId, selectChild]);
+
+  useEffect(() => {
+    const activeChildId = selectedChildId ?? childProfile?.id ?? routeChildId;
+
+    if (activeChildId) {
+      lastKnownChildIdRef.current = activeChildId;
+    }
+  }, [childProfile?.id, routeChildId, selectedChildId]);
+
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      // SECURITY: Hardware back is suppressed inside child space so history cannot reveal parent routes.
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+      return true;
+    });
+
+    return () => {
+      backHandler.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      const wasBackgrounded = appStateRef.current === 'background' || appStateRef.current === 'inactive';
+      appStateRef.current = nextState;
+
+      if (nextState !== 'active' || !wasBackgrounded) {
+        return;
+      }
+
+      const activeChildId = selectedChildId ?? childProfile?.id ?? routeChildId ?? lastKnownChildIdRef.current;
+
+      if (!activeChildId) {
+        return;
+      }
+
+      lastKnownChildIdRef.current = activeChildId;
+
+      if (selectedChildId) {
+        return;
+      }
+
+      // SECURITY: Foregrounding with a cleared child selection re-seals the app in child space, never parent tabs.
+      selectChild(activeChildId);
+      router.replace(`/child-home?childId=${encodeURIComponent(activeChildId)}` as never);
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [childProfile?.id, routeChildId, router, selectChild, selectedChildId]);
+
+  const requestParentAccess = useCallback(() => {
+    // SECURITY: Child -> parent is the only direction that requires PIN verification.
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+
+    if (!user?.pinConfigured) {
+      showToast({
+        type: 'error',
+        text1: 'PIN not set',
+        text2: 'Please set up your parent PIN first.',
+        visibilityTime: 3000,
+      });
+      return;
+    }
+
+    setIsParentPinGateOpen(true);
+  }, [user?.pinConfigured]);
+
+  const handleParentPinSuccess = useCallback(() => {
+    setIsParentPinGateOpen(false);
+    router.replace('/(tabs)' as never);
+  }, [router]);
+
+  const handleParentPinCancel = useCallback(() => {
+    setIsParentPinGateOpen(false);
+  }, []);
+
+  const handleVerifyParentPin = useCallback(async (pin: string): Promise<boolean> => {
+    try {
+      return await verifyParentPin(pin);
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const boundaryValue = useMemo(
+    () => ({
+      isParentAccessGateVisible: isParentPinGateOpen,
+      requestParentAccess,
+    }),
+    [isParentPinGateOpen, requestParentAccess],
+  );
 
   if (isLoading || (isAuthenticated && childProfileStatus === 'unknown')) {
     return (
@@ -43,61 +186,50 @@ export default function ChildTabLayout() {
   }
 
   return (
-    <Tabs
-      backBehavior="none"
-      screenOptions={{
-        headerShown: false,
-        // SECURITY: Disable iOS swipe-back gesture to prevent navigation out of child space
-        gestureEnabled: false,
-        gestureDirection: 'horizontal',
-        animation: Platform.select({
-          ios: 'fade',
-          android: 'fade',
-        }),
-        tabBarHideOnKeyboard: true,
-        sceneContainerStyle: {
-          backgroundColor: Colors.surface,
-        },
-      }}
-      tabBar={(props) => (
-        <ChildBottomNavContainer
-          {...props}
-          childId={childProfile?.id ?? null}
-          ageGroup={childProfile?.ageGroup}
-          voiceEnabled={Boolean(childProfile?.rules?.voiceModeEnabled)}
+    <ChildSpaceBoundaryProvider value={boundaryValue}>
+      <Tabs
+        backBehavior="none"
+        screenOptions={childTabScreenOptions}
+        tabBar={(props) => (
+          <ChildBottomNavContainer
+            {...props}
+            childId={childProfile?.id ?? null}
+            ageGroup={childProfile?.ageGroup}
+            voiceEnabled={Boolean(childProfile?.rules?.voiceModeEnabled)}
+          />
+        )}
+      >
+        <Tabs.Screen
+          name="index"
+          options={getLockedChildTabOptions('Home')}
         />
-      )}
-    >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Home',
-          // SECURITY: Disable gestures for all child screens
-          gestureEnabled: false,
-        }}
+        <Tabs.Screen
+          name="explore"
+          options={getLockedChildTabOptions('Learn')}
+        />
+        <Tabs.Screen
+          name="profile"
+          options={getLockedChildTabOptions('Profile')}
+        />
+        <Tabs.Screen
+          name="chat"
+          options={getLockedChildTabOptions('Qubie')}
+        />
+        <Tabs.Screen
+          name="badges"
+          options={hiddenBadgesScreenOptions}
+        />
+      </Tabs>
+
+      <ParentPINGate
+        onCancel={handleParentPinCancel}
+        onSuccess={handleParentPinSuccess}
+        subtitle="Enter your PIN to access parent controls"
+        title="Parent Access"
+        verifyPin={handleVerifyParentPin}
+        visible={isParentPinGateOpen}
       />
-      <Tabs.Screen
-        name="explore"
-        options={{
-          title: 'Learn',
-          gestureEnabled: false,
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: 'Profile',
-          gestureEnabled: false,
-        }}
-      />
-      <Tabs.Screen
-        name="chat"
-        options={{
-          title: 'Qubie',
-          gestureEnabled: false,
-        }}
-      />
-    </Tabs>
+    </ChildSpaceBoundaryProvider>
   );
 }
 

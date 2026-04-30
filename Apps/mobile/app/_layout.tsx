@@ -51,9 +51,21 @@ function RootNavigator() {
   return (
     <Stack initialRouteName="(tabs)" screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="(child-tabs)" />
+      <Stack.Screen
+        name="(child-tabs)"
+        options={{
+          // SECURITY: Root-stack gestures are disabled so iOS cannot swipe from child tabs back to parent tabs.
+          gestureEnabled: false,
+        }}
+      />
       <Stack.Screen name="(auth)" />
-      <Stack.Screen name="child-home" />
+      <Stack.Screen
+        name="child-home"
+        options={{
+          // SECURITY: Child entry redirects must not expose the parent stack through a gesture.
+          gestureEnabled: false,
+        }}
+      />
       <Stack.Screen name="badges" />
       <Stack.Screen name="settings" />
       <Stack.Screen name="modal" options={{ presentation: 'modal', headerShown: true, title: 'Modal' }} />

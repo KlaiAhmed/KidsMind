@@ -56,12 +56,8 @@ export default function BadgesScreen() {
   );
 
   function handleBack() {
-    if (router.canGoBack()) {
-      router.back();
-      return;
-    }
-
-    router.replace('/(tabs)/profile' as never);
+    // SECURITY: Child badge navigation never uses history back because prior stack entries may be parent routes.
+    router.replace('/(child-tabs)/profile' as never);
   }
 
   return (

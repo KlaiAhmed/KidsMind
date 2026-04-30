@@ -585,7 +585,13 @@ export default function KidsMindChildExperience({ initialScreen = 'home' }: Kids
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <View style={styles.activeScreenSurface}>
         {activeScreen === 'home' ? (
-          <HomeDashboardView onViewAll={() => router.push('/badges' as never)} onTalk={() => router.push('/(tabs)/chat' as never)} />
+          <HomeDashboardView
+            onViewAll={() => router.push('/(child-tabs)/badges' as never)}
+            onTalk={() => {
+              // SECURITY: Child chat opens in child tabs; parent chat history is PIN-gated.
+              router.push('/(child-tabs)/chat' as never);
+            }}
+          />
         ) : null}
         {activeScreen === 'badges' ? (
           <BadgeGalleryView activeFilter={activeFilter} onFilterChange={setActiveFilter} />

@@ -8,6 +8,11 @@
  * and smooth fade + slide transition to child space.
  *
  * Location: Only triggered from Parent Dashboard Overview via rocket icon.
+ *
+ * Audit boundary:
+ * SECURITY: Parent -> child does not require an additional PIN because the
+ * parent is already authenticated in parent space. The one-way PIN boundary is
+ * child -> parent, enforced by the child-tabs layout-owned ParentPINGate.
  */
 
 import { useCallback, useEffect, useState } from 'react';

@@ -74,6 +74,7 @@ export default function ProfileScreen() {
     ],
   );
 
+  // SECURITY: Child profile shortcuts stay in child tabs; parent controls are not reachable here.
   const statCards = useMemo(
     () => [
       {
@@ -81,7 +82,7 @@ export default function ProfileScreen() {
         iconColor: ProfileColors.statPurple,
         value: formatMetric(activeProfile?.xp ?? 0),
         label: 'TOTAL XP',
-        onPress: () => router.push('/(tabs)/explore' as never),
+        onPress: () => router.push('/(child-tabs)/explore' as never),
       },
       {
         iconName: 'medal-outline' as const,
@@ -91,21 +92,21 @@ export default function ProfileScreen() {
         ),
         label: 'BADGES',
         dashed: true,
-        onPress: () => router.push('/badges' as never),
+        onPress: () => router.push('/(child-tabs)/badges' as never),
       },
       {
         iconName: 'check-decagram' as const,
         iconColor: ProfileColors.statPurple,
         value: formatMetric(activeProfile?.totalExercisesCompleted ?? 0),
         label: 'EXERCISES',
-        onPress: () => router.push('/(tabs)/explore' as never),
+        onPress: () => router.push('/(child-tabs)/explore' as never),
       },
       {
         iconName: 'fire' as const,
         iconColor: ProfileColors.statRed,
         value: formatMetric(activeProfile?.streakDays ?? 0),
         label: 'DAY STREAK',
-        onPress: () => router.push('/(tabs)/index' as never),
+        onPress: () => router.push('/(child-tabs)' as never),
       },
     ],
     [
@@ -135,7 +136,7 @@ export default function ProfileScreen() {
             iconName: visual.iconName,
             backgroundColor: visual.backgroundColor,
             iconColor: visual.iconColor,
-            onPress: () => router.push('/badges' as never),
+            onPress: () => router.push('/(child-tabs)/badges' as never),
           };
         }),
     [earnedBadges, router],
@@ -162,7 +163,6 @@ export default function ProfileScreen() {
           <ProfileHeader
             avatarSource={avatarSource}
             loading={heroLoading}
-            onSettingsPress={() => router.push('/settings' as never)}
             username={displayName}
           />
 
@@ -181,7 +181,7 @@ export default function ProfileScreen() {
         <RecentBadges
           badges={recentBadges}
           loading={badgesLoading}
-          onViewAll={() => router.push('/badges' as never)}
+          onViewAll={() => router.push('/(child-tabs)/badges' as never)}
         />
 
         <WeeklyInsight

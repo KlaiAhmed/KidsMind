@@ -21,28 +21,42 @@ import {
   StyleSheet,
   Text,
   View,
+  type ViewStyle,
 } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
   useSharedValue,
   withSequence,
-  withSpring,
   withTiming,
   runOnJS,
+  type AnimatedStyle,
   type SharedValue,
 } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { Colors, Radii, Sizing, Spacing, Typography } from '@/constants/theme';
 
 const PIN_DIGITS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'backspace'] as const;
+const MAX_PIN_ATTEMPTS = 5;
+const PIN_LOCKOUT_SECONDS = 300;
+const PIN_LOCKOUT_STORAGE_KEY = 'pin_lockout_until';
+const PIN_LOCKOUT_MESSAGE = 'Too many attempts. Try again in 5 minutes.';
 type PinDigit = (typeof PIN_DIGITS)[number];
 
 type PinGateState = 'idle' | 'entering' | 'submitting' | 'error' | 'success';
+
+function formatLockoutRemaining(totalSeconds: number): string {
+  const boundedSeconds = Math.max(0, Math.ceil(totalSeconds));
+  const minutes = Math.floor(boundedSeconds / 60);
+  const seconds = `${boundedSeconds % 60}`.padStart(2, '0');
+
+  return `${minutes}:${seconds}`;
+}
 
 interface PinDotProps {
   index: number;
@@ -50,7 +64,7 @@ interface PinDotProps {
   isError: boolean;
   isSuccess: boolean;
   dotOpacity: SharedValue<number>;
-  successCheckmarkStyle: Animated.AnimateStyle<typeof Animated.View>;
+  successCheckmarkStyle: AnimatedStyle<ViewStyle>;
 }
 
 function PinDot({ index, isFilled, isError, isSuccess, dotOpacity, successCheckmarkStyle }: PinDotProps) {
@@ -99,12 +113,15 @@ export function ParentPINGate({
   verifyPin,
   title = 'Parent Access',
   subtitle,
-  onBiometricSuccess,
 }: ParentPINGateProps) {
   const insets = useSafeAreaInsets();
   const [pin, setPin] = useState<string>('');
   const [gateState, setGateState] = useState<PinGateState>('idle');
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [attemptCount, setAttemptCount] = useState(0);
+  const [lockoutUntil, setLockoutUntil] = useState<number | null>(null);
+  const [lockoutRemainingSeconds, setLockoutRemainingSeconds] = useState(0);
+  const isLockedOut = lockoutRemainingSeconds > 0;
 
   const modalTranslateY = useSharedValue(300);
   const modalOpacity = useSharedValue(0);
@@ -115,6 +132,69 @@ export function ParentPINGate({
   const dotOpacity3 = useSharedValue(1);
   const dotOpacityValues = useMemo(() => [dotOpacity0, dotOpacity1, dotOpacity2, dotOpacity3], [dotOpacity0, dotOpacity1, dotOpacity2, dotOpacity3]);
   const successScale = useSharedValue(0);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function hydrateLockout() {
+      const storedLockoutUntil = await AsyncStorage.getItem(PIN_LOCKOUT_STORAGE_KEY).catch(() => null);
+      const storedTimestamp = storedLockoutUntil ? Number.parseInt(storedLockoutUntil, 10) : Number.NaN;
+
+      if (!isMounted) {
+        return;
+      }
+
+      if (!Number.isFinite(storedTimestamp)) {
+        return;
+      }
+
+      if (storedTimestamp > Date.now()) {
+        // SECURITY: Persisted lockout survives app restarts and blocks PIN entry immediately.
+        setLockoutUntil(storedTimestamp);
+        setLockoutRemainingSeconds(Math.ceil((storedTimestamp - Date.now()) / 1000));
+        setGateState('error');
+        setErrorMessage(PIN_LOCKOUT_MESSAGE);
+        return;
+      }
+
+      await AsyncStorage.removeItem(PIN_LOCKOUT_STORAGE_KEY).catch(() => undefined);
+    }
+
+    void hydrateLockout();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!lockoutUntil) {
+      return;
+    }
+
+    const updateRemaining = () => {
+      const remainingSeconds = Math.max(0, Math.ceil((lockoutUntil - Date.now()) / 1000));
+      setLockoutRemainingSeconds(remainingSeconds);
+
+      if (remainingSeconds > 0) {
+        return;
+      }
+
+      setLockoutUntil(null);
+      setAttemptCount(0);
+      setPin('');
+      setGateState('idle');
+      setErrorMessage('');
+      void AsyncStorage.removeItem(PIN_LOCKOUT_STORAGE_KEY).catch(() => undefined);
+    };
+
+    updateRemaining();
+    const timer = setInterval(updateRemaining, 1000);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, [lockoutUntil]);
 
   useEffect(() => {
     if (visible) {
@@ -162,9 +242,22 @@ export function ParentPINGate({
     [dotOpacityValues],
   );
 
+  const startLockout = useCallback(() => {
+    const nextLockoutUntil = Date.now() + PIN_LOCKOUT_SECONDS * 1000;
+
+    // SECURITY: Five failed child -> parent PIN attempts trigger a persisted timed lockout.
+    setLockoutUntil(nextLockoutUntil);
+    setLockoutRemainingSeconds(PIN_LOCKOUT_SECONDS);
+    setAttemptCount(MAX_PIN_ATTEMPTS);
+    setPin('');
+    setGateState('error');
+    setErrorMessage(PIN_LOCKOUT_MESSAGE);
+    void AsyncStorage.setItem(PIN_LOCKOUT_STORAGE_KEY, `${nextLockoutUntil}`).catch(() => undefined);
+  }, []);
+
   const handleDigitPress = useCallback(
     async (digit: PinDigit) => {
-      if (gateState === 'submitting' || gateState === 'success') return;
+      if (gateState === 'submitting' || gateState === 'success' || isLockedOut) return;
 
       if (digit === 'backspace') {
         setPin((prev) => prev.slice(0, -1));
@@ -188,6 +281,10 @@ export function ParentPINGate({
             const isValid = await verifyPin(newPin);
 
             if (isValid) {
+              setAttemptCount(0);
+              setLockoutUntil(null);
+              setLockoutRemainingSeconds(0);
+              void AsyncStorage.removeItem(PIN_LOCKOUT_STORAGE_KEY).catch(() => undefined);
               setGateState('success');
               successScale.value = withSequence(
                 withTiming(1.2, { duration: 150 }),
@@ -198,10 +295,19 @@ export function ParentPINGate({
               );
               setTimeout(() => { onSuccess(); }, 400);
             } else {
-              setGateState('error');
-              setErrorMessage('Incorrect PIN. Please try again.');
+              const nextAttemptCount = attemptCount + 1;
+
+              setAttemptCount(nextAttemptCount);
               triggerShake();
               setPin('');
+
+              if (nextAttemptCount >= MAX_PIN_ATTEMPTS) {
+                startLockout();
+                return;
+              }
+
+              setGateState('error');
+              setErrorMessage('Incorrect PIN. Please try again.');
             }
           } catch {
             setGateState('error');
@@ -212,7 +318,18 @@ export function ParentPINGate({
         }
       }
     },
-    [pin, gateState, verifyPin, onSuccess, triggerShake, animateDotEntry, successScale],
+    [
+      animateDotEntry,
+      attemptCount,
+      gateState,
+      isLockedOut,
+      onSuccess,
+      pin,
+      startLockout,
+      successScale,
+      triggerShake,
+      verifyPin,
+    ],
   );
 
   const handleCancel = useCallback(() => {
@@ -234,9 +351,15 @@ export function ParentPINGate({
     opacity: successScale.value,
   }));
 
+  const lockoutCountdownLabel = useMemo(
+    () => formatLockoutRemaining(lockoutRemainingSeconds),
+    [lockoutRemainingSeconds],
+  );
+
   const renderKey = (digit: PinDigit, index: number) => {
     const isBackspace = digit === 'backspace';
     const isEmpty = digit === '';
+    const isKeyDisabled = gateState === 'submitting' || gateState === 'success' || isLockedOut;
 
     if (isEmpty) {
       return <View key={`empty-${index}`} style={styles.keyButton} />;
@@ -247,17 +370,17 @@ export function ParentPINGate({
         key={isBackspace ? 'backspace' : digit}
         accessibilityLabel={isBackspace ? 'Backspace' : digit}
         accessibilityRole="button"
-        disabled={gateState === 'submitting' || gateState === 'success'}
+        disabled={isKeyDisabled}
         onPress={() => handleDigitPress(digit)}
         style={({ pressed }) => [
           styles.keyButton,
           pressed && styles.keyButtonPressed,
-          (gateState === 'submitting' || gateState === 'success') && styles.keyButtonDisabled,
+          isKeyDisabled && styles.keyButtonDisabled,
         ]}
       >
         {isBackspace ? (
           <MaterialCommunityIcons
-            color={gateState === 'submitting' ? Colors.textTertiary : Colors.text}
+            color={isKeyDisabled ? Colors.textTertiary : Colors.text}
             name="backspace-outline"
             size={24}
           />
@@ -295,21 +418,31 @@ export function ParentPINGate({
             )}
           </View>
 
-<Animated.View style={[styles.pinDisplay, shakeAnimatedStyle]}>
-        {Array.from({ length: 4 }).map((_, index) => (
-          <PinDot
-            key={index}
-            index={index}
-            isFilled={index < pin.length}
-            isError={gateState === 'error' && pin.length === 0}
-            isSuccess={gateState === 'success'}
-            dotOpacity={dotOpacityValues[index]}
-            successCheckmarkStyle={successCheckmarkStyle}
-          />
-        ))}
-      </Animated.View>
+          <Animated.View style={[styles.pinDisplay, shakeAnimatedStyle]}>
+            {Array.from({ length: 4 }).map((_, index) => (
+              <PinDot
+                key={index}
+                index={index}
+                isFilled={index < pin.length}
+                isError={gateState === 'error' && pin.length === 0 && !isLockedOut}
+                isSuccess={gateState === 'success'}
+                dotOpacity={dotOpacityValues[index]}
+                successCheckmarkStyle={successCheckmarkStyle}
+              />
+            ))}
+          </Animated.View>
 
-          {errorMessage && gateState === 'error' && (
+          {isLockedOut ? (
+            <View style={styles.lockoutContainer}>
+              <MaterialCommunityIcons color={Colors.errorText} name="account-clock-outline" size={20} />
+              <View style={styles.lockoutCopy}>
+                <Text style={styles.lockoutTitle}>{PIN_LOCKOUT_MESSAGE}</Text>
+                <Text style={styles.lockoutCountdown}>{lockoutCountdownLabel} remaining</Text>
+              </View>
+            </View>
+          ) : null}
+
+          {errorMessage && gateState === 'error' && !isLockedOut && (
             <View style={styles.errorContainer}>
               <MaterialCommunityIcons color={Colors.errorText} name="alert-circle" size={16} />
               <Text style={styles.errorText}>{errorMessage}</Text>
@@ -438,6 +571,29 @@ const styles = StyleSheet.create({
   },
   errorText: {
     ...Typography.captionMedium,
+    color: Colors.errorText,
+  },
+  lockoutContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    borderRadius: Radii.lg,
+    backgroundColor: Colors.errorContainer,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  lockoutCopy: {
+    flexShrink: 1,
+    gap: 2,
+  },
+  lockoutTitle: {
+    ...Typography.captionMedium,
+    color: Colors.errorText,
+  },
+  lockoutCountdown: {
+    ...Typography.caption,
     color: Colors.errorText,
   },
   loadingContainer: {

@@ -328,6 +328,7 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
   function handleConfirmSwitch() {
     if (!selectedChildId || !activeChild || isTransitioning) return;
 
+    // SECURITY: Parent -> child does not require PIN; child -> parent is gated inside child space.
     setIsTransitioning(true);
 
     setTimeout(() => {

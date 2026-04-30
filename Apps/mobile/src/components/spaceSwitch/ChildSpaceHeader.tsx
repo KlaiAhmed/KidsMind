@@ -3,8 +3,6 @@
  *
  * Wrapper for child space screens that adds:
  * - Controls/settings icon for parent access (top-right)
- * - Parent PIN gate modal
- * - Navigation lock integration
  *
  * Security: This component enforces that children cannot access
  * parent space without entering the correct parent PIN.
@@ -12,7 +10,7 @@
  * Usage: Wrap every child space screen with this component.
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback } from 'react';
 import {
   Image,
   Pressable,
@@ -22,17 +20,11 @@ import {
   type ImageSourcePropType,
   type ViewStyle,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import * as Haptics from 'expo-haptics';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
 import { Colors, Radii, Sizing, Spacing } from '@/constants/theme';
-import { ParentPINGate } from '@/src/components/spaceSwitch/ParentPINGate';
-import { useChildNavigationLock } from '@/src/hooks/useChildNavigationLock';
-import { verifyParentPin } from '@/services/parentAccessService';
-import { useAuth } from '@/contexts/AuthContext';
-import { showToast } from '@/services/toastClient';
+import { useChildSpaceBoundary } from '@/src/components/spaceSwitch/ChildSpaceBoundary';
 
 interface ChildSpaceHeaderProps {
   avatarSource: ImageSourcePropType;
@@ -51,36 +43,9 @@ export function ChildSpaceHeader({
   style,
   children,
 }: ChildSpaceHeaderProps) {
-  const router = useRouter();
-  const { user } = useAuth();
-  const [isPinGateOpen, setIsPinGateOpen] = useState(false);
+  const { requestParentAccess } = useChildSpaceBoundary();
 
   const iconScale = useSharedValue(1);
-
-  const handleOpenPinGateRef = useRef<() => void>(() => {});
-
-  handleOpenPinGateRef.current = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
-
-    if (!user?.pinConfigured) {
-      showToast({
-        type: 'error',
-        text1: 'PIN not set',
-        text2: 'Please set up your parent PIN first.',
-        visibilityTime: 3000,
-      });
-      return;
-    }
-
-    setIsPinGateOpen(true);
-  };
-
-  useChildNavigationLock({
-    isLocked: !isPinGateOpen,
-    onBackAttempt: () => {
-      handleOpenPinGateRef.current();
-    },
-  });
 
   const displayGreeting = greetingText || `Good morning, ${childName}! ☀️`;
 
@@ -89,26 +54,9 @@ export function ChildSpaceHeader({
       iconScale.value = withSpring(1, { damping: 15, stiffness: 200 });
     });
 
-    handleOpenPinGateRef.current();
-  }, [iconScale]);
-
-  const handlePinSuccess = useCallback(() => {
-    setIsPinGateOpen(false);
-
-    router.replace('/(tabs)' as never);
-  }, [router]);
-
-  const handlePinCancel = useCallback(() => {
-    setIsPinGateOpen(false);
-  }, []);
-
-  const handleVerifyPin = useCallback(async (pin: string): Promise<boolean> => {
-    try {
-      return await verifyParentPin(pin);
-    } catch {
-      return false;
-    }
-  }, []);
+    // SECURITY: Parent access is delegated to the child-tabs layout so the PIN gate is centralized.
+    requestParentAccess();
+  }, [iconScale, requestParentAccess]);
 
   const animatedIconStyle = useAnimatedStyle(() => ({
     transform: [{ scale: iconScale.value }],
@@ -147,14 +95,6 @@ export function ChildSpaceHeader({
 
       {children}
 
-      <ParentPINGate
-        onCancel={handlePinCancel}
-        onSuccess={handlePinSuccess}
-        subtitle="Enter your PIN to access parent controls"
-        title="Parent Access"
-        verifyPin={handleVerifyPin}
-        visible={isPinGateOpen}
-      />
     </View>
   );
 }

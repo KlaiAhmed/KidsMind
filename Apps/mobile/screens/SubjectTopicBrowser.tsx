@@ -126,7 +126,8 @@ export default function SubjectTopicBrowser() {
       query.push(`subjectName=${encodeURIComponent(subjectName)}`);
     }
 
-    router.push(`/(tabs)/chat?${query.join('&')}` as never);
+    // SECURITY: Topic chat launches inside child space; parent chat history requires PIN.
+    router.push(`/(child-tabs)/chat?${query.join('&')}` as never);
   }
 
   function handleBackToSubjects() {
