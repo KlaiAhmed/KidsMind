@@ -577,37 +577,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.outline,
   },
-  heroCard: {
-    borderRadius: Radii.xl,
-    borderWidth: 1,
-    borderColor: Colors.outline,
-    backgroundColor: Colors.surfaceContainerLowest,
-    padding: Spacing.md,
-    gap: Spacing.sm,
-    ...Shadows.card,
-  },
-  heroRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.md,
-  },
-  heroCopy: {
-    flex: 1,
-    gap: Spacing.xs,
-  },
-  heroTitle: {
-    ...Typography.headline,
-    color: Colors.text,
-  },
-  heroSubtitle: {
-    ...Typography.captionMedium,
-    color: Colors.primary,
-  },
-  heroBody: {
-    ...Typography.body,
-    color: Colors.textSecondary,
-  },
   metricsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
