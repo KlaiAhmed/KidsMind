@@ -20,6 +20,7 @@ import { z } from 'zod/v4';
 import { Colors, Gradients, Radii, Shadows, Sizing, Spacing, Typography } from '@/constants/theme';
 import { toApiErrorMessage, useAuth } from '@/contexts/AuthContext';
 import { pauseChild, resumeChild, updateChildRules } from '@/services/childService';
+import { ErrorCard } from '@/src/components/parent/ParentDashboardStates';
 import {
   deriveTimeWindowFromWeekSchedule,
   parseTimeToMinutes,
@@ -193,18 +194,6 @@ function SteppedSlider({
   );
 }
 
-function ErrorCard({ message, onDismiss }: { message: string; onDismiss: () => void }) {
-  return (
-    <View style={styles.errorCard}>
-      <MaterialCommunityIcons color={Colors.errorText} name="alert-circle-outline" size={18} />
-      <Text style={styles.errorCardText}>{message}</Text>
-      <Pressable accessibilityRole="button" accessibilityLabel="Dismiss error" onPress={onDismiss}>
-        <MaterialCommunityIcons color={Colors.errorText} name="close" size={18} />
-      </Pressable>
-    </View>
-  );
-}
-
 export function TimeLimitsEditModal({ visible, child, onClose }: TimeLimitsEditModalProps) {
   const queryClient = useQueryClient();
   const { updateChildProfile } = useAuth();
@@ -347,7 +336,17 @@ export function TimeLimitsEditModal({ visible, child, onClose }: TimeLimitsEditM
         </View>
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          {modalError ? <ErrorCard message={modalError} onDismiss={() => setModalError(null)} /> : null}
+          {modalError ? (
+            <ErrorCard
+              message={modalError}
+              onRetry={() => {
+                setModalError(null);
+                saveMutation.mutate(getValues());
+              }}
+              retryLabel="Try Again"
+              title="Time limit update failed"
+            />
+          ) : null}
 
           <View pointerEvents={saveMutation.isPending ? 'none' : 'auto'} style={styles.formStack}>
             <View style={styles.card}>
@@ -477,7 +476,20 @@ export function TimeLimitsEditModal({ visible, child, onClose }: TimeLimitsEditM
                   />
                 )}
               </Pressable>
-              {pauseError ? <Text style={styles.inlineErrorText}>{pauseError}</Text> : null}
+              {pauseError ? (
+                <ErrorCard
+                  message={pauseError}
+                  onRetry={() => {
+                    setPauseError(null);
+                    const variables = pauseMutation.variables;
+                    if (typeof variables === 'boolean') {
+                      pauseMutation.mutate(variables);
+                    }
+                  }}
+                  retryLabel="Try Again"
+                  title="Pause update failed"
+                />
+              ) : null}
             </View>
           </View>
         </ScrollView>

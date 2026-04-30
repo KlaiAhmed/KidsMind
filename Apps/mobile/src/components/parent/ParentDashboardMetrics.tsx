@@ -60,7 +60,6 @@ interface SegmentedRingProps {
 
 interface ScreenTimeMetricCardProps {
   usedMinutes: number;
-  dailyLimitMinutes: number;
 }
 
 interface ExercisesMetricCardProps {
@@ -80,7 +79,7 @@ interface DailyStreakMetricCardProps {
 
 interface DailyUsageDonutCardProps {
   todayMinutes: number;
-  dailyLimitMinutes: number;
+  sevenDayAverageMinutes: number;
 }
 
 interface MiniScoreBarProps {
@@ -174,22 +173,22 @@ function formatMinutesCompact(minutes: number): string {
   return `${hours}h ${remainder}m`;
 }
 
-function getRemainingColor(remainingMinutes: number, limitMinutes: number): string {
-  if (limitMinutes <= 0) {
+function getDeltaColor(todayMinutes: number, averageMinutes: number): string {
+  if (averageMinutes <= 0) {
     return Colors.textSecondary;
   }
 
-  const ratio = remainingMinutes / limitMinutes;
+  const ratio = todayMinutes / averageMinutes;
 
-  if (ratio > 0.2) {
+  if (ratio >= 1) {
     return Colors.success;
   }
 
-  if (ratio >= 0.1) {
+  if (ratio >= 0.5) {
     return Colors.accentAmber;
   }
 
-  return Colors.error;
+  return Colors.textSecondary;
 }
 
 function getTrend(direction: TrendDirection): {
@@ -424,12 +423,11 @@ function ActivityBar({ index, maxSessions, point }: ActivityBarProps) {
   );
 }
 
-export function ScreenTimeMetricCard({ dailyLimitMinutes, usedMinutes }: ScreenTimeMetricCardProps) {
-  const progress = dailyLimitMinutes > 0 ? usedMinutes / dailyLimitMinutes : 0;
-  const isOverLimit = dailyLimitMinutes > 0 && usedMinutes > dailyLimitMinutes;
+export function ScreenTimeMetricCard({ usedMinutes }: ScreenTimeMetricCardProps) {
+  const progress = usedMinutes / Math.max(usedMinutes, 60);
 
   return (
-    <MetricCard icon="clock-outline" iconColor={Colors.primary} title="SCREEN TIME">
+    <MetricCard icon="clock-outline" iconColor={Colors.primary} title="SCREEN TIME TODAY">
       <View style={styles.metricValueRow}>
         <View style={styles.metricCopy}>
           <AnimatedNumberText
@@ -437,12 +435,12 @@ export function ScreenTimeMetricCard({ dailyLimitMinutes, usedMinutes }: ScreenT
             style={styles.metricValue}
             target={usedMinutes}
           />
-          <Text style={styles.metricSecondary}>Goal: {formatMinutesCompact(dailyLimitMinutes)}</Text>
+          <Text style={styles.metricSecondary}>Tutoring time today</Text>
         </View>
 
         <SegmentedRing
           duration={800}
-          fillColor={isOverLimit ? Colors.error : Colors.primary}
+          fillColor={Colors.primary}
           progress={progress}
           segments={28}
           size={Spacing.xxl + Spacing.sm}
@@ -538,16 +536,15 @@ export function DailyStreakMetricCard({ isPersonalRecord, streakDays }: DailyStr
   );
 }
 
-export function DailyUsageDonutCard({ dailyLimitMinutes, todayMinutes }: DailyUsageDonutCardProps) {
-  const progress = dailyLimitMinutes > 0 ? todayMinutes / dailyLimitMinutes : 0;
-  const remainingMinutes = Math.max(0, dailyLimitMinutes - todayMinutes);
-  const remainingColor = getRemainingColor(remainingMinutes, dailyLimitMinutes);
+export function DailyUsageDonutCard({ sevenDayAverageMinutes, todayMinutes }: DailyUsageDonutCardProps) {
+  const progress = todayMinutes / Math.max(todayMinutes, sevenDayAverageMinutes, 1);
+  const averageColor = getDeltaColor(todayMinutes, sevenDayAverageMinutes);
   const donutSize = Spacing.xxl * 4 + Spacing.sm;
   const donutThickness = Spacing.md + Spacing.xs / 2;
 
   return (
     <View style={styles.usageCard}>
-      <Text style={styles.usageTitle}>Daily Usage</Text>
+      <Text style={styles.usageTitle}>7-Day Activity</Text>
 
       <View style={styles.donutWrap}>
         <SegmentedRing
@@ -574,22 +571,22 @@ export function DailyUsageDonutCard({ dailyLimitMinutes, todayMinutes }: DailyUs
 
       <View style={styles.usageStatsRow}>
         <View style={styles.usageStat}>
-          <Text style={styles.usageStatLabel}>Daily Limit</Text>
+          <Text style={styles.usageStatLabel}>Today</Text>
           <AnimatedNumberText
             formatter={(value) => `${Math.round(value)}m`}
             style={styles.usageStatValue}
-            target={dailyLimitMinutes}
+            target={todayMinutes}
           />
         </View>
 
         <View style={styles.usageDivider} />
 
         <View style={styles.usageStat}>
-          <Text style={styles.usageStatLabel}>Remaining</Text>
+          <Text style={styles.usageStatLabel}>7-day avg</Text>
           <AnimatedNumberText
             formatter={(value) => `${Math.round(value)}m`}
-            style={[styles.usageStatValue, { color: remainingColor }]}
-            target={remainingMinutes}
+            style={[styles.usageStatValue, { color: averageColor }]}
+            target={sevenDayAverageMinutes}
           />
         </View>
       </View>

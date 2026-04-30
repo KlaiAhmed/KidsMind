@@ -1,14 +1,14 @@
 import { useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -23,6 +23,12 @@ import {
   ExercisesMetricCard,
   ScreenTimeMetricCard,
 } from '@/src/components/parent/ParentDashboardMetrics';
+import {
+  ErrorCard,
+  ParentDashboardEmptyState,
+  ParentDashboardErrorState,
+  SkeletonBlock,
+} from '@/src/components/parent/ParentDashboardStates';
 import { ChildSwitchModal } from '@/src/components/spaceSwitch/ChildSwitchModal';
 import { Colors, Gradients, Radii, Shadows, Spacing, Typography } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
@@ -209,24 +215,27 @@ function computeSessionStreakStats(sessions: ParentConversationSession[], todayK
 function OverviewSkeleton() {
   return (
     <ScrollView contentContainerStyle={styles.loadingContainer} showsVerticalScrollIndicator={false}>
-      <View style={styles.loadingHero} />
-      <View style={styles.loadingSwitcher} />
+      <SkeletonBlock style={styles.loadingHero} />
+      <SkeletonBlock style={styles.loadingSwitcher} />
       <View style={styles.loadingGrid}>
-        <View style={styles.loadingMetric} />
-        <View style={styles.loadingMetric} />
-        <View style={styles.loadingMetric} />
-        <View style={styles.loadingMetric} />
+        <SkeletonBlock style={styles.loadingMetric} />
+        <SkeletonBlock style={styles.loadingMetric} />
+        <SkeletonBlock style={styles.loadingMetric} />
+        <SkeletonBlock style={styles.loadingMetric} />
       </View>
-      <View style={styles.loadingCard} />
-      <View style={styles.loadingCard} />
+      <SkeletonBlock style={styles.loadingCard} />
+      <SkeletonBlock style={styles.loadingCard} />
     </ScrollView>
   );
 }
 
 export default function ParentOverviewScreen({ initialState }: ParentOverviewScreenProps) {
   const router = useRouter();
-  const { user, childDataLoading, childDataError, childProfileStatus } = useAuth();
-  const { children, activeChild, selectedChildId, selectChild, getChildAvatarSource } = useParentDashboardChild();
+  const params = useLocalSearchParams<{ childId?: string }>();
+  const { user, childDataLoading, childProfileStatus } = useAuth();
+  const { children, activeChild, selectedChildId, selectChild, getChildAvatarSource } = useParentDashboardChild(
+    typeof params.childId === 'string' ? params.childId : undefined,
+  );
 
   const isChildDataResolving = childProfileStatus === 'unknown' || (childDataLoading && children.length === 0);
 
@@ -258,7 +267,6 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
   const yesterdayKey = addDaysToKey(todayKey, -1);
   const sessions = useMemo(() => historyQuery.data?.sessions ?? [], [historyQuery.data?.sessions]);
   const progressResults = useMemo(() => progressQuery.data?.results ?? [], [progressQuery.data?.results]);
-  const dailyLimitMinutes = activeChild?.rules?.dailyLimitMinutes ?? activeChild?.dailyGoalMinutes ?? 0;
   const todayScreenTimeMinutes = useMemo(() => {
     const todaySeconds = sessions
       .filter((session) => getSessionDateKey(session) === todayKey)
@@ -282,6 +290,10 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
   );
 
   const recentSessions = historyQuery.data?.sessions.slice(0, 3) ?? [];
+  const hasInitialDashboardData = Boolean(historyQuery.data || progressQuery.data);
+  const isHistoryError = historyQuery.isError;
+  const isProgressError = progressQuery.isError;
+  const isFullDashboardError = (isHistoryError && isProgressError) || initialState === 'error';
   const todayLabel = new Intl.DateTimeFormat(undefined, {
     weekday: 'long',
     month: 'long',
@@ -294,6 +306,11 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
 
   function handleSelectChild(childId: string) {
     selectChild(childId);
+  }
+
+  function handleRefresh() {
+    void historyQuery.refetch();
+    void progressQuery.refetch();
   }
 
   function handleRocketPress() {
@@ -345,7 +362,7 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
   if (
     initialState === 'loading' ||
     isChildDataResolving ||
-    (Boolean(activeChild) && (historyQuery.isPending || progressQuery.isPending))
+    (Boolean(activeChild) && !hasInitialDashboardData && (historyQuery.isPending || progressQuery.isPending))
   ) {
     return (
       <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
@@ -357,21 +374,13 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
   if (!children.length) {
     return (
       <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
-        <View style={styles.feedbackContainer}>
-          <MaterialCommunityIcons color={Colors.primary} name="account-child-circle" size={42} />
-          <Text style={styles.feedbackTitle}>Your parent dashboard is ready</Text>
-          <Text style={styles.feedbackBody}>
-            Add a child profile to start managing schedules, reviewing conversations, and tracking progress.
-          </Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Add a child profile"
-            onPress={handleAddChild}
-            style={({ pressed }) => [styles.outlineButton, pressed ? styles.pressed : null]}
-          >
-            <Text style={styles.outlineButtonLabel}>Add Child</Text>
-          </Pressable>
-        </View>
+        <ParentDashboardEmptyState
+          actionLabel="Add Child"
+          iconName="account-child-circle"
+          onAction={handleAddChild}
+          subtitle="Add your first child to get started."
+          title="Your parent dashboard is ready."
+        />
       </SafeAreaView>
     );
   }
@@ -379,43 +388,42 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
   if (!activeChild) {
     return (
       <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
-        <View style={styles.feedbackContainer}>
-          <MaterialCommunityIcons color={Colors.errorText} name="alert-circle-outline" size={36} />
-          <Text style={styles.feedbackTitle}>{"We couldn't load this child"}</Text>
-          <Text style={styles.feedbackBody}>
-            Try switching to another profile or refresh the dashboard.
-          </Text>
-        </View>
+        <ParentDashboardErrorState
+          message="Try switching to another profile or refresh the dashboard."
+          onRetry={handleRefresh}
+          title="We couldn't load this child"
+        />
       </SafeAreaView>
     );
   }
 
-  if (historyQuery.isError || progressQuery.isError || initialState === 'error') {
+  if (isFullDashboardError) {
     return (
       <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
-        <View style={styles.feedbackContainer}>
-          <MaterialCommunityIcons color={Colors.errorText} name="alert-circle-outline" size={36} />
-          <Text style={styles.feedbackTitle}>Dashboard needs a refresh</Text>
-          <Text style={styles.feedbackBody}>{childDataError ?? 'We had trouble loading the latest parent dashboard data.'}</Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Retry loading parent dashboard"
-            onPress={() => {
-              void historyQuery.refetch();
-              void progressQuery.refetch();
-            }}
-            style={({ pressed }) => [styles.outlineButton, pressed ? styles.pressed : null]}
-          >
-            <Text style={styles.outlineButtonLabel}>Retry</Text>
-          </Pressable>
-        </View>
+        <ParentDashboardErrorState
+          error={historyQuery.error ?? progressQuery.error}
+          message={initialState === 'error' ? 'We had trouble loading the latest parent dashboard data.' : undefined}
+          onRetry={handleRefresh}
+          title="Dashboard needs a refresh"
+        />
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.contentContainer}
+        refreshControl={
+          <RefreshControl
+            colors={[Colors.surface]}
+            onRefresh={handleRefresh}
+            refreshing={historyQuery.isFetching || progressQuery.isFetching}
+            tintColor={Colors.primary}
+          />
+        }
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.headerRow}>
           <View style={styles.parentIdentity}>
             <LinearGradient
@@ -458,31 +466,52 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
           onSelectChild={handleSelectChild}
         />
 
+        {/* Part D audit: Overview keeps today's summary metrics only; time-limit and study-window values stay owned by Controls. */}
+        {isProgressError ? (
+          <ErrorCard
+            error={progressQuery.error}
+            onRetry={() => {
+              void progressQuery.refetch();
+            }}
+            title="Progress summary unavailable"
+          />
+        ) : null}
+
         <View style={styles.metricsGrid}>
           <View style={styles.metricsRow}>
-            <ScreenTimeMetricCard dailyLimitMinutes={dailyLimitMinutes} usedMinutes={todayScreenTimeMinutes} />
+            <ScreenTimeMetricCard usedMinutes={isHistoryError ? 0 : todayScreenTimeMinutes} />
             <ExercisesMetricCard
-              count={exercisesToday}
-              deltaFromYesterday={exercisesToday - exercisesYesterday}
+              count={isProgressError ? 0 : exercisesToday}
+              deltaFromYesterday={isProgressError ? 0 : exercisesToday - exercisesYesterday}
             />
           </View>
 
           <View style={styles.metricsRow}>
-            <AverageScoreMetricCard averageScore={averageScore} trendScores={scoreTrend} />
+            <AverageScoreMetricCard averageScore={isProgressError ? null : averageScore} trendScores={scoreTrend} />
             <DailyStreakMetricCard
-              isPersonalRecord={streakStats.current > 0 && streakStats.current >= streakStats.best}
-              streakDays={streakStats.current}
+              isPersonalRecord={!isHistoryError && streakStats.current > 0 && streakStats.current >= streakStats.best}
+              streakDays={isHistoryError ? 0 : streakStats.current}
             />
           </View>
         </View>
 
-        <ActivityFlaggedBanner
-          childName={activeChild.nickname ?? activeChild.name}
-          flagged={Boolean(latestFlaggedSession)}
-          onReview={handleReviewHistory}
-          reserveSpace={false}
-          timestampLabel={formatDateLabel(latestFlaggedSession?.lastMessageAt)}
-        />
+        {isHistoryError ? (
+          <ErrorCard
+            error={historyQuery.error}
+            onRetry={() => {
+              void historyQuery.refetch();
+            }}
+            title="Conversation activity unavailable"
+          />
+        ) : (
+          <ActivityFlaggedBanner
+            childName={activeChild.nickname ?? activeChild.name}
+            flagged={Boolean(latestFlaggedSession)}
+            onReview={handleReviewHistory}
+            reserveSpace={false}
+            timestampLabel={formatDateLabel(latestFlaggedSession?.lastMessageAt)}
+          />
+        )}
 
         <View style={styles.sectionCard}>
           <View style={styles.sectionHeader}>
@@ -492,19 +521,21 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
             </Pressable>
           </View>
 
-          {historyQuery.isPending ? (
-            <View style={styles.emptyInlineState}>
-              <ActivityIndicator color={Colors.primary} size="small" />
-              <Text style={styles.emptyInlineTitle}>Loading activity</Text>
-            </View>
+          {isHistoryError ? (
+            <ErrorCard
+              error={historyQuery.error}
+              onRetry={() => {
+                void historyQuery.refetch();
+              }}
+              title="Recent activity unavailable"
+            />
           ) : recentSessions.length === 0 ? (
-            <View style={styles.emptyInlineState}>
-              <MaterialCommunityIcons color={Colors.textSecondary} name="message-processing-outline" size={24} />
-              <Text style={styles.emptyInlineTitle}>No conversations yet</Text>
-              <Text style={styles.emptyInlineBody}>
-                Conversation history will appear here after the first tutoring session.
-              </Text>
-            </View>
+            <ParentDashboardEmptyState
+              compact
+              iconName="message-processing-outline"
+              subtitle={`${activeChild.nickname ?? activeChild.name} hasn't started any sessions.`}
+              title="No conversations yet."
+            />
           ) : (
             <View style={styles.activityList}>
               {recentSessions.map((session) => (

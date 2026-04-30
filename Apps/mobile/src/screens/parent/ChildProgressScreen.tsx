@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import {
-  Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -18,6 +18,11 @@ import {
   SevenDayActivityChart,
   type SevenDayActivityPoint,
 } from '@/src/components/parent/ParentDashboardMetrics';
+import {
+  ParentDashboardEmptyState,
+  ParentDashboardErrorState,
+  SkeletonBlock,
+} from '@/src/components/parent/ParentDashboardStates';
 import { Colors, Radii, Shadows, Spacing, Typography } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { getParentProgress } from '@/services/parentDashboardService';
@@ -89,11 +94,11 @@ function buildSevenDayActivitySeries(activity: ProgressDashboard['sessionActivit
 function ProgressSkeleton() {
   return (
     <ScrollView contentContainerStyle={styles.loadingContent} showsVerticalScrollIndicator={false}>
-      <View style={styles.loadingHero} />
-      <View style={styles.loadingSwitcher} />
-      <View style={styles.loadingCard} />
-      <View style={styles.loadingCard} />
-      <View style={styles.loadingCard} />
+      <SkeletonBlock style={styles.loadingHero} />
+      <SkeletonBlock style={styles.loadingSwitcher} />
+      <SkeletonBlock style={styles.loadingCard} />
+      <SkeletonBlock style={styles.loadingCard} />
+      <SkeletonBlock style={styles.loadingCard} />
     </ScrollView>
   );
 }
@@ -128,7 +133,9 @@ export default function ChildProgressScreen({
   const todayMinutes = Math.round(
     todayActivity.reduce((sum, point) => sum + point.durationSeconds, 0) / 60,
   );
-  const dailyLimitMinutes = activeChild?.rules?.dailyLimitMinutes ?? activeChild?.dailyGoalMinutes ?? 0;
+  const sevenDayAverageMinutes = Math.round(
+    (progress?.sessionActivity.reduce((sum, point) => sum + point.durationSeconds, 0) ?? 0) / 60 / 7,
+  );
   const sevenDaySeries = useMemo(
     () => buildSevenDayActivitySeries(progress?.sessionActivity ?? []),
     [progress?.sessionActivity],
@@ -142,9 +149,16 @@ export default function ChildProgressScreen({
   );
   const maxMasteryXp = Math.max(...(progress?.subjectMastery ?? []).map((subject) => subject.xp), 1);
 
+  function handleAddChild() {
+    void router.push('/(auth)/child-profile-wizard?source=parent-dashboard' as never);
+  }
+
   function handleChildSelect(childId: string) {
     selectChild(childId);
-    void router.replace(`/(tabs)/explore?childId=${encodeURIComponent(childId)}` as never);
+  }
+
+  function handleRefresh() {
+    void progressQuery.refetch();
   }
 
   if (initialState === 'loading' || isChildDataResolving || (Boolean(activeChild) && progressQuery.isPending)) {
@@ -155,16 +169,28 @@ export default function ChildProgressScreen({
     );
   }
 
-  if (!children.length || !activeChild) {
+  if (!children.length) {
     return (
       <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
-        <View style={styles.feedbackState}>
-          <MaterialCommunityIcons color={Colors.primary} name="chart-arc" size={40} />
-          <Text style={styles.feedbackTitle}>Progress will appear after the first session</Text>
-          <Text style={styles.feedbackBody}>
-            Once a child completes a few tutoring sessions, activity and progress details will show here.
-          </Text>
-        </View>
+        <ParentDashboardEmptyState
+          actionLabel="Add Child"
+          iconName="account-child-circle"
+          onAction={handleAddChild}
+          subtitle="Add your first child to get started."
+          title="Your parent dashboard is ready."
+        />
+      </SafeAreaView>
+    );
+  }
+
+  if (!activeChild) {
+    return (
+      <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
+        <ParentDashboardErrorState
+          message="Try switching to another profile or refresh the progress report."
+          onRetry={handleRefresh}
+          title="We couldn't load this child"
+        />
       </SafeAreaView>
     );
   }
@@ -172,28 +198,30 @@ export default function ChildProgressScreen({
   if (progressQuery.isError || initialState === 'error') {
     return (
       <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
-        <View style={styles.feedbackState}>
-          <MaterialCommunityIcons color={Colors.errorText} name="alert-circle-outline" size={34} />
-          <Text style={styles.feedbackTitle}>Progress dashboard paused</Text>
-          <Text style={styles.feedbackBody}>{errorMessage}</Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Retry loading progress"
-            onPress={() => {
-              void progressQuery.refetch();
-            }}
-            style={({ pressed }) => [styles.retryButton, pressed ? styles.pressed : null]}
-          >
-            <Text style={styles.retryLabel}>Retry</Text>
-          </Pressable>
-        </View>
+        <ParentDashboardErrorState
+          error={progressQuery.error}
+          message={initialState === 'error' ? errorMessage : undefined}
+          onRetry={handleRefresh}
+          title="Progress dashboard paused"
+        />
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.contentContainer}
+        refreshControl={
+          <RefreshControl
+            colors={[Colors.surface]}
+            onRefresh={handleRefresh}
+            refreshing={progressQuery.isFetching}
+            tintColor={Colors.primary}
+          />
+        }
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.heroWrap}>
           <View style={styles.heroCopy}>
             <Text style={styles.screenTitle}>Progress Report</Text>
@@ -208,10 +236,12 @@ export default function ChildProgressScreen({
           activeChildId={selectedChildId}
           profiles={children}
           getAvatarSource={getChildAvatarSource}
+          onAddChild={children.length < 5 ? handleAddChild : undefined}
           onSelectChild={handleChildSelect}
         />
 
-        <DailyUsageDonutCard dailyLimitMinutes={dailyLimitMinutes} todayMinutes={todayMinutes} />
+        {/* Part D audit: Progress shows activity over time only; daily limits remain editable/readable in Controls. */}
+        <DailyUsageDonutCard sevenDayAverageMinutes={sevenDayAverageMinutes} todayMinutes={todayMinutes} />
 
         <View style={styles.surfaceCard}>
           <Text style={styles.sectionTitle}>Activity Last 7 Days</Text>
@@ -273,13 +303,12 @@ export default function ChildProgressScreen({
           </View>
 
           {recentResults.length === 0 ? (
-            <View style={styles.emptyInlineState}>
-              <MaterialCommunityIcons color={Colors.textSecondary} name="clipboard-check-outline" size={28} />
-              <Text style={styles.emptyInlineTitle}>No quiz results yet</Text>
-              <Text style={styles.emptyInlineBody}>
-                Completed exercises will show here with scores and subjects.
-              </Text>
-            </View>
+            <ParentDashboardEmptyState
+              compact
+              iconName="clipboard-check-outline"
+              subtitle={`${activeChild.nickname ?? activeChild.name} hasn't done any quizzes.`}
+              title="No exercises completed yet."
+            />
           ) : (
             <View style={styles.sessionsList}>
               {recentResults.map((result) => (

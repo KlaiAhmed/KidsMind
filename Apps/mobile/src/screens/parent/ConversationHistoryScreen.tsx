@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,12 +15,20 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import * as Linking from 'expo-linking';
 
 import { ParentChildSwitcher } from '@/src/components/parent/ParentChildSwitcher';
+import {
+  ErrorCard,
+  ParentDashboardEmptyState,
+  ParentDashboardErrorState,
+  SkeletonBlock,
+} from '@/src/components/parent/ParentDashboardStates';
 import { Colors, Radii, Shadows, Spacing, Typography } from '@/constants/theme';
 import { toApiErrorMessage, useAuth } from '@/contexts/AuthContext';
 import {
   bulkDeleteSessions,
+  exportHistory,
   getParentHistory,
 } from '@/services/parentDashboardService';
 import { showToast } from '@/services/toastClient';
@@ -107,11 +116,11 @@ function groupSessionsByDay(
 function HistorySkeleton() {
   return (
     <ScrollView contentContainerStyle={styles.loadingContent} showsVerticalScrollIndicator={false}>
-      <View style={styles.loadingHero} />
-      <View style={styles.loadingSwitcher} />
-      <View style={styles.loadingCard} />
-      <View style={styles.loadingCard} />
-      <View style={styles.loadingCard} />
+      <SkeletonBlock style={styles.loadingHero} />
+      <SkeletonBlock style={styles.loadingSwitcher} />
+      <SkeletonBlock style={styles.loadingCard} />
+      <SkeletonBlock style={styles.loadingCard} />
+      <SkeletonBlock style={styles.loadingCard} />
     </ScrollView>
   );
 }
@@ -140,6 +149,7 @@ export default function ConversationHistoryScreen({
   const [flaggedOnly, setFlaggedOnly] = useState(params.flaggedOnly === 'true');
   const [selectedSessionIds, setSelectedSessionIds] = useState<string[]>([]);
   const [bulkDeleteError, setBulkDeleteError] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   useEffect(() => {
     setSearchValue(typeof params.topic === 'string' ? params.topic : '');
@@ -187,15 +197,47 @@ export default function ConversationHistoryScreen({
     },
   });
 
+  const exportMutation = useMutation({
+    mutationFn: async () => {
+      const response = await exportHistory(user!.id, activeChild!.id);
+      if (!response.url) {
+        throw new Error('Export failed. Please try again.');
+      }
+
+      await Linking.openURL(response.url);
+      return response;
+    },
+    onMutate: () => {
+      setExportError(null);
+    },
+    onSuccess: async () => {
+      setExportError(null);
+      await queryClient.invalidateQueries({ queryKey: ['parent-dashboard'] });
+    },
+    onError: (error) => {
+      setExportError(toApiErrorMessage(error) || 'Export failed. Please try again.');
+    },
+  });
+
   const sessions = useMemo(() => historyQuery.data?.sessions ?? [], [historyQuery.data?.sessions]);
   const groupedSessions = useMemo(() => groupSessionsByDay(sessions), [sessions]);
-  const historyDisabled = activeChild?.rules?.conversationHistoryEnabled === false;
   const selectionMode = selectedSessionIds.length > 0;
 
   function handleChildSelect(childId: string) {
+    bulkDeleteMutation.reset();
+    exportMutation.reset();
+    setBulkDeleteError(null);
+    setExportError(null);
     selectChild(childId);
     setSelectedSessionIds([]);
-    void router.replace(`/(tabs)/chat?childId=${encodeURIComponent(childId)}` as never);
+  }
+
+  function handleAddChild() {
+    void router.push('/(auth)/child-profile-wizard?source=parent-dashboard' as never);
+  }
+
+  function handleRefresh() {
+    void historyQuery.refetch();
   }
 
   function toggleSelection(sessionId: string) {
@@ -253,15 +295,27 @@ export default function ConversationHistoryScreen({
   }
 
   if (!children.length || !activeChild) {
+    if (!children.length) {
+      return (
+        <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
+          <ParentDashboardEmptyState
+            actionLabel="Add Child"
+            iconName="account-child-circle"
+            onAction={handleAddChild}
+            subtitle="Add your first child to get started."
+            title="Your parent dashboard is ready."
+          />
+        </SafeAreaView>
+      );
+    }
+
     return (
       <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
-        <View style={styles.feedbackState}>
-          <MaterialCommunityIcons color={Colors.primary} name="message-processing-outline" size={40} />
-          <Text style={styles.feedbackTitle}>No conversations yet</Text>
-          <Text style={styles.feedbackBody}>
-            Once a child starts chatting with the tutor, conversation history will appear here.
-          </Text>
-        </View>
+        <ParentDashboardErrorState
+          message="Try switching to another profile or refresh the history."
+          onRetry={handleRefresh}
+          title="We couldn't load this child"
+        />
       </SafeAreaView>
     );
   }
@@ -269,28 +323,30 @@ export default function ConversationHistoryScreen({
   if (historyQuery.isError || initialState === 'error') {
     return (
       <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
-        <View style={styles.feedbackState}>
-          <MaterialCommunityIcons color={Colors.errorText} name="alert-circle-outline" size={34} />
-          <Text style={styles.feedbackTitle}>Conversation history paused</Text>
-          <Text style={styles.feedbackBody}>{errorMessage}</Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Retry loading history"
-            onPress={() => {
-              void historyQuery.refetch();
-            }}
-            style={({ pressed }) => [styles.retryButton, pressed ? styles.pressed : null]}
-          >
-            <Text style={styles.retryLabel}>Retry</Text>
-          </Pressable>
-        </View>
+        <ParentDashboardErrorState
+          error={historyQuery.error}
+          message={initialState === 'error' ? errorMessage : undefined}
+          onRetry={handleRefresh}
+          title="Conversation history paused"
+        />
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.contentContainer}
+        refreshControl={
+          <RefreshControl
+            colors={[Colors.surface]}
+            onRefresh={handleRefresh}
+            refreshing={historyQuery.isFetching}
+            tintColor={Colors.primary}
+          />
+        }
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.heroWrap}>
           <View style={styles.heroCopy}>
             <Text style={styles.screenTitle}>Conversation History</Text>
@@ -305,8 +361,11 @@ export default function ConversationHistoryScreen({
           activeChildId={selectedChildId}
           profiles={children}
           getAvatarSource={getChildAvatarSource}
+          onAddChild={children.length < 5 ? handleAddChild : undefined}
           onSelectChild={handleChildSelect}
         />
+
+        {/* Part D audit: History owns the full conversation list; progress metrics and rule displays are intentionally excluded. */}
 
         <View style={styles.searchShell}>
           <MaterialCommunityIcons color={Colors.placeholder} name="magnify" size={20} />
@@ -387,32 +446,28 @@ export default function ConversationHistoryScreen({
         ) : null}
 
         {bulkDeleteError ? (
-          <View style={styles.errorCard}>
-            <MaterialCommunityIcons color={Colors.errorText} name="alert-circle-outline" size={18} />
-            <Text style={styles.errorCardText}>{bulkDeleteError}</Text>
-          </View>
-        ) : null}
-
-        {historyDisabled ? (
-          <View style={styles.infoCard}>
-            <MaterialCommunityIcons color={Colors.primary} name="shield-lock-outline" size={18} />
-            <Text style={styles.infoCardText}>
-              Conversation history is currently turned off for new sessions. Existing saved sessions still appear here.
-            </Text>
-          </View>
+          <ErrorCard
+            message={bulkDeleteError}
+            onRetry={() => {
+              setBulkDeleteError(null);
+              const variables = bulkDeleteMutation.variables;
+              if (variables) {
+                bulkDeleteMutation.mutate(variables);
+              }
+            }}
+            retryLabel="Try Again"
+            title="Delete failed"
+          />
         ) : null}
 
         {groupedSessions.length === 0 ? (
           <View style={styles.emptyCard}>
-            <MaterialCommunityIcons color={Colors.textSecondary} name="magnify-close" size={32} />
-            <Text style={styles.emptyTitle}>
-              {historyQuery.data?.totalCount ? 'No matching conversations' : 'No saved conversations yet'}
-            </Text>
-            <Text style={styles.emptyBody}>
-              {historyQuery.data?.totalCount
-                ? 'Try another search or switch the date range.'
-                : 'Once tutoring sessions are completed, they will show up here automatically.'}
-            </Text>
+            <ParentDashboardEmptyState
+              compact
+              iconName="magnify-close"
+              subtitle="Try changing the date range or filters."
+              title="No conversations in this period."
+            />
           </View>
         ) : (
           groupedSessions.map((group) => (
@@ -481,6 +536,40 @@ export default function ConversationHistoryScreen({
           <Text style={styles.privacyBody}>
             Search, flagged-only, and date filters are applied by the parent history endpoint.
           </Text>
+
+          {exportError ? (
+            <ErrorCard
+              message={exportError}
+              onRetry={() => {
+                setExportError(null);
+                exportMutation.mutate();
+              }}
+              retryLabel="Try Again"
+              title="Export failed"
+            />
+          ) : null}
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Export history data"
+            disabled={sessions.length === 0 || exportMutation.isPending}
+            onPress={() => exportMutation.mutate()}
+            style={({ pressed }) => [
+              styles.linkRow,
+              sessions.length === 0 || exportMutation.isPending ? styles.disabledSection : null,
+              pressed ? styles.pressed : null,
+            ]}
+          >
+            <View style={styles.inlineTitleRow}>
+              <MaterialCommunityIcons color={Colors.text} name="export-variant" size={18} />
+              <Text style={styles.inlineTitle}>Export history</Text>
+            </View>
+            {exportMutation.isPending ? (
+              <ActivityIndicator color={Colors.primary} size="small" />
+            ) : (
+              <Text style={styles.privacyLink}>{sessions.length} sessions</Text>
+            )}
+          </Pressable>
 
           <Pressable
             accessibilityRole="button"
@@ -751,6 +840,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.xs,
+  },
+  inlineTitle: {
+    ...Typography.bodySemiBold,
+    color: Colors.text,
   },
   destructiveLabel: {
     ...Typography.bodySemiBold,

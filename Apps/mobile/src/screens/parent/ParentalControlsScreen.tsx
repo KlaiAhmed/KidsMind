@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Alert,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Switch,
@@ -15,12 +16,10 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import * as Linking from 'expo-linking';
 
 import { Colors, Radii, Shadows, Spacing, Typography } from '@/constants/theme';
 import { toApiErrorMessage, useAuth } from '@/contexts/AuthContext';
 import {
-  exportHistory,
   getControlAudit,
   getNotificationPrefs,
   updateNotificationPrefs,
@@ -29,6 +28,12 @@ import { ContentPrivacyEditModal } from '@/src/components/parent/controls/Conten
 import { LearningEditModal } from '@/src/components/parent/controls/LearningEditModal';
 import { TimeLimitsEditModal } from '@/src/components/parent/controls/TimeLimitsEditModal';
 import { ParentChildSwitcher } from '@/src/components/parent/ParentChildSwitcher';
+import {
+  ErrorCard,
+  ParentDashboardEmptyState,
+  ParentDashboardErrorState,
+  SkeletonBlock,
+} from '@/src/components/parent/ParentDashboardStates';
 import { useParentDashboardChild } from '@/src/hooks/useParentDashboardChild';
 import {
   deriveTimeWindowFromWeekSchedule,
@@ -169,6 +174,16 @@ function summarizeSubjects(subjects: SubjectKey[]): string {
     : visibleSubjects.join(', ');
 }
 
+function ControlsSkeleton() {
+  return (
+    <ScrollView contentContainerStyle={styles.loadingContent} showsVerticalScrollIndicator={false}>
+      <SkeletonBlock style={styles.loadingCard} />
+      <SkeletonBlock style={styles.loadingCard} />
+      <SkeletonBlock style={styles.loadingCard} />
+    </ScrollView>
+  );
+}
+
 export default function ParentalControlsScreen({
   initialState,
   errorMessage = 'Controls could not be loaded right now.',
@@ -181,6 +196,7 @@ export default function ParentalControlsScreen({
     childDataLoading,
     childProfileStatus,
     deleteChildProfile,
+    refreshChildData,
   } = useAuth();
   const { children, activeChild, selectedChildId, selectChild, getChildAvatarSource } = useParentDashboardChild(
     typeof params.childId === 'string' ? params.childId : undefined,
@@ -190,7 +206,6 @@ export default function ParentalControlsScreen({
 
   const [activeModal, setActiveModal] = useState<'time' | 'learning' | 'content' | null>(null);
   const [notificationError, setNotificationError] = useState<string | null>(null);
-  const [exportError, setExportError] = useState<string | null>(null);
   const [auditExpanded, setAuditExpanded] = useState(false);
 
   const notificationPrefsQuery = useQuery({
@@ -201,9 +216,9 @@ export default function ParentalControlsScreen({
   });
 
   const auditQuery = useQuery({
-    queryKey: ['parent-dashboard', 'audit-log', user?.id],
-    queryFn: async () => getControlAudit(user!.id),
-    enabled: Boolean(user?.id),
+    queryKey: ['parent-dashboard', 'audit-log', user?.id, activeChild?.id],
+    queryFn: async () => getControlAudit(user!.id, { childId: activeChild!.id }),
+    enabled: Boolean(user?.id && activeChild?.id),
     staleTime: 5 * 60 * 1000,
   });
 
@@ -226,6 +241,7 @@ export default function ParentalControlsScreen({
       if (context?.queryKey) {
         queryClient.setQueryData(context.queryKey, nextPrefs);
       }
+      setNotificationError(null);
       await queryClient.invalidateQueries({ queryKey: ['parent-dashboard'] });
     },
     onError: (error, _input, context) => {
@@ -236,30 +252,24 @@ export default function ParentalControlsScreen({
     },
   });
 
-  const exportMutation = useMutation({
-    mutationFn: async () => {
-      const response = await exportHistory(user!.id, activeChild!.id);
-      if (!response.url) {
-        throw new Error('Export failed. Please try again.');
-      }
-
-      await Linking.openURL(response.url);
-      return response;
-    },
-    onMutate: () => {
-      setExportError(null);
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['parent-dashboard'] });
-    },
-    onError: (error) => {
-      setExportError(toApiErrorMessage(error) || 'Export failed. Please try again.');
-    },
-  });
-
   function handleChildSelect(childId: string) {
+    setActiveModal(null);
+    setNotificationError(null);
+    setAuditExpanded(false);
+    notificationMutation.reset();
     selectChild(childId);
-    void router.replace(`/(tabs)/profile?childId=${encodeURIComponent(childId)}` as never);
+  }
+
+  function handleAddChild() {
+    void router.push('/(auth)/child-profile-wizard?source=parent-dashboard' as never);
+  }
+
+  function handleRefresh() {
+    if (activeChild) {
+      void refreshChildData(activeChild.id);
+    }
+    void notificationPrefsQuery.refetch();
+    void auditQuery.refetch();
   }
 
   function confirmDeleteProfile() {
@@ -296,33 +306,33 @@ export default function ParentalControlsScreen({
   if (initialState === 'loading' || isChildDataResolving) {
     return (
       <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
-        <ScrollView contentContainerStyle={styles.loadingContent} showsVerticalScrollIndicator={false}>
-          <View style={styles.loadingCard} />
-          <View style={styles.loadingCard} />
-          <View style={styles.loadingCard} />
-        </ScrollView>
+        <ControlsSkeleton />
       </SafeAreaView>
     );
   }
 
-  if (!children.length || !activeChild) {
+  if (!children.length) {
     return (
       <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
-        <View style={styles.feedbackState}>
-          <MaterialCommunityIcons color={Colors.primary} name="account-child-circle" size={40} />
-          <Text style={styles.feedbackTitle}>Choose a child to manage settings</Text>
-          <Text style={styles.feedbackBody}>
-            Add or select a child profile from the overview dashboard to start managing safety boundaries.
-          </Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Back to overview"
-            onPress={() => router.push('/(tabs)' as never)}
-            style={({ pressed }) => [styles.retryButton, pressed ? styles.pressed : null]}
-          >
-            <Text style={styles.retryLabel}>Back to Overview</Text>
-          </Pressable>
-        </View>
+        <ParentDashboardEmptyState
+          actionLabel="Add Child"
+          iconName="account-child-circle"
+          onAction={handleAddChild}
+          subtitle="Add your first child to get started."
+          title="Your parent dashboard is ready."
+        />
+      </SafeAreaView>
+    );
+  }
+
+  if (!activeChild) {
+    return (
+      <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
+        <ParentDashboardErrorState
+          message="Try switching to another profile or refresh the controls."
+          onRetry={handleRefresh}
+          title="We couldn't load this child"
+        />
       </SafeAreaView>
     );
   }
@@ -330,16 +340,31 @@ export default function ParentalControlsScreen({
   if (initialState === 'error') {
     return (
       <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
-        <View style={styles.feedbackState}>
-          <MaterialCommunityIcons color={Colors.errorText} name="alert-circle-outline" size={34} />
-          <Text style={styles.feedbackTitle}>Parent controls paused</Text>
-          <Text style={styles.feedbackBody}>{errorMessage}</Text>
-        </View>
+        <ParentDashboardErrorState
+          message={errorMessage}
+          onRetry={handleRefresh}
+          title="Parent controls paused"
+        />
       </SafeAreaView>
     );
   }
 
   const rules = activeChild.rules;
+  const childName = activeChild.nickname ?? activeChild.name;
+
+  if (!rules) {
+    return (
+      <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
+        <ParentDashboardErrorState
+          message="Tap to retry."
+          onRetry={handleRefresh}
+          retryLabel="Try Again"
+          title={`We couldn't load ${childName}'s profile.`}
+        />
+      </SafeAreaView>
+    );
+  }
+
   const weekSchedule = rules?.weekSchedule ?? null;
   const derivedWindow = weekSchedule
     ? deriveTimeWindowFromWeekSchedule(weekSchedule)
@@ -362,7 +387,18 @@ export default function ParentalControlsScreen({
 
   return (
     <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.contentContainer}
+        refreshControl={
+          <RefreshControl
+            colors={[Colors.surface]}
+            onRefresh={handleRefresh}
+            refreshing={notificationPrefsQuery.isFetching || auditQuery.isFetching || childDataLoading}
+            tintColor={Colors.primary}
+          />
+        }
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.heroCard}>
           <Pressable
             accessibilityRole="button"
@@ -393,9 +429,11 @@ export default function ParentalControlsScreen({
           activeChildId={selectedChildId}
           profiles={children}
           getAvatarSource={getChildAvatarSource}
+          onAddChild={children.length < 5 ? handleAddChild : undefined}
           onSelectChild={handleChildSelect}
         />
 
+        {/* Part D audit: Controls is the canonical home for rules, limits, profile edits, audit, and privacy actions. */}
         <View style={styles.sectionBlock}>
           <SectionHeader
             iconName="clock-outline"
@@ -448,16 +486,36 @@ export default function ParentalControlsScreen({
         <View style={styles.sectionBlock}>
           <SectionHeader iconName="bell-outline" title="Alerts" />
 
+          {notificationError ? (
+            <ErrorCard
+              message={notificationError}
+              onRetry={() => {
+                setNotificationError(null);
+                const variables = notificationMutation.variables;
+                if (variables) {
+                  notificationMutation.mutate(variables);
+                } else {
+                  void notificationPrefsQuery.refetch();
+                }
+              }}
+              retryLabel="Try Again"
+              title="Alert update failed"
+            />
+          ) : null}
+
           {notificationPrefsQuery.isPending ? (
             <View style={styles.alertRow}>
-              <View style={styles.alertSkeletonCard} />
-              <View style={styles.alertSkeletonCard} />
+              <SkeletonBlock style={styles.alertSkeletonCard} />
+              <SkeletonBlock style={styles.alertSkeletonCard} />
             </View>
           ) : notificationPrefsQuery.isError ? (
-            <View style={styles.errorCard}>
-              <MaterialCommunityIcons color={Colors.errorText} name="alert-circle-outline" size={18} />
-              <Text style={styles.errorCardText}>{toApiErrorMessage(notificationPrefsQuery.error)}</Text>
-            </View>
+            <ErrorCard
+              error={notificationPrefsQuery.error}
+              onRetry={() => {
+                void notificationPrefsQuery.refetch();
+              }}
+              title="Alert preferences unavailable"
+            />
           ) : (
             <View style={styles.alertRow}>
               {ALERT_PREFERENCES.map((alert) => {
@@ -485,9 +543,6 @@ export default function ParentalControlsScreen({
             </View>
           )}
 
-          {notificationError ? (
-            <Text style={styles.inlineErrorText}>{notificationError}</Text>
-          ) : null}
         </View>
 
         <View style={styles.sectionBlock}>
@@ -509,43 +564,6 @@ export default function ParentalControlsScreen({
 
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Open delete history controls"
-              onPress={() => router.push(`/(tabs)/chat?childId=${encodeURIComponent(activeChild.id)}` as never)}
-              style={({ pressed }) => [styles.linkRow, pressed ? styles.pressed : null]}
-            >
-              <View style={styles.inlineTitleRow}>
-                <MaterialCommunityIcons color={Colors.errorText} name="trash-can-outline" size={18} />
-                <Text style={styles.inlineTitle}>Delete all history</Text>
-              </View>
-              <MaterialCommunityIcons color={Colors.errorText} name="chevron-right" size={20} />
-            </Pressable>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Export history data"
-              disabled={exportMutation.isPending}
-              onPress={() => exportMutation.mutate()}
-              style={({ pressed }) => [
-                styles.linkRow,
-                exportMutation.isPending ? styles.disabledSection : null,
-                pressed ? styles.pressed : null,
-              ]}
-            >
-              <View style={styles.inlineTitleRow}>
-                <MaterialCommunityIcons color={Colors.text} name="export-variant" size={18} />
-                <Text style={styles.inlineTitle}>Export data</Text>
-              </View>
-              {exportMutation.isPending ? (
-                <ActivityIndicator color={Colors.primary} size="small" />
-              ) : (
-                <MaterialCommunityIcons color={Colors.textSecondary} name="chevron-right" size={20} />
-              )}
-            </Pressable>
-
-            {exportError ? <Text style={styles.inlineErrorText}>{exportError}</Text> : null}
-
-            <Pressable
-              accessibilityRole="button"
               accessibilityLabel="Delete child profile"
               onPress={confirmDeleteProfile}
               style={({ pressed }) => [styles.linkRow, pressed ? styles.pressed : null]}
@@ -562,23 +580,18 @@ export default function ParentalControlsScreen({
             <Text style={styles.auditBadgeLabel}>Control Audit</Text>
             {auditQuery.isPending ? (
               <View style={styles.auditList}>
-                <View style={styles.auditSkeletonRow} />
-                <View style={styles.auditSkeletonRow} />
-                <View style={styles.auditSkeletonRow} />
+                <SkeletonBlock style={styles.auditSkeletonRow} />
+                <SkeletonBlock style={styles.auditSkeletonRow} />
+                <SkeletonBlock style={styles.auditSkeletonRow} />
               </View>
             ) : auditQuery.isError ? (
-              <View style={styles.auditErrorState}>
-                <Text style={styles.auditBody}>{toApiErrorMessage(auditQuery.error)}</Text>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Retry audit log"
-                  onPress={() => {
-                    void auditQuery.refetch();
-                  }}
-                >
-                  <Text style={styles.auditLink}>Retry</Text>
-                </Pressable>
-              </View>
+              <ErrorCard
+                error={auditQuery.error}
+                onRetry={() => {
+                  void auditQuery.refetch();
+                }}
+                title="Control audit unavailable"
+              />
             ) : auditEntries.length === 0 ? (
               <Text style={styles.auditBody}>No audit entries yet</Text>
             ) : (

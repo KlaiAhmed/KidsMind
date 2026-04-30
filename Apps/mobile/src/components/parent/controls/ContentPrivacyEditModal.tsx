@@ -13,13 +13,13 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { z } from 'zod/v4';
 
 import { LabeledToggleRow } from '@/components/ui/LabeledToggleRow';
 import { Colors, Gradients, Radii, Shadows, Sizing, Spacing, Typography } from '@/constants/theme';
 import { toApiErrorMessage, useAuth } from '@/contexts/AuthContext';
 import { updateChildRules } from '@/services/childService';
+import { ErrorCard } from '@/src/components/parent/ParentDashboardStates';
 import type { ChildProfile } from '@/types/child';
 
 const contentPrivacySchema = z.object({
@@ -44,18 +44,6 @@ function buildDefaultValues(child: ChildProfile): ContentPrivacyFormValues {
   };
 }
 
-function ErrorCard({ message, onDismiss }: { message: string; onDismiss: () => void }) {
-  return (
-    <View style={styles.errorCard}>
-      <MaterialCommunityIcons color={Colors.errorText} name="alert-circle-outline" size={18} />
-      <Text style={styles.errorCardText}>{message}</Text>
-      <Pressable accessibilityRole="button" accessibilityLabel="Dismiss error" onPress={onDismiss}>
-        <MaterialCommunityIcons color={Colors.errorText} name="close" size={18} />
-      </Pressable>
-    </View>
-  );
-}
-
 export function ContentPrivacyEditModal({ visible, child, onClose }: ContentPrivacyEditModalProps) {
   const queryClient = useQueryClient();
   const { updateChildProfile } = useAuth();
@@ -67,7 +55,7 @@ export function ContentPrivacyEditModal({ visible, child, onClose }: ContentPriv
     mode: 'onChange',
   });
 
-  const { control, handleSubmit, reset } = methods;
+  const { control, getValues, handleSubmit, reset } = methods;
 
   useEffect(() => {
     if (visible) {
@@ -117,7 +105,17 @@ export function ContentPrivacyEditModal({ visible, child, onClose }: ContentPriv
         </View>
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          {modalError ? <ErrorCard message={modalError} onDismiss={() => setModalError(null)} /> : null}
+          {modalError ? (
+            <ErrorCard
+              message={modalError}
+              onRetry={() => {
+                setModalError(null);
+                saveMutation.mutate(getValues());
+              }}
+              retryLabel="Try Again"
+              title="Content update failed"
+            />
+          ) : null}
 
           <View pointerEvents={isBusy ? 'none' : 'auto'} style={styles.card}>
             <Controller

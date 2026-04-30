@@ -33,7 +33,9 @@ export function ParentChildSwitcher({
           />
         ))}
 
-        {onAddChild ? <ChildAvatarChip label="Add" onPress={onAddChild} variant="add" /> : null}
+        {onAddChild && profiles.length < 5 ? (
+          <ChildAvatarChip label="Add" onPress={onAddChild} variant="add" />
+        ) : null}
       </ScrollView>
     </View>
   );
