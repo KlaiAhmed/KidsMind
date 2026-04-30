@@ -1,4 +1,4 @@
-import { Redirect, Tabs, useLocalSearchParams, useRouter } from 'expo-router';
+import { Redirect, Tabs, useLocalSearchParams, usePathname, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -53,6 +53,9 @@ const hiddenBadgesScreenOptions = {
 
 export default function ChildTabLayout() {
   const router = useRouter();
+  const pathname = usePathname();
+  const showPinGate = !pathname.includes('/chat');
+
   const {
     isLoading,
     isAuthenticated,
@@ -208,29 +211,29 @@ export default function ChildTabLayout() {
           />
         )}
       >
-        <Tabs.Screen
-          name="index"
-          options={getLockedChildTabOptions('Home')}
-        />
-        <Tabs.Screen
-          name="explore"
-          options={getLockedChildTabOptions('Learn')}
-        />
-        <Tabs.Screen
-          name="profile"
-          options={getLockedChildTabOptions('Profile')}
-        />
-        <Tabs.Screen
-          name="chat"
-          options={getLockedChildTabOptions('Qubie')}
-        />
-        <Tabs.Screen
-          name="badges"
-          options={hiddenBadgesScreenOptions}
-        />
-      </Tabs>
+<Tabs.Screen
+        name="index"
+        options={getLockedChildTabOptions('Home')}
+      />
+      <Tabs.Screen
+        name="explore"
+        options={getLockedChildTabOptions('Learn')}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={getLockedChildTabOptions('Profile')}
+      />
+      <Tabs.Screen
+        name="chat"
+        options={getLockedChildTabOptions('Qubie')}
+      />
+      <Tabs.Screen
+        name="badges"
+        options={hiddenBadgesScreenOptions}
+      />
+    </Tabs>
 
-      <PINGateHeaderButton />
+    {showPinGate && <PINGateHeaderButton />}
 
       <ParentPINGate
         onCancel={handleParentPinCancel}
