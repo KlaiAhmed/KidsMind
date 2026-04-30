@@ -5,7 +5,7 @@ import time
 from collections.abc import Awaitable, Callable
 from typing import Any, TypeVar
 
-from utils.logger import logger
+from utils.shared.logger import logger
 
 
 F = TypeVar("F", bound=Callable[..., Awaitable[Any]])

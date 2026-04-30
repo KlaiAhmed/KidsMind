@@ -9,7 +9,7 @@ import math
 from fastapi import HTTPException
 
 from core.cache_client import get_cache_client
-from utils.logger import logger
+from utils.shared.logger import logger
 
 ACCESS_TOKEN_BLOCKLIST_PREFIX = "auth:blocklist:access:"
 

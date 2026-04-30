@@ -10,8 +10,8 @@ Domain: Children / Badges / Gamification
 import json
 from enum import Enum
 
-from models.child_gamification_stats import ChildGamificationStats
-from utils.logger import logger
+from models.gamification.child_gamification_stats import ChildGamificationStats
+from utils.shared.logger import logger
 
 
 class BadgeConditionType(str, Enum):

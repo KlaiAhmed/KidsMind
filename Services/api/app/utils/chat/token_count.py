@@ -4,7 +4,7 @@ import tiktoken
 from langchain_core.messages import BaseMessage
 
 from core.config import settings
-from utils.logger import logger
+from utils.shared.logger import logger
 
 _DEFAULT_ENCODING = "cl100k_base"
 _DEFAULT_CHARS_PER_TOKEN = 4

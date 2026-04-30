@@ -1,6 +1,6 @@
 from fastapi import HTTPException
-from utils.token_count import get_token_count
-from utils.logger import logger
+from utils.chat.token_count import get_token_count
+from utils.shared.logger import logger
 
 VOICE_TEXT_TOKEN_LIMIT = 300
 DEFAULT_TEXT_TOKEN_LIMIT = 600

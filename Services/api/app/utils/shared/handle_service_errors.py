@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import HTTPException
-from utils.logger import logger
+from utils.shared.logger import logger
 
 
 @asynccontextmanager
