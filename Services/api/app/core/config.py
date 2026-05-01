@@ -11,8 +11,36 @@ Domain: Configuration
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Literal, Optional, Set
+from urllib.parse import urlparse
 
 from utils.shared.logger import logger
+
+_PLACEHOLDER_URL_VALUES = {"url_here", "placeholder", "changeme", "todo", "tbd", "n/a"}
+
+
+def _validate_url_scheme(v: str | None, field_name: str, *, required: bool = False) -> str | None:
+    if v is None:
+        if required:
+            raise ValueError(f"{field_name} is required")
+        return None
+    v = v.strip()
+    if not v:
+        if required:
+            raise ValueError(f"{field_name} cannot be empty")
+        return None
+    if v.lower() in _PLACEHOLDER_URL_VALUES:
+        raise ValueError(
+            f"{field_name} contains a placeholder value '{v}' — "
+            "set a valid URL or leave unset for dev fallback"
+        )
+    parsed = urlparse(v)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(
+            f"{field_name} must start with http:// or https://, got '{v}'"
+        )
+    if not parsed.netloc:
+        raise ValueError(f"{field_name} must contain a valid host, got '{v}'")
+    return v
 
 
 def _validate_explicit_dev_mode(is_prod: bool, explicit_dev_mode: str, service_name: str) -> None:
@@ -54,7 +82,6 @@ class Settings(BaseSettings):
     SERVICE_NAME: str = "KidsMind API Service"
 
     # App State
-    ENV: str = "development"
     IS_PROD: bool = True
     EXPLICIT_DEV_MODE: str = "false"
 
@@ -97,8 +124,7 @@ class Settings(BaseSettings):
         default={"3-6": 300, "7-11": 600, "12-15": 1000},
         description="Max LLM response tokens per age group",
     )
-    AI_INVOKE_TIMEOUT_SECONDS: int = 70
-    AI_QUIZ_TIMEOUT_SECONDS: int = 30
+    AI_QUIZ_TIMEOUT_SECONDS: int = 90
 
     # Production moderation (OpenAI)
     GUARD_API_KEY: Optional[str] = None
@@ -116,8 +142,6 @@ class Settings(BaseSettings):
 
     # Conversation HISTORY settings (persisted in Postgres)
     # HISTORY = long-term storage, inactive, for retrieval and analytics
-    MAX_HISTORY_MESSAGES: int = 40
-    MAX_LOADED_HISTORY_MESSAGES: int = 10
 
     # Session MEMORY settings (active in Redis, injected into LLM context)
     # MEMORY = active context window, what the LLM "sees" during conversation
@@ -143,24 +167,6 @@ class Settings(BaseSettings):
 
     # Generic media upload configuration (avatars, attachments): smaller limit
     MEDIA_MAX_IMAGE_SIZE_BYTES: int = Field(default=10 * 1024 * 1024)
-    MEDIA_MAX_AUDIO_SIZE_BYTES: int = Field(default=10 * 1024 * 1024)  # 10 MiB
-    MEDIA_ALLOWED_IMAGE_CONTENT_TYPES: Set[str] = {
-        "image/webp",
-        "image/png",
-        "image/jpeg",
-    }
-    MEDIA_ALLOWED_AUDIO_CONTENT_TYPES: Set[str] = {
-        "audio/mpeg",
-        "audio/mp3",
-        "audio/wav",
-        "audio/x-wav",
-        "audio/webm",
-        "audio/ogg",
-        "audio/mp4",
-        "audio/x-m4a",
-        "audio/m4a",
-        "audio/flac",
-    }
 
     # Credentials :
     # Database credentials
@@ -186,9 +192,6 @@ class Settings(BaseSettings):
 
     # Legacy global limits kept for backward compatibility during migration.
     RATE_LIMIT: str = ""
-    AUTH_LOGIN_RATE_LIMIT: str = "5/15minute"
-    AUTH_REGISTER_RATE_LIMIT: str = "3/hour"
-    AUTH_REFRESH_RATE_LIMIT: str = "10/minute"
 
     # Tier 0
     RL_T0_IP_1M: int = 600
@@ -247,7 +250,6 @@ class Settings(BaseSettings):
     LOGIN_LOCKOUT_MINUTES: int = 15
     MOBILE_MAX_ACTIVE_SESSIONS: int = 10
     APP_ATTESTATION_ENABLED: bool = False
-    APP_ATTESTATION_STRICT: bool = False
     SERVICE_TOKEN: str | None = None
     DUMMY_HASH: str 
     SECRET_KEY: str | None = None
@@ -285,6 +287,26 @@ class Settings(BaseSettings):
         if not v.strip():
             raise ValueError("SECRET_KEY cannot be empty")
         return v
+
+    @field_validator("DEV_GUARD_API_URL")
+    @classmethod
+    def validate_dev_guard_url(cls, v: str | None) -> str | None:
+        return _validate_url_scheme(v, "DEV_GUARD_API_URL", required=False)
+
+    @field_validator("GUARD_API_URL")
+    @classmethod
+    def validate_guard_url(cls, v: str | None) -> str | None:
+        return _validate_url_scheme(v, "GUARD_API_URL", required=False)
+
+    @field_validator("BASE_URL")
+    @classmethod
+    def validate_base_url(cls, v: str) -> str:
+        return _validate_url_scheme(v, "BASE_URL", required=True)
+
+    @field_validator("STT_SERVICE_URL")
+    @classmethod
+    def validate_stt_url(cls, v: str) -> str:
+        return _validate_url_scheme(v, "STT_SERVICE_URL", required=True)
 
     @field_validator("DEFAULT_LANGUAGE")
     @classmethod
@@ -335,8 +357,31 @@ class Settings(BaseSettings):
             if not all([self.DEV_GUARD_API_KEY, self.DEV_GUARD_API_URL, self.DEV_API_USER]):
                 import logging as _logging
                 _logging.getLogger(__name__).warning(
-                    "DEV_GUARD credentials not fully configured; dev moderation may fail"
+                    "DEV_GUARD credentials not fully configured; "
+                    "dev moderation will be skipped until credentials are set"
                 )
+
+        max_llm_duration = self.LLM_TIMEOUT_SECONDS * (self.LLM_MAX_RETRIES + 1)
+        if self.AI_QUIZ_TIMEOUT_SECONDS > max_llm_duration:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "AI_QUIZ_TIMEOUT_SECONDS (%d) exceeds maximum possible LLM duration (%d = "
+                "LLM_TIMEOUT_SECONDS %d * (LLM_MAX_RETRIES %d + 1)); "
+                "quiz timeout will never trigger — consider aligning these values",
+                self.AI_QUIZ_TIMEOUT_SECONDS,
+                max_llm_duration,
+                self.LLM_TIMEOUT_SECONDS,
+                self.LLM_MAX_RETRIES,
+            )
+        if self.AI_QUIZ_TIMEOUT_SECONDS < self.LLM_TIMEOUT_SECONDS:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "AI_QUIZ_TIMEOUT_SECONDS (%d) is less than LLM_TIMEOUT_SECONDS (%d); "
+                "quiz will always timeout before a single LLM attempt completes — "
+                "increase AI_QUIZ_TIMEOUT_SECONDS or decrease LLM_TIMEOUT_SECONDS",
+                self.AI_QUIZ_TIMEOUT_SECONDS,
+                self.LLM_TIMEOUT_SECONDS,
+            )
 
         return self
 
