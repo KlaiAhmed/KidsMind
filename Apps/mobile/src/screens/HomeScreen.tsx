@@ -1,10 +1,14 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Colors } from '@/constants/theme';
+import * as Haptics from 'expo-haptics';
 
+import { Colors } from '@/constants/theme';
 import { useChildProfile } from '@/hooks/useChildProfile';
+import { useChildDashboardOverview } from '@/src/hooks/useChildDashboardOverview';
+import { useChildDashboardProgress } from '@/src/hooks/useChildDashboardProgress';
+import { AppRefreshControl } from '@/src/components/AppRefreshControl';
 import { BadgeNotification } from '@/src/components/BadgeNotification';
 import { FeaturedLesson } from '@/src/components/FeaturedLesson';
 import { ProgressCard } from '@/src/components/ProgressCard';
@@ -17,28 +21,52 @@ import { buildSubjectGridItems } from '@/src/utils/profilePresentation';
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { profile, getAvatarById } = useChildProfile();
+  const { profile, getAvatarById, refreshChildData } = useChildProfile();
+  const overviewQuery = useChildDashboardOverview();
+  const progressQuery = useChildDashboardProgress();
   const [showBadgeBanner, setShowBadgeBanner] = useState(true);
 
   const childTabSceneBottomPadding = getChildTabSceneBottomPadding(insets.bottom);
 
   const childName = profile?.nickname?.trim() || profile?.name?.trim() || 'Little Explorer';
   const avatarSource = getAvatarById(profile?.avatarId).asset;
-  const currentXP = profile?.xp ?? 0;
-  const level = profile?.level ?? 1;
+  const currentXP = overviewQuery.data?.xp ?? profile?.xp ?? 0;
+  const level = overviewQuery.data?.level ?? profile?.level ?? 1;
   const maxXP = profile?.xpToNextLevel ?? 100;
-  const streakDays = profile?.streakDays ?? 0;
+  const streakDays = overviewQuery.data?.streakDays ?? profile?.streakDays ?? 0;
 
   const subjects = buildSubjectGridItems(profile?.subjectIds ?? []);
+
+  const isRefreshing = overviewQuery.isRefetching || progressQuery.isRefetching;
+
+  const handleRefresh = useCallback(() => {
+    const refreshes: Promise<unknown>[] = [
+      overviewQuery.refetch(),
+      progressQuery.refetch(),
+    ];
+
+    if (profile?.id) {
+      refreshes.push(refreshChildData(profile.id));
+    }
+
+    void Promise.all(refreshes).then(() => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+    });
+  }, [overviewQuery, progressQuery, profile?.id, refreshChildData]);
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <ScrollView
         contentContainerStyle={[styles.contentContainer, { paddingBottom: childTabSceneBottomPadding }]}
+        refreshControl={
+          <AppRefreshControl
+            onRefresh={handleRefresh}
+            refreshing={isRefreshing}
+          />
+        }
         showsVerticalScrollIndicator={false}
         style={styles.scrollView}
       >
-        {/* Child Space Header with parent access controls */}
         <ChildSpaceHeader
           avatarSource={avatarSource}
           childName={childName}
@@ -53,7 +81,6 @@ export default function HomeScreen() {
         <FeaturedLesson
           category="SCIENCE • SPACE"
           description="You're halfway through! Discover why Saturn has those beautiful rings today."
-          // SECURITY: Child lesson chat remains inside child tabs; parent chat history is PIN-gated.
           onTalkToKidsMind={() => router.push('/(child-tabs)/chat' as never)}
           title="Solar Systems"
         />

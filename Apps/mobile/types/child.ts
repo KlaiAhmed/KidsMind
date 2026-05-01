@@ -80,6 +80,9 @@ export interface ChildProfile {
   xpToNextLevel: number;
   level: number;
   streakDays: number;
+  longestStreak?: number;
+  totalXpEarned?: number;
+  subjectsExplored?: string[];
   dailyGoalMinutes: number;
   dailyCompletedMinutes: number;
   todayUsageSeconds: number;
@@ -88,6 +91,40 @@ export interface ChildProfile {
   totalExercisesCompleted: number;
   totalBadgesEarned: number;
   isPaused: boolean;
+}
+
+export interface ChildDashboardOverview {
+  xp: number;
+  level: number;
+  streakDays: number;
+  totalSessions: number;
+  totalMessages: number;
+}
+
+export interface ChildDashboardWeeklyInsight {
+  summary: string;
+  topSubject: string | null;
+  engagementLevel: string;
+}
+
+export interface ChildDashboardSubjectMastery {
+  subject: string;
+  sessions: number;
+  messages: number;
+  xp: number;
+}
+
+export interface ChildDashboardDailyUsage {
+  date: string;
+  sessions: number;
+  messages: number;
+  xpGained: number;
+}
+
+export interface ChildDashboardProgress {
+  dailyUsage: ChildDashboardDailyUsage[];
+  subjectMastery: ChildDashboardSubjectMastery[];
+  weeklyInsight: ChildDashboardWeeklyInsight | null;
 }
 
 export interface Subject {
@@ -239,10 +276,14 @@ export interface BulkDeleteResult {
 
 export interface ExportResponse {
   childId: string;
-  url: string | null;
+  downloadUrl: string | null;
   exportFormat?: string;
   totalSessions?: number;
   totalMessages?: number;
+}
+
+export interface HistoryExportResult {
+  downloadUrl: string | null;
 }
 
 export interface ChildPauseState {

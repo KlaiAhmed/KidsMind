@@ -1,12 +1,16 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 
 import { useBadges } from '@/hooks/useBadges';
 import { useChildProfile } from '@/hooks/useChildProfile';
 import { useSubjects } from '@/hooks/useSubjects';
+import { useChildDashboardOverview } from '@/src/hooks/useChildDashboardOverview';
+import { useChildDashboardProgress } from '@/src/hooks/useChildDashboardProgress';
+import { AppRefreshControl } from '@/src/components/AppRefreshControl';
 import { ProfileHero } from '@/src/components/profile/ProfileHero';
 import { RecentBadges } from '@/src/components/profile/RecentBadges';
 import { SubjectProgress } from '@/src/components/profile/SubjectProgress';
@@ -33,6 +37,7 @@ export default function ProfileScreen() {
     getAvatarById,
     isLoading: isProfileLoading,
     error: profileError,
+    refreshChildData,
   } = useChildProfile();
   const {
     selectedSubjects,
@@ -43,45 +48,52 @@ export default function ProfileScreen() {
   const {
     earnedBadges,
     isLoading: badgesLoading,
+    refresh: refreshBadges,
   } = useBadges();
   const { activeChild, getChildAvatarSource } = useParentDashboardChild();
+  const overviewQuery = useChildDashboardOverview();
+  const progressQuery = useChildDashboardProgress();
 
   const activeProfile = activeChild ?? profile;
   const displayName = activeProfile?.nickname?.trim() || activeProfile?.name?.trim() || '';
   const fallbackAvatarSource = getAvatarById(activeProfile?.avatarId ?? defaultAvatarId).asset;
   const avatarSource = activeProfile ? getChildAvatarSource(activeProfile) : fallbackAvatarSource;
-  const levelIdentity = resolveLevelIdentity(activeProfile?.xp ?? 0);
+  const effectiveXp = overviewQuery.data?.xp ?? activeProfile?.xp ?? 0;
+  const levelIdentity = resolveLevelIdentity(effectiveXp);
 
   const subjectCards = useMemo(
     () => buildSubjectPresentation(selectedSubjects, allSubjects),
     [allSubjects, selectedSubjects],
   );
 
+  const dashboardWeeklyInsight = progressQuery.data?.weeklyInsight?.summary ?? null;
+
   const insightText = useMemo(
     () =>
-      buildWeeklyInsight({
-        childName: displayName || 'Explorer',
-        levelTitle: levelIdentity.title,
-        subjects: subjectCards,
-        streakDays: activeProfile?.streakDays ?? 0,
-        exerciseCount: activeProfile?.totalExercisesCompleted ?? 0,
-      }),
+    dashboardWeeklyInsight ?? buildWeeklyInsight({
+      childName: displayName || 'Explorer',
+      levelTitle: levelIdentity.title,
+      subjects: subjectCards,
+      streakDays: overviewQuery.data?.streakDays ?? activeProfile?.streakDays ?? 0,
+      exerciseCount: activeProfile?.totalExercisesCompleted ?? 0,
+    }),
     [
       activeProfile?.streakDays,
       activeProfile?.totalExercisesCompleted,
+      overviewQuery.data?.streakDays,
+      dashboardWeeklyInsight,
       displayName,
       levelIdentity.title,
       subjectCards,
     ],
   );
 
-  // SECURITY: Child profile shortcuts stay in child tabs; parent controls are not reachable here.
   const statCards = useMemo(
     () => [
       {
         iconName: 'star-four-points' as const,
         iconColor: ProfileColors.statPurple,
-        value: formatMetric(activeProfile?.xp ?? 0),
+        value: formatMetric(effectiveXp),
         label: 'TOTAL XP',
         onPress: () => router.push('/(child-tabs)/explore' as never),
       },
@@ -105,7 +117,7 @@ export default function ProfileScreen() {
       {
         iconName: 'fire' as const,
         iconColor: ProfileColors.statRed,
-        value: formatMetric(activeProfile?.streakDays ?? 0),
+        value: formatMetric(overviewQuery.data?.streakDays ?? activeProfile?.streakDays ?? 0),
         label: 'DAY STREAK',
         onPress: () => router.push('/(child-tabs)' as never),
       },
@@ -114,7 +126,8 @@ export default function ProfileScreen() {
       activeProfile?.streakDays,
       activeProfile?.totalBadgesEarned,
       activeProfile?.totalExercisesCompleted,
-      activeProfile?.xp,
+      overviewQuery.data?.streakDays,
+      effectiveXp,
       earnedBadges.length,
       router,
     ],
@@ -122,24 +135,24 @@ export default function ProfileScreen() {
 
   const recentBadges = useMemo(
     () =>
-      [...earnedBadges]
-        .sort((left, right) => {
-          const leftTime = left.earnedAt ? new Date(left.earnedAt).getTime() : 0;
-          const rightTime = right.earnedAt ? new Date(right.earnedAt).getTime() : 0;
-          return rightTime - leftTime;
-        })
-        .slice(0, 6)
-        .map((badge, index) => {
-          const visual = resolveBadgePresentation(badge, index);
+    [...earnedBadges]
+      .sort((left, right) => {
+        const leftTime = left.earnedAt ? new Date(left.earnedAt).getTime() : 0;
+        const rightTime = right.earnedAt ? new Date(right.earnedAt).getTime() : 0;
+        return rightTime - leftTime;
+      })
+      .slice(0, 6)
+      .map((badge, index) => {
+        const visual = resolveBadgePresentation(badge, index);
 
-          return {
-            label: badge.name,
-            iconName: visual.iconName,
-            backgroundColor: visual.backgroundColor,
-            iconColor: visual.iconColor,
-            onPress: () => router.push('/(child-tabs)/badges' as never),
-          };
-        }),
+        return {
+          label: badge.name,
+          iconName: visual.iconName,
+          backgroundColor: visual.backgroundColor,
+          iconColor: visual.iconColor,
+          onPress: () => router.push('/(child-tabs)/badges' as never),
+        };
+      }),
     [earnedBadges, router],
   );
 
@@ -151,17 +164,41 @@ export default function ProfileScreen() {
       ? 'We could not refresh this week\'s insight right now. Keep learning and check back soon.'
       : null;
 
+  const isRefreshing = overviewQuery.isRefetching || progressQuery.isRefetching;
+
+  const handleRefresh = useCallback(() => {
+    const refreshes: Promise<unknown>[] = [
+      overviewQuery.refetch(),
+      progressQuery.refetch(),
+      refreshBadges(),
+    ];
+
+    if (activeProfile?.id) {
+      refreshes.push(refreshChildData(activeProfile.id));
+    }
+
+    void Promise.all(refreshes).then(() => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+    });
+  }, [overviewQuery, progressQuery, refreshBadges, activeProfile?.id, refreshChildData]);
+
   return (
-    <View style={styles.screen}>
+    <SafeAreaView edges={['top']} style={styles.screen}>
       <StatusBar style="light" />
 
       <ScrollView
         contentContainerStyle={styles.contentContainer}
+        refreshControl={
+          <AppRefreshControl
+            onRefresh={handleRefresh}
+            refreshing={isRefreshing}
+          />
+        }
         showsVerticalScrollIndicator={false}
         style={styles.scrollView}
       >
-      <View style={[styles.heroShell, { paddingTop: insets.top }]}>
-        <ProfileHero
+        <View style={[styles.heroShell, { paddingTop: insets.top }]}>
+          <ProfileHero
             avatarSource={avatarSource}
             level={activeProfile?.level ?? 1}
             loading={heroLoading}
@@ -179,13 +216,13 @@ export default function ProfileScreen() {
           onViewAll={() => router.push('/(child-tabs)/badges' as never)}
         />
 
-        <WeeklyInsight
-          errorMessage={insightErrorMessage}
-          loading={insightLoading}
-          message={insightText}
-        />
-      </ScrollView>
-    </View>
+<WeeklyInsight
+      errorMessage={insightErrorMessage}
+      loading={insightLoading}
+      message={insightText}
+    />
+  </ScrollView>
+  </SafeAreaView>
   );
 }
 
