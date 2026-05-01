@@ -36,6 +36,7 @@ from schemas.child.child_profile_schema import (
 )
 from schemas.media.media_schema import AvatarResponse
 from utils.child.child_profile_logic import derive_student_profile_fields
+from utils.child.subject_helpers import extract_unique_subjects
 from utils.auth.manage_pwd import hash_password
 
 
@@ -102,22 +103,15 @@ class ChildProfileService:
 
     @staticmethod
     def _extract_unique_subjects(
-        items: Sequence[ChildAllowedSubjectIn | AccessWindowSubjectIn],
+        items: Sequence[ChildAllowedSubjectIn | AccessWindowSubjectIn | dict],
     ) -> list[str]:
-        seen: set[str] = set()
-        ordered_subjects: list[str] = []
-        for item in items:
-            if item.subject in seen:
-                continue
-            seen.add(item.subject)
-            ordered_subjects.append(item.subject)
-        return ordered_subjects
+        return extract_unique_subjects(items)
 
     def _replace_allowed_subjects_rows(
         self,
         *,
         child_profile_id: UUID,
-        allowed_subjects: Sequence[ChildAllowedSubjectIn],
+        allowed_subjects: Sequence[ChildAllowedSubjectIn | dict],
     ) -> None:
         self.db.execute(
             delete(ChildAllowedSubject).where(ChildAllowedSubject.child_profile_id == child_profile_id)
@@ -513,8 +507,8 @@ class ChildProfileService:
 
         update_data = payload.model_dump(exclude_unset=True)
         parent_pin = update_data.pop("parent_pin", None)
-        allowed_subjects_payload = update_data.pop("allowed_subjects", None)
-        week_schedule_payload = update_data.pop("week_schedule", None)
+        update_data.pop("allowed_subjects", None)
+        update_data.pop("week_schedule", None)
 
         rules_update_payload = {
             key: value for key, value in update_data.items() if key in self.RULE_FIELD_NAMES
@@ -529,16 +523,16 @@ class ChildProfileService:
                 payload=rules_update_payload,
             )
 
-        if allowed_subjects_payload is not None:
+        if payload.allowed_subjects is not None:
             self._replace_allowed_subjects_rows(
                 child_profile_id=child_profile.id,
-                allowed_subjects=allowed_subjects_payload,
+                allowed_subjects=payload.allowed_subjects,
             )
 
-        if week_schedule_payload is not None:
+        if payload.week_schedule is not None:
             self._replace_all_week_schedule_rows(
                 child_profile_id=child_profile.id,
-                week_schedule=week_schedule_payload,
+                week_schedule=payload.week_schedule,
             )
 
         if parent_pin:
@@ -560,8 +554,8 @@ class ChildProfileService:
 
         update_data = payload.model_dump(exclude_unset=True)
         parent_pin = update_data.pop("parent_pin", None)
-        allowed_subjects_payload = update_data.pop("allowed_subjects", None)
-        week_schedule_payload = update_data.pop("week_schedule", None)
+        update_data.pop("allowed_subjects", None)
+        update_data.pop("week_schedule", None)
 
         rules_update_payload = {
             key: value for key, value in update_data.items() if key in self.RULE_FIELD_NAMES
@@ -576,16 +570,16 @@ class ChildProfileService:
                 payload=rules_update_payload,
             )
 
-        if allowed_subjects_payload is not None:
+        if payload.allowed_subjects is not None:
             self._replace_allowed_subjects_rows(
                 child_profile_id=child_profile.id,
-                allowed_subjects=allowed_subjects_payload,
+                allowed_subjects=payload.allowed_subjects,
             )
 
-        if week_schedule_payload is not None:
+        if payload.week_schedule is not None:
             self._replace_all_week_schedule_rows(
                 child_profile_id=child_profile.id,
-                week_schedule=week_schedule_payload,
+                week_schedule=payload.week_schedule,
             )
 
         if parent_pin:
