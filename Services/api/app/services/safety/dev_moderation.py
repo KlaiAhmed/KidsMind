@@ -6,6 +6,9 @@ import time
 import asyncio
 from urllib.parse import urlparse
 
+# ML mode only officially supports English.
+# Other languages should use mode=rules instead.
+_ML_SUPPORTED_LANGUAGES = {"en"}
 
 def _is_valid_provider_url(url: str | None) -> bool:
     if not url or not url.strip():
@@ -21,6 +24,15 @@ def _blocked_result(category: str, score: float | None = None, threshold: float 
         "score": score,
         "threshold": threshold,
     }
+
+def _pass_result() -> dict[str, object]:
+    return {
+        "blocked": False,
+        "category": None,
+        "score": None,
+        "threshold": None,
+    }
+
 
 DEV_GUARD_TIMEOUT = httpx.Timeout(
     connect=settings.DEV_GUARD_CONNECT_TIMEOUT,
@@ -38,16 +50,13 @@ DEV_KIDS_THRESHOLDS = {
     "self-harm": 0.4,
 }
 
-def _pass_result() -> dict[str, object]:
-    return {
-        "blocked": False,
-        "category": None,
-        "score": None,
-        "threshold": None,
-    }
 
-
-async def dev_check_moderation(message: str, context: str, client: httpx.AsyncClient, language: str = "en"):
+async def dev_check_moderation(
+    message: str,
+    context: str,
+    client: httpx.AsyncClient,
+    language: str = "en",
+):
     provider_url = settings.DEV_GUARD_API_URL
 
     if not _is_valid_provider_url(provider_url):
@@ -64,6 +73,15 @@ async def dev_check_moderation(message: str, context: str, client: httpx.AsyncCl
         )
         return _pass_result()
 
+    # ML mode only supports English. Fall back to "en" for unsupported langs
+    # rather than sending an invalid request and getting a 400 back.
+    effective_lang = language if language in _ML_SUPPORTED_LANGUAGES else "en"
+    if effective_lang != language:
+        logger.info(
+            "Dev moderation: language not supported by ML mode, falling back to 'en'",
+            extra={"requested_language": language, "effective_language": effective_lang},
+        )
+
     try:
         timer = time.perf_counter()
         text = f"APP CONTEXT: {context}\nUSER Input: {message}"
@@ -72,7 +90,7 @@ async def dev_check_moderation(message: str, context: str, client: httpx.AsyncCl
             "text": text,
             "mode": "ml",
             "models": "general,self-harm",
-            "lang": language,
+            "lang": effective_lang,
             "api_user": settings.DEV_API_USER,
             "api_secret": settings.DEV_GUARD_API_KEY,
         }
@@ -104,11 +122,11 @@ async def dev_check_moderation(message: str, context: str, client: httpx.AsyncCl
                 )
                 return _blocked_result(category, api_score, threshold)
 
-        timer = time.perf_counter() - timer
+        elapsed = time.perf_counter() - timer
         logger.info(
             "Dev moderation check completed",
             extra={
-                "duration_seconds": round(timer, 3),
+                "duration_seconds": round(elapsed, 3),
                 "scores": scores,
             },
         )
@@ -130,14 +148,36 @@ async def dev_check_moderation(message: str, context: str, client: httpx.AsyncCl
         return _pass_result()
     except httpx.HTTPStatusError as exc:
         status_code = exc.response.status_code
+
+        # Always log the response body — Sightengine puts the real error there.
+        try:
+            error_body = exc.response.json()
+        except Exception:
+            error_body = exc.response.text
+
         logger.warning(
             "Dev moderation provider returned HTTP error",
             extra={
                 "provider_url": provider_url,
                 "status_code": status_code,
+                "error_body": error_body,      # ← now you'll see the actual reason
             },
         )
+
+        if status_code == 400:
+            # 400 = bad request (e.g. unsupported parameter value).
+            # Treat as a soft failure so users are not blocked — log is enough
+            # to diagnose the problem without taking down the chat endpoint.
+            logger.error(
+                "Dev moderation 400 bad request — check payload parameters. "
+                "Skipping moderation to avoid blocking users.",
+                extra={"error_body": error_body},
+            )
+            return _pass_result()
+
+        # 5xx → genuine provider outage, surface as 502
         raise HTTPException(status_code=502, detail="Dev moderation provider error")
+
     except Exception:
         logger.exception("Unexpected error during dev moderation check")
         raise HTTPException(status_code=500, detail="Internal Dev Moderation Error")
