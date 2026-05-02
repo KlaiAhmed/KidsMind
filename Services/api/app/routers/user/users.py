@@ -17,6 +17,7 @@ from dependencies.auth.auth import get_current_user
 from dependencies.infrastructure.infrastructure import get_db
 from models.audit.audit_log import AuditLog
 from models.user.user import User
+from schemas.audit.audit_schema import AuditLogEntry, AuditLogResponse
 from schemas.auth.auth_schema import MessageResponse
 from schemas.user.user_schema import (
     DeleteAccountResponse,
@@ -25,6 +26,7 @@ from schemas.user.user_schema import (
     UserFullResponse,
     UserSummaryResponse,
 )
+from services.audit.service import build_detail
 from services.user.user_service import revoke_all_user_sessions, set_parent_pin, soft_delete_user_account
 from utils.auth.token_blocklist import blocklist_access_token_jti
 from utils.shared.logger import logger
@@ -160,7 +162,7 @@ async def logout_all_sessions(
     return {"message": "All sessions revoked successfully"}
 
 
-@router.get("/parents/{user_id}/audit-logs")
+@router.get("/parents/{user_id}/audit-logs", response_model=AuditLogResponse)
 async def get_parent_audit_logs(
     user_id: UUID,
     request: Request,
@@ -170,7 +172,7 @@ async def get_parent_audit_logs(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     action: str | None = Query(default=None, description="Filter by action type"),
-) -> dict:
+) -> AuditLogResponse:
     if current_user.id != user_id:
         raise HTTPException(status_code=403, detail="Forbidden")
 
@@ -186,20 +188,20 @@ async def get_parent_audit_logs(
         .all()
     )
 
-    return {
-        "total": total,
-        "limit": limit,
-        "offset": offset,
-        "logs": [
-            {
-                "id": str(log.id),
-                "action": log.action,
-                "resource": log.resource,
-                "resource_id": str(log.resource_id) if log.resource_id else None,
-                "before_state": log.before_state,
-                "after_state": log.after_state,
-                "created_at": log.created_at.isoformat() if log.created_at else None,
-            }
-            for log in logs
-        ],
-    }
+    entries = [
+        AuditLogEntry(
+            action=log.action,
+            actor_id=log.actor_id,
+            target_child_id=log.resource_id if log.resource_id else user_id,
+            detail=build_detail(log),
+            timestamp=log.created_at,
+        )
+        for log in logs
+    ]
+
+    return AuditLogResponse(
+        entries=entries,
+        total_count=total,
+        limit=limit,
+        offset=offset,
+    )

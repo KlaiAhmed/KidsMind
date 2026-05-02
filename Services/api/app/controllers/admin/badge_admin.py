@@ -76,18 +76,7 @@ def _generate_signed_url(file_path: str) -> str | None:
 
 async def _badge_to_admin_response(badge: Badge) -> BadgeAdminResponse:
     icon_url = await run_in_threadpool(_generate_signed_url, badge.file_path) if badge.file_path else None
-    return BadgeAdminResponse(
-        id=badge.id,
-        name=badge.name,
-        description=badge.description,
-        condition=badge.condition,
-        file_path=badge.file_path,
-        is_active=badge.is_active,
-        sort_order=badge.sort_order,
-        icon_url=icon_url,
-        created_at=badge.created_at,
-        updated_at=badge.updated_at,
-    )
+    return BadgeAdminResponse.model_validate(badge).model_copy(update={"icon_url": icon_url})
 
 
 async def upload_badge_controller(

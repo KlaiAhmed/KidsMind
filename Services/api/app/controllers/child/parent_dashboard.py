@@ -13,10 +13,10 @@ from sqlalchemy.orm import Session
 
 from controllers.shared.controller_guard import guarded_controller_call
 from models.user.user import User
+from schemas.audit.audit_schema import AuditLogResponse
 from schemas.child.parent_dashboard_schema import (
     BulkDeleteRequest,
     BulkDeleteResponse,
-    ControlAuditResponse,
     HistoryExportResponse,
     ChildPauseResponse,
     NotificationPrefsRead,
@@ -166,7 +166,7 @@ async def get_control_audit_controller(
     child_id: UUID | None = None,
     limit: int = 20,
     offset: int = 0,
-) -> ControlAuditResponse:
+) -> AuditLogResponse:
     return await guarded_controller_call(
         operation="fetching control audit log",
         context={"parent_id": current_user.id, "child_id": child_id},

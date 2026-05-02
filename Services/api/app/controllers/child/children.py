@@ -16,7 +16,6 @@ from controllers.shared.controller_guard import guarded_controller_call
 from models.user.user import User
 from schemas.child.child_profile_schema import (
     ChildProfileCreate,
-    ChildProfileOut,
     ChildProfileRead,
     ChildProfileUpdate,
     ChildRulesUpdate,
@@ -42,8 +41,7 @@ async def list_children_controller(
     db: Session,
 ) -> list[ChildProfileRead]:
     try:
-        children = ChildProfileService(db).get_children_for_parent(current_user)
-        return [ChildProfileOut.model_validate(child) for child in children]
+        return ChildProfileService(db).get_children_for_parent(current_user)
     except (SQLAlchemyError, ValidationError):
         logger.exception(
             "Child profile query or serialization failed",

@@ -9,7 +9,7 @@ Domain: Parent Dashboard
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ParentOverviewStats(BaseModel):
@@ -109,6 +109,8 @@ class ChildPauseResponse(BaseModel):
 
 
 class NotificationPrefsRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     daily_summary_enabled: bool = True
     safety_alerts_enabled: bool = True
     weekly_report_enabled: bool = True
@@ -125,21 +127,10 @@ class NotificationPrefsUpdate(BaseModel):
     weekly_report_enabled: bool | None = None
     session_start_enabled: bool | None = None
     session_end_enabled: bool | None = None
-    streak_milestone_enabled: bool | None = None
-    email_channel: bool | None = None
-    push_channel: bool | None = None
+streak_milestone_enabled: bool | None = None
+email_channel: bool | None = None
+push_channel: bool | None = None
 
 
-class ControlAuditEntry(BaseModel):
-    action: str
-    actor_id: UUID
-    target_child_id: UUID
-    detail: str = ""
-    timestamp: datetime | None = None
-
-
-class ControlAuditResponse(BaseModel):
-    entries: list[ControlAuditEntry] = Field(default_factory=list)
-    total_count: int = 0
-    limit: int = 20
-    offset: int = 0
+from schemas.audit.audit_schema import AuditLogEntry as ControlAuditEntry
+from schemas.audit.audit_schema import AuditLogResponse as ControlAuditResponse

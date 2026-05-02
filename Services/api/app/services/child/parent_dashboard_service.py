@@ -13,14 +13,14 @@ from fastapi import HTTPException
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
+from models.audit.audit_log import AuditLog
 from models.child.child_profile import ChildProfile
 from models.chat.chat_session import ChatSession
 from models.chat.chat_history import ChatHistory
 from models.gamification.notification_prefs import ParentNotificationPrefs
+from schemas.audit.audit_schema import AuditLogEntry, AuditLogResponse
 from schemas.child.parent_dashboard_schema import (
     BulkDeleteResponse,
-    ControlAuditEntry,
-    ControlAuditResponse,
     DailyUsagePoint,
     HistoryExportResponse,
     ChildPauseResponse,
@@ -35,6 +35,7 @@ from schemas.child.parent_dashboard_schema import (
     SubjectMasteryItem,
     WeeklyInsight,
 )
+from services.audit.service import build_detail
 
 
 class ParentDashboardService:
@@ -422,16 +423,7 @@ class ParentDashboardService:
         if not prefs:
             return NotificationPrefsRead()
 
-        return NotificationPrefsRead(
-            daily_summary_enabled=prefs.daily_summary_enabled,
-            safety_alerts_enabled=prefs.safety_alerts_enabled,
-            weekly_report_enabled=prefs.weekly_report_enabled,
-            session_start_enabled=prefs.session_start_enabled,
-            session_end_enabled=prefs.session_end_enabled,
-            streak_milestone_enabled=prefs.streak_milestone_enabled,
-            email_channel=prefs.email_channel,
-            push_channel=prefs.push_channel,
-        )
+        return NotificationPrefsRead.model_validate(prefs)
 
     def update_notification_prefs(
         self,
@@ -461,16 +453,7 @@ class ParentDashboardService:
             raise
 
         self.db.refresh(prefs)
-        return NotificationPrefsRead(
-            daily_summary_enabled=prefs.daily_summary_enabled,
-            safety_alerts_enabled=prefs.safety_alerts_enabled,
-            weekly_report_enabled=prefs.weekly_report_enabled,
-            session_start_enabled=prefs.session_start_enabled,
-            session_end_enabled=prefs.session_end_enabled,
-            streak_milestone_enabled=prefs.streak_milestone_enabled,
-            email_channel=prefs.email_channel,
-            push_channel=prefs.push_channel,
-        )
+        return NotificationPrefsRead.model_validate(prefs)
 
     def get_control_audit(
         self,
@@ -479,14 +462,33 @@ class ParentDashboardService:
         child_id: UUID | None = None,
         limit: int = 20,
         offset: int = 0,
-    ) -> ControlAuditResponse:
-        query_filter = f"actor_id = '{parent_id}'"
+    ) -> AuditLogResponse:
+        query = self.db.query(AuditLog).filter(AuditLog.actor_id == parent_id)
         if child_id:
-            query_filter += f" AND target_child_id = '{child_id}'"
+            query = query.filter(AuditLog.resource_id == child_id)
 
-        return ControlAuditResponse(
-            entries=[],
-            total_count=0,
+        total = query.count()
+        logs = (
+            query.order_by(AuditLog.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+
+        entries = [
+            AuditLogEntry(
+                action=log.action,
+                actor_id=log.actor_id,
+                target_child_id=log.resource_id if log.resource_id else parent_id,
+                detail=build_detail(log),
+                timestamp=log.created_at,
+            )
+            for log in logs
+        ]
+
+        return AuditLogResponse(
+            entries=entries,
+            total_count=total,
             limit=limit,
             offset=offset,
         )

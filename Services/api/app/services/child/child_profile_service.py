@@ -34,7 +34,6 @@ from schemas.child.child_profile_schema import (
     ChildRulesRead,
     ChildRulesUpdate,
 )
-from schemas.media.media_schema import AvatarResponse
 from utils.child.child_profile_logic import derive_student_profile_fields
 from utils.child.subject_helpers import extract_unique_subjects
 from utils.auth.manage_pwd import hash_password
@@ -295,32 +294,22 @@ class ChildProfileService:
             week_schedule = [
                 AccessWindowOut(
                     id=schedule_row.id,
-                    day_of_week=int(schedule_row.day_of_week),
+                    day_of_week=schedule_row.day_of_week,
                     access_window_start=schedule_row.access_window_start,
                     access_window_end=schedule_row.access_window_end,
-                    daily_cap_seconds=int(schedule_row.daily_cap_seconds),
-                    subjects=schedule_subjects_by_schedule_id.get(schedule_row.id, []),
+                    daily_cap_seconds=schedule_row.daily_cap_seconds,
+                    subjects=schedule_subjects_by_schedule_id.get(schedule_row.id, [])
                 )
                 for schedule_row in week_schedule_by_child_id.get(profile.id, [])
             ]
 
             serialized_profiles.append(
-                ChildProfileRead(
-                    id=profile.id,
-                    parent_id=profile.parent_id,
-                    nickname=profile.nickname,
-                    birth_date=profile.birth_date,
-                    education_stage=profile.education_stage,
-                    is_accelerated=profile.is_accelerated,
-                    is_below_expected_stage=profile.is_below_expected_stage,
-                    avatar_id=profile.avatar_id,
-                    avatar=AvatarResponse.model_validate(profile.avatar) if profile.avatar else None,
-                    xp=profile.xp,
-                    rules=ChildRulesRead.model_validate(rules_row) if rules_row else None,
-                    allowed_subjects=allowed_subjects_by_child_id.get(profile.id, []),
-                    week_schedule=week_schedule,
-                    created_at=profile.created_at,
-                    updated_at=profile.updated_at,
+                ChildProfileRead.model_validate(profile).model_copy(
+                    update={
+                        "rules": ChildRulesRead.model_validate(rules_row) if rules_row else None,
+                        "allowed_subjects": allowed_subjects_by_child_id.get(profile.id, []),
+                        "week_schedule": week_schedule,
+                    }
                 )
             )
 

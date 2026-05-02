@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Query, Request, Response
 from redis.asyncio import Redis
 from sqlalchemy.orm import Session
 
@@ -62,10 +62,10 @@ from schemas.gamification.notification_schema import (
     MarkNotificationsReadRequest,
     ParentBadgeNotificationListResponse,
 )
+from schemas.audit.audit_schema import AuditLogResponse
 from schemas.child.parent_dashboard_schema import (
     BulkDeleteRequest,
     BulkDeleteResponse,
-    ControlAuditResponse,
     HistoryExportResponse,
     ChildPauseResponse,
     NotificationPrefsRead,
@@ -515,13 +515,13 @@ async def update_notification_prefs(
     return result
 
 
-@router.get("/dashboard/control-audit", response_model=ControlAuditResponse)
+@router.get("/dashboard/control-audit", response_model=AuditLogResponse)
 async def get_control_audit(
     request: Request,
     response: Response,
     child_id: Optional[UUID] = None,
-    limit: int = 20,
-    offset: int = 0,
+    limit: int = Query(default=20, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):

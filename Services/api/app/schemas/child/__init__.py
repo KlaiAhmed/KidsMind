@@ -39,6 +39,7 @@ from .parent_dashboard_schema import (
     SubjectMasteryItem,
     WeeklyInsight,
 )
+from schemas.audit.audit_schema import AuditLogEntry, AuditLogResponse
 
 __all__ = [
     "ALLOWED_LANGUAGE_CODES",
@@ -78,4 +79,6 @@ __all__ = [
     "SessionMetadata",
     "SubjectMasteryItem",
     "WeeklyInsight",
+    "AuditLogEntry",
+    "AuditLogResponse",
 ]
