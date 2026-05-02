@@ -31,6 +31,7 @@ interface ApiRequestOptions extends Omit<RequestInit, 'body'> {
   skipAuthToken?: boolean;
   skipAuthRefresh?: boolean;
   retryAttempt?: number;
+  signal?: AbortSignal;
 }
 
 interface AuthSessionHandlers {
@@ -173,10 +174,19 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
     skipAuthRefresh = false,
     authToken: _authToken,
     skipAuthToken: _skipAuthToken,
+    signal: externalSignal,
     ...restOptions
   } = options;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      clearTimeout(timeoutId);
+      throw new ApiClientError('Request was cancelled.', 0);
+    }
+    externalSignal.addEventListener('abort', () => controller.abort(), { once: true });
+  }
 
   try {
     const authToken = getRequestAuthToken(options);
@@ -234,9 +244,12 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
       throw error;
     }
 
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new ApiClientError('The request timed out. Please try again.', 408);
+  if (error instanceof Error && error.name === 'AbortError') {
+    if (externalSignal?.aborted) {
+      throw new ApiClientError('Request was cancelled.', 0);
     }
+    throw new ApiClientError('The request timed out. Please try again.', 408);
+  }
 
     throw new ApiClientError('Could not connect to KidsMind services.', 0, error);
   } finally {
