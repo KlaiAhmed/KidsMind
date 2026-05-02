@@ -6,46 +6,48 @@ Quick-reference for Agent sessions. For full architectural detail, read the code
 
 ### Backend (Docker)
 ```bash
-docker compose up --build                           # build + start all services
-docker compose up -d                                # detached
-docker compose logs -f core-api                     # tail one service
+docker compose up --build                # build + start all services
+docker compose up -d                     # detached
+docker compose logs -f core-api          # tail one service
 docker compose up --force-recreate --no-deps bucket-provisioner  # re-provision MinIO buckets
 ```
 `docker-compose.override.yml` is loaded by default (see `COMPOSE_FILE` in `.env.example`) and mounts source dirs with uvicorn `--reload`. Only load `docker-compose.debug.yml` when you need localhost ports for internal services.
 
 ### Backend (local Python, no Docker)
 ```bash
-cd services/<api|stt>/app
-uv sync                 # install from uv.lock (preferred; uv.lock exists in each service)
-# OR
-pip install -r ../requirements.txt
+cd services/api/app
+pip install -r ../requirements.txt       # required — pyproject.toml is incomplete (see gotchas)
+uvicorn main:app --reload --port 8000
+
+cd services/stt/app
+pip install -r ../requirements.txt       # same: pyproject.toml is incomplete
 uvicorn main:app --reload --port 8000
 ```
-Docker builds use `requirements.txt` (pinned). Local dev can use either `uv` or `pip`. You still need PostgreSQL, Redis, and MinIO running — start them via Docker (`docker compose up -d database cache file-storage bucket-provisioner`) or provide your own instances.
+You still need PostgreSQL, Redis, and MinIO running — start them via Docker (`docker compose up -d database cache file-storage bucket-provisioner`) or provide your own instances.
 
 ### Web (`Apps/web`)
 ```bash
-npm run dev     # Vite dev server
-npm run build   # tsc -b && vite build (typecheck is part of build, not a separate script)
-npm run lint    # ESLint
-npm run preview # Preview production build locally
+npm run dev       # Vite dev server
+npm run build     # tsc -b && vite build (typecheck is part of build, not a separate script)
+npm run lint      # ESLint
+npm run preview   # Preview production build locally
 ```
 No standalone `typecheck` script — `tsc` runs only via `npm run build`.
 
 ### Mobile (`Apps/mobile`)
 ```bash
-npx expo start          # Expo dev server
-npm run android / ios   # platform targets
-npm run lint            # expo lint (eslint-config-expo)
+npx expo start           # Expo dev server
+npm run android / ios    # platform targets
+npm run lint             # expo lint (eslint-config-expo)
 ```
 No `typecheck` or `test` scripts. Expo handles TS checking at dev time. Path alias `@/*` maps to `Apps/mobile/` (project root).
 
 ### Database migrations (Core API only)
 ```bash
 cd services/api
-alembic upgrade head                            # apply pending migrations
-alembic revision --autogenerate -m "desc"        # generate new revision
-alembic stamp head                              # mark DB as current without running migrations
+alembic upgrade head                      # apply pending migrations
+alembic revision --autogenerate -m "desc" # generate new revision
+alembic stamp head                        # mark DB as current without running migrations
 ```
 - `alembic.ini` is at `services/api/alembic.ini` (not inside `app/`).
 - `alembic/env.py` auto-detects container vs localhost (`/.dockerenv` check) and loads both root `.env` and `services/api/app/.env`.
@@ -54,14 +56,14 @@ alembic stamp head                              # mark DB as current without run
 No test directories or conftest files currently exist. When adding tests:
 ```bash
 cd services/api/app
-uv run pytest
+pip install pytest && pytest
 ```
 No test scripts exist for STT, web, or mobile.
 
 ## Architecture
 
 ```
-Apps/web/      Vite 7 + React 19 + TypeScript (strict) + react-router-dom
+Apps/web/      Vite 7 + React 19 + TypeScript (strict) + react-router-dom v7
 Apps/mobile/   Expo SDK 54 + Expo Router v6 (file-based routing) + Zustand + TanStack Query
 services/api/  FastAPI gateway :8000 — all client traffic enters here; also hosts AI/LLM
 services/stt/  FastAPI STT service (internal) — Faster-Whisper (GPU or CPU mode)
@@ -76,56 +78,54 @@ infra/         Prometheus, Grafana, Loki, Promtail, MinIO, postgres-exporter, re
   - `services/chat/build_chain.py` — LCEL chain construction with `RunnableWithMessageHistory` and `trim_messages`
   - `services/chat/prompts.py` — system prompt template
   - `services/chat/session_memory.py` — Redis-backed MEMORY (short-lived, injected into LLM context; NOT the same as Postgres-backed HISTORY)
-- LangChain deps: `langchain-openai`, `langchain-core`, `langchain-community` (NOT `langchain` itself).
+  - LangChain deps: `langchain-openai`, `langchain-core`, `langchain-community` (NOT `langchain` itself).
 - Core API proxies to STT via `app.state.http_client` (`httpx.AsyncClient`). Inter-service auth uses `X-Service-Token` with `secrets.compare_digest`.
-- Infrastructure: PostgreSQL 18.2-alpine, Redis 8.6.1-alpine, MinIO, Prometheus, Grafana, Loki + Promtail, postgres-exporter, redis-exporter.
 
 ## Backend layer pattern
 
 ### Core API (`services/api/app/`)
 ```
 routers/        HTTP concerns (path params, file uploads, rate limiting)
-controllers/    Business logic orchestration
-services/       Domain operations (auth/, chat/, child/, gamification/, media/, safety/, user/, voice/, admin/)
-schemas/        Pydantic request/response models
-models/         SQLAlchemy ORM models (user/, auth/, child/, chat/, media/, quiz/, gamification/, voice/, audit/)
+controllers/    Business logic orchestration (admin/, chat/, child/, gamification/, media/, quiz/, safety/, shared/, voice/)
+services/       Domain operations (admin/, audit/, auth/, chat/, child/, gamification/, media/, safety/, user/, voice/)
+schemas/        Pydantic request/response models (audit/, auth/, chat/, child/, gamification/, media/, quiz/, safety/, shared/, user/, voice/)
+models/         SQLAlchemy ORM models (audit/, auth/, child/, chat/, media/, quiz/, gamification/, user/, voice/)
 core/           Config, database, logging, cache, storage, LLM clients
 dependencies/   FastAPI Depends() providers (auth/, infrastructure/, media/, security/, voice/)
 middlewares/    CSRF, request tracing, rate limiting
 utils/          Cross-cutting utilities (auth/, chat/, child/, gamification/, media/, safety/, shared/)
-audit/          Audit log domain
 ```
 
 **Middleware order matters** (Starlette reverse-wrap): CORS must be outermost (added last). Current order (inner→outer): `RateLimitMiddleware` → `CSRFMiddleware` → `RequestTracingMiddleware` → `CORSMiddleware`. Do NOT move CORSMiddleware earlier — preflight OPTIONS and 429 responses need CORS headers.
 
 ### STT service (`services/stt/app/`)
 ```
-routers/      HTTP concerns
-controllers/  Business logic
-services/     Audio processing
+routers/      HTTP concerns (stt_router.py)
+controllers/  Business logic (stt_controller.py)
+services/     Audio processing (detect_lang.py, transcribe.py)
 models/       Pydantic whisper model (not SQLAlchemy — no DB in this service)
-schemas/      Pydantic request/response models
+schemas/      Pydantic request/response models (stt_schemas.py)
 core/         Config, logging
-utils/        Cross-cutting utilities
+utils/        Cross-cutting utilities (acquire_worker, auth, get_model, logger, process_audio, sse)
 ```
 STT has **no** `crud/`, `dependencies/`, or `middlewares/` directories — it has no database or CSRF/rate-limit concerns.
 
 ## Core API router list
 
-| Router            | Prefix               |
+| Router | Prefix |
 |-------------------|----------------------|
-| health            | `""`                 |
-| web_auth          | `/api/web/auth`      |
-| mobile_auth       | `/api/mobile/auth`   |
-| media             | `/api/v1/media`      |
-| admin_media       | `/api/v1/media/admin`|
-| chat              | `/api/v1/chat`       |
-| voice             | `/api/v1/voice`      |
-| children          | `/api/v1/children`   |
-| quiz              | `/api/v1/quizzes`    |
-| safety_and_rules  | `/api/v1`            |
-| admin_users       | `/api/v1/users`      |
-| users             | `/api/v1/users`      |
+| health | `""` |
+| web_auth | `/api/web/auth` |
+| mobile_auth | `/api/mobile/auth` |
+| media | `/api/v1/media` |
+| admin_media | `/api/v1/media/admin`|
+| chat | `/api/v1/chat` |
+| voice | `/api/v1/voice` |
+| children | `/api/v1/children` |
+| quiz | `/api/v1/quizzes` |
+| safety_and_rules | `/api/v1` |
+| admin_users | `/api/v1/users` |
+| users | `/api/v1/users` |
 
 STT service: `stt_router` at `/v1/stt`.
 
@@ -151,8 +151,9 @@ Root `.env` is loaded by docker-compose and by `alembic/env.py` for migrations. 
 
 ## Key gotchas
 
-- **Python version mismatch**: `pyproject.toml` in api says `>=3.14`, stt says `>=3.12`. `.python-version` files say `3.14` (api) / `3.12` (stt). All Dockerfiles use `python:3.12-slim` (STT uses `nvidia/cuda` base with `python3.12`). For local dev, Python 3.12+ works. The `>=3.14` in `pyproject.toml` is aspirational.
-- **`EXPLICIT_DEV_MODE` is mandatory**: When `IS_PROD=False`, you must set `EXPLICIT_DEV_MODE=true` in the service `.env` or the app crashes at startup. This is a safety guard — not optional.
+- **`pyproject.toml` is incomplete — use `requirements.txt` for local dev**: API's `pyproject.toml` is missing `alembic`, `pydantic-settings`, `langchain-openai`, `langchain-core`, `langchain-community`, `tiktoken`, `email-validator`. STT's `pyproject.toml` is missing `prometheus-fastapi-instrumentator`. `uv sync` will produce a broken environment. Use `pip install -r ../requirements.txt` instead. Docker builds use `requirements.txt` (pinned) and work correctly.
+- **Python version**: `pyproject.toml` in api says `>=3.14`, stt says `>=3.12`. `.python-version` files say `3.14` (api) / `3.12` (stt). All Dockerfiles use `python:3.12-slim` (STT uses `nvidia/cuda` base with `python3.12`). For local dev, Python 3.12+ works. The `>=3.14` in `pyproject.toml` is aspirational.
+- **`EXPLICIT_DEV_MODE` is mandatory**: `IS_PROD` defaults to `True` in `core/config.py` — without `.env` the app runs in production mode. When you set `IS_PROD=False`, you must also set `EXPLICIT_DEV_MODE=true` or the app crashes at startup. This is a safety guard — not optional.
 - **Auth split**: Web (`/api/web/auth`) uses HttpOnly cookies + CSRF tokens. Mobile (`/api/mobile/auth`) uses Bearer headers. Same `auth_service` core, different wrappers (`web_auth_service`, `mobile_auth_service`). Do not mix.
 - **CSRF**: `CSRFMiddleware` runs on the API. Web client stores the CSRF token in memory, never `localStorage`. Mobile is exempt.
 - **Web styling**: CSS custom properties + `data-theme` on `<html>`. **CSS Modules are used** (`.module.css` files co-located with components). No Tailwind. Theme tokens in `src/styles/themes.css`.
@@ -160,7 +161,7 @@ Root `.env` is loaded by docker-compose and by `alembic/env.py` for migrations. 
 - **Mobile design system** (`constants/theme.ts`): no pure blacks/greys, no 1px solid borders, CTA buttons use Indigo Depth gradient (`Colors.primary` → `Colors.primaryDark`), fonts use exact family names like `PlusJakartaSans_700Bold`, `Inter_400Regular`.
 - **Mobile zod**: import from `zod/v4`, not `zod`.
 - **Mobile path alias**: `@/*` maps to project root (`Apps/mobile/`).
-- **STT GPU/CPU modes**: GPU required by default. Set `WHISPER_MODE=cpu` in STT `.env` for CPU-only mode (no NVIDIA GPU needed, but slower).
+- **STT GPU/CPU modes**: `docker-compose.yml` reserves GPU for STT by default (`deploy.resources.reservations.devices`). On a machine without NVIDIA GPU + Container Toolkit, `docker compose up` will fail. Set `WHISPER_MODE=cpu` in STT `.env` **and** remove/comment the GPU `deploy` block in `docker-compose.yml` to run CPU-only.
 - **Windows CRLF**: `.gitattributes` enforces LF for `*.sh`, `*.yml`, `*.yaml`. `bucket-provisioner` strips `\r` at runtime.
 - **Rate limits**: multi-tier — T0 (IP), T1 (user), T2 (refresh), T3 (auth), T4 (general), T5 (AI cost-controlled). Redis-backed via SlowAPI. If Redis is down, `RL_STORE_UNAVAILABLE_MODE` controls behavior (default `fail_open`).
 - **No comments in code unless explicitly requested.**
@@ -170,21 +171,21 @@ Root `.env` is loaded by docker-compose and by `alembic/env.py` for migrations. 
 
 ```
 app/
-  _layout.tsx         root stack (auth-state switch, font loading, QueryClientProvider + AuthProvider)
+  _layout.tsx              root stack (auth-state switch, font loading, QueryClientProvider + AuthProvider)
   splash.tsx
   onboarding.tsx
   child-home.tsx
   badges.tsx
   settings.tsx
-  modal.tsx           (presentation: 'modal')
+  modal.tsx                (presentation: 'modal')
   (auth)/
-    _layout.tsx       auth guard (redirects if authenticated+pin+profiled)
+    _layout.tsx            auth guard (redirects if authenticated+pin+profiled)
     login.tsx
     register.tsx
-    setup-pin.tsx     ← PIN setup required before profile wizard
+    setup-pin.tsx          ← PIN setup required before profile wizard
     child-profile-wizard.tsx
   (tabs)/
-    _layout.tsx       tab guard (redirects if unauthenticated or no profile)
+    _layout.tsx            tab guard (redirects if unauthenticated or no profile)
     index.tsx
     chat.tsx
     explore.tsx
@@ -195,34 +196,9 @@ app/
     chat.tsx
     explore.tsx
     profile.tsx
+    badges.tsx
 ```
 Auth flow order: login/register → setup-pin → child-profile-wizard → (tabs).
-
-## Mobile key directories (outside `app/`)
-
-```
-auth/        Token storage, types, silent refresh hook
-contexts/    AuthContext (auth state provider)
-services/    API clients (apiClient, authApi, chatService, childService, countryService, parentDashboardService, queryClient, toastClient, parentAccessService)
-store/       Zustand stores
-constants/   Design tokens (theme.ts)
-screens/     Non-routed screens (AIChatScreen, ChildHomeDashboard, ChildProfileHub, ChildProfileWizard, KidsMindChildExperience, SubjectTopicBrowser)
-components/  Reusable UI components
-src/         Additional organized code (components, config, hooks, lib, schemas, screens, utils)
-hooks/       Custom React hooks
-types/       TypeScript type definitions
-```
-
-## Web key directories
-
-```
-src/pages/        Route pages (HomePage, LoginPage, GetStartedPage, ParentProfilePage, ErrorPage, NotFoundPage)
-src/components/   NavBar, HeroSection, LoginForm, FeaturesGrid, CTASection, Footer, AgeGroupSelector, GetStarted, HowItWorks, SafetyBanner, TestimonialCarousel, shared/ (StatusPage, ProgressBar, FormField, PasswordField, AuthLayout, AvatarPicker, AppErrorBoundary)
-src/styles/       themes.css (light/dark tokens via data-theme), globals.css, animations.css
-src/hooks/        useAuthStatus, etc.
-src/utils/        Shared utilities
-src/types/        TypeScript type definitions
-```
 
 ## Verification checklist before finishing work
 
