@@ -1,66 +1,95 @@
-import { useEffect, useRef } from 'react';
-import { Animated, StyleSheet, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 
-import { Colors, Radii, Spacing } from '@/constants/theme';
+import { Colors, Spacing } from '@/constants/theme';
 
-export function ThinkingIndicator() {
-  const dotOne = useRef(new Animated.Value(0.35)).current;
-  const dotTwo = useRef(new Animated.Value(0.35)).current;
-  const dotThree = useRef(new Animated.Value(0.35)).current;
+const THINKING_PHRASES = [
+  'Thinking',
+  'Looking it up',
+  'Cooking up an answer',
+  'Almost there',
+  'Great question!',
+  'Let me think',
+  'Searching my brain',
+  'Qubie is on it!',
+  'Hmm, interesting',
+  'Loading magic',
+  'Connecting dots',
+  'Cooking',
+  'Big brain time',
+  'Locking in',
+  'Trusting the process',
+  'Qubing it up',
+  'Understood the assignment',
+  'On it',
+  'Interesting',
+  'Challenge accepted',
+  'Ooh good one',
+  'Let me see',
+  'Hmmmm',
+  'Qubie is Qubing',
+  'Computing',
+  'Say less',
+];
+
+const DOT_FRAMES = ['.', '..', '...'];
+const DOT_INTERVAL = 400;
+
+function AnimatedDots() {
+  const [frame, setFrame] = useState(0);
 
   useEffect(() => {
-    const createDotLoop = (value: Animated.Value, delayMs: number) =>
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(delayMs),
-          Animated.timing(value, {
-            toValue: 1,
-            duration: 280,
-            useNativeDriver: true,
-          }),
-          Animated.timing(value, {
-            toValue: 0.35,
-            duration: 280,
-            useNativeDriver: true,
-          }),
-        ]),
-      );
+    const id = setInterval(() => {
+      setFrame((f) => (f + 1) % DOT_FRAMES.length);
+    }, DOT_INTERVAL);
+    return () => clearInterval(id);
+  }, []);
 
-    const animations = [
-      createDotLoop(dotOne, 0),
-      createDotLoop(dotTwo, 120),
-      createDotLoop(dotThree, 240),
-    ];
+  return <Text style={styles.dots}>{DOT_FRAMES[frame]}</Text>;
+}
 
-    animations.forEach((animation) => animation.start());
-
-    return () => {
-      animations.forEach((animation) => animation.stop());
-    };
-  }, [dotOne, dotThree, dotTwo]);
+export function ThinkingIndicator() {
+  const [phrase] = useState(
+    () => THINKING_PHRASES[Math.floor(Math.random() * THINKING_PHRASES.length)]
+  );
 
   return (
-    <View accessibilityLabel="Qubie is thinking" accessibilityRole="text" style={styles.container}>
-      {/* a11y: Announces the non-text loading state for the AI response. */}
-      <Animated.View style={[styles.dot, { opacity: dotOne }]} />
-      <Animated.View style={[styles.dot, { opacity: dotTwo }]} />
-      <Animated.View style={[styles.dot, { opacity: dotThree }]} />
+    <View
+      accessibilityLabel="Qubie is thinking"
+      accessibilityRole="text"
+      style={styles.container}
+    >
+      <View style={styles.row}>
+        <Text style={styles.phrase}>{phrase}</Text>
+        <AnimatedDots />
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.xs,
+    justifyContent: 'center',
     paddingVertical: Spacing.xs,
     paddingHorizontal: Spacing.xs,
   },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: Radii.full,
-    backgroundColor: Colors.textSecondary,
+  row: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
+  phrase: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    fontFamily: 'Inter_400Regular',
+  },
+  dots: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: Colors.textSecondary,
+    fontFamily: 'Inter_400Regular',
+    width: 18,
   },
 });

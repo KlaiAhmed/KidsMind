@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   Pressable,
@@ -13,6 +13,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import * as Haptics from 'expo-haptics';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
+import { useSharedValue, withTiming } from 'react-native-reanimated';
 import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
 import { ChatInput } from '@/components/chat/ChatInput';
 import { MessageBubble } from '@/components/chat/MessageBubble';
@@ -47,6 +48,30 @@ type ChatListItem =
     };
 
 const TYPING_PLACEHOLDER_ID = 'typing-placeholder';
+
+const WELCOME_PHRASES = [
+  'Ask Qubie anything! 🤖 I\'m here to help you learn.',
+  'Got a tricky question? 🌟 I love a challenge!',
+  'Let\'s explore something new today! 🚀',
+  'I know maths, science, languages and more! 🎓',
+  'Feeling curious? Ask me anything! 🔍',
+  'Ready to learn something awesome? Let\'s go! ⚡',
+  'What shall we discover together today? 🌈',
+  'I\'m Qubie, your learning buddy! What\'s on your mind? 🧠',
+  'Every question is a great question! Ask away! 💬',
+  'Learning is fun when we do it together! 🎉',
+  'Got a challenge? I\'m ready! 🚀',
+  'Big question energy? I\'m here for it! ⚡',
+  'Got a challenge? Qubie is ready to help! 🚀',
+  'I love puzzling questions! Let\'s work it out! 🧠',
+  'Think, think… what will you ask? 🤔',
+  'Think I can solve it? Try me! 🚀',
+  'Beep boop… thinking mode on… 🤖',
+  'Activating super thinker mode… 🧠',
+  'Scanning… scanning… still scanning… 🔎',
+  'Recalculating… because why not! 🔄',
+  '⚡ SUPER THINKING MODE ACTIVATED ⚡',
+];
 
 function isNetworkOffline(): boolean {
   const navigatorLike = globalThis as typeof globalThis & {
@@ -151,6 +176,34 @@ function AIChatSessionGate({
     onQuizComplete: handleQuizComplete,
     autoStart: gateState.status === 'ACTIVE',
   });
+
+  const [welcomePhraseIndex, setWelcomePhraseIndex] = useState(0);
+  const welcomeOpacity = useSharedValue(1);
+
+  // Cycle phrase: fade out → swap index after fade completes
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval>;
+
+    const schedule = () => {
+      const delay = (Math.random() * (120 - 60) + 60) * 1000;
+      interval = setInterval(() => {
+        welcomeOpacity.value = withTiming(0, { duration: 400 });
+        setTimeout(() => {
+          setWelcomePhraseIndex((i) => (i + 1) % WELCOME_PHRASES.length);
+          clearInterval(interval);
+          schedule();
+        }, 400);
+      }, delay);
+    };
+
+    schedule();
+    return () => clearInterval(interval);
+  }, [welcomeOpacity]);
+
+  // Fade back in whenever index changes
+  useEffect(() => {
+    welcomeOpacity.value = withTiming(1, { duration: 300 });
+  }, [welcomePhraseIndex, welcomeOpacity]);
 
   const flatListRef = useRef<FlatList<ChatListItem>>(null);
 
@@ -269,6 +322,10 @@ function AIChatSessionGate({
 
   const keyExtractor = useCallback((item: ChatListItem) => item.id, []);
 
+  const welcomeAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: welcomeOpacity.value,
+  }));
+
   const chatInputAnimatedStyle = useAnimatedStyle(() => {
     const keyboardDelta = Math.max(
       keyboardOffset.value - childTabSceneBottomPadding,
@@ -339,7 +396,9 @@ function AIChatSessionGate({
             ListEmptyComponent={
               <View style={styles.emptyState}>
                 <MaterialCommunityIcons name="robot-happy-outline" size={44} color={Colors.primary} />
-                <Text style={styles.emptySubtitle}>Ask Qubie anything! 🤖 I'm here to help you learn.</Text>
+                <Animated.View style={welcomeAnimatedStyle}>
+                  <Text style={styles.emptySubtitle}>{WELCOME_PHRASES[welcomePhraseIndex]}</Text>
+                </Animated.View>
               </View>
             }
           />
