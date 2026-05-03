@@ -244,10 +244,10 @@ async def voice_transcribe_sync_controller(
 
     try:
         stt_response = await stt_client.post(
-            f"{settings.STT_SERVICE_URL}/v1/stt/transcriptions",
+            f"{settings.VOICE_SERVICE_URL}/v1/stt/transcriptions",
             files={"audio": (filename, audio_bytes, content_type)},
             data={"context": "", "content_type": content_type},
-            timeout=settings.STT_REQUEST_TIMEOUT_SECONDS,
+            timeout=settings.VOICE_REQUEST_TIMEOUT_SECONDS,
         )
     except httpx.RequestError as exc:
         logger.warning("Voice service request failed", extra={"error": str(exc)})
@@ -354,10 +354,10 @@ async def voice_transcribe_stream_controller(
     try:
         async with stt_client.stream(
             "POST",
-            f"{settings.STT_SERVICE_URL}/v1/stt/transcriptions/stream",
+            f"{settings.VOICE_SERVICE_URL}/v1/stt/transcriptions/stream",
             files={"audio": (filename, audio_bytes, content_type)},
             data={"context": "", "content_type": content_type},
-            timeout=settings.STT_REQUEST_TIMEOUT_SECONDS,
+            timeout=settings.VOICE_REQUEST_TIMEOUT_SECONDS,
         ) as stt_response:
             if stt_response.status_code != 200:
                 had_error = True
