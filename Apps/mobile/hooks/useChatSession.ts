@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   endChatSession,
+  getCurrentUserId,
   sendChatMessage,
   sendChatMessageStreaming,
   sendQuizRequest as requestQuiz,
@@ -417,6 +418,10 @@ export function useChatSession({
       abortRef.current = controller;
 
       const streamingMessageId = `ai-stream-${optimisticMessage.id}`;
+
+      // `activeStreamingMessageId` is a mutable local — onStart may rename the
+      // placeholder to the server-assigned ID, and onDelta / onEnd always use
+      // the current value so they target the right message.
       let activeStreamingMessageId = streamingMessageId;
 
       appendMessage(
@@ -436,6 +441,11 @@ export function useChatSession({
         },
       );
 
+      // FIX: Rather than removing the streaming placeholder before calling the
+      // fallback (which creates a visible gap where no AI bubble exists), we
+      // update the placeholder in-place. The ThinkingIndicator stays on screen
+      // while the non-streaming request is in flight, then the bubble is
+      // populated with the response once it arrives.
       const sendFallbackResponse = async () => {
         const elapsed = Date.now() - startedRequestAt;
         if (elapsed < MIN_TYPING_INDICATOR_MS) {
@@ -469,21 +479,27 @@ export function useChatSession({
             return;
           }
 
-          const aiMessage: Message = {
-            id: response.messageId,
-            sessionId: liveSession.id,
-            sender: 'ai',
-            content: response.content || 'I need a moment to explain that. Please try again.',
-            safetyFlags: response.safetyFlags,
-            createdAt: response.createdAt,
-            triggeredBy: optimisticMessage.id,
-            status: 'sent',
-          };
+          // Update the existing streaming placeholder in-place with the
+          // fallback content — no remove + append, so there is no flicker.
+          updateMessageById(
+            activeStreamingMessageId,
+            (message) => ({
+              ...message,
+              id: response.messageId,
+              content: response.content || 'I need a moment to explain that. Please try again.',
+              safetyFlags: response.safetyFlags,
+              createdAt: response.createdAt,
+              status: 'sent',
+            }),
+            {
+              isAwaitingResponse: false,
+              error: null,
+            },
+          );
 
-          appendMessage(aiMessage, {
-            isAwaitingResponse: false,
-            error: null,
-          });
+          // Keep activeStreamingMessageId in sync in case anything runs after
+          // this (currently nothing does, but defensive).
+          activeStreamingMessageId = response.messageId;
         } catch {
           if (controller.signal.aborted) {
             if (mountedRef.current) {
@@ -499,22 +515,55 @@ export function useChatSession({
             return;
           }
 
-          const failedMessage: Message = {
-            id: `ai-error-${optimisticMessage.id}`,
-            sessionId: liveSession.id,
-            sender: 'ai',
-            content: 'I lost connection before I could answer. Tap retry and I will try again.',
-            safetyFlags: [],
-            createdAt: new Date().toISOString(),
-            triggeredBy: optimisticMessage.id,
-            status: 'error',
-          };
-
-          appendMessage(failedMessage, {
-            isAwaitingResponse: false,
-            error: null,
-          });
+          // Update the placeholder to an error state — keeps the bubble on
+          // screen with a retry option rather than silently removing it.
+          updateMessageById(
+            activeStreamingMessageId,
+            (message) => ({
+              ...message,
+              id: `ai-error-${optimisticMessage.id}`,
+              content: 'I lost connection before I could answer. Tap retry and I will try again.',
+              safetyFlags: [],
+              createdAt: new Date().toISOString(),
+              status: 'error',
+            }),
+            {
+              isAwaitingResponse: false,
+              error: null,
+            },
+          );
         }
+      };
+
+      let pendingDelta = '';
+      let rafId: ReturnType<typeof requestAnimationFrame> | null = null;
+
+      const flushPendingDelta = () => {
+        rafId = null;
+        if (!pendingDelta || !mountedRef.current) return;
+        const batch = pendingDelta;
+        pendingDelta = '';
+        // Read activeStreamingMessageId at flush time (may have changed since onDelta).
+        updateMessageById(activeStreamingMessageId, (msg) => ({
+          ...msg,
+          content: msg.content + batch,
+        }));
+      };
+
+      const scheduleDeltaFlush = () => {
+        if (rafId === null) {
+          rafId = requestAnimationFrame(flushPendingDelta);
+        }
+      };
+
+      // Call before any early-exit path (abort, onEnd, error) to drain the buffer
+      // synchronously so no tokens are lost when the stream closes.
+      const cancelAndFlushDelta = () => {
+        if (rafId !== null) {
+          cancelAnimationFrame(rafId);
+          rafId = null;
+        }
+        flushPendingDelta();
       };
 
       try {
@@ -526,50 +575,54 @@ export function useChatSession({
           inputSource,
           context: buildSerializedContext(ageGroup, gradeLevel, subjectContext, contextualMessages),
           signal: controller.signal,
-          onStart: (messageId) => {
-            const previousMessageId = activeStreamingMessageId;
-            activeStreamingMessageId = messageId;
-            updateMessageById(previousMessageId, (message) => ({
-              ...message,
-              id: messageId,
-            }));
-          },
-          onDelta: (deltaText) => {
-            updateMessageById(activeStreamingMessageId, (message) => ({
-              ...message,
-              content: `${message.content}${deltaText}`,
-            }));
-          },
-          onEnd: (messageId) => {
-            const previousMessageId = activeStreamingMessageId;
-            activeStreamingMessageId = messageId;
-            updateMessageById(previousMessageId, (message) => ({
-              ...message,
-              id: messageId,
-              status: 'sent',
-            }));
 
-            if (mountedRef.current) {
-              setState((current) => ({
-                ...current,
-                isAwaitingResponse: false,
-                error: null,
-              }));
-            }
+          onStart: (messageId) => {
+            const previousId = activeStreamingMessageId;
+            activeStreamingMessageId = messageId;
+            updateMessageById(previousId, (message) => ({
+              ...message,
+              id: messageId,
+            }));
           },
-          onError: () => {
-            // Fall back to the current JSON response path so the user still gets an answer.
+
+          onDelta: (deltaText) => {
+            // Accumulate — do NOT call setState here. The RAF flush does it.
+            pendingDelta += deltaText;
+            scheduleDeltaFlush();
+          },
+
+          onEnd: (messageId) => {
+            // Drain any buffered tokens synchronously before finalising the message.
+            // If we let the scheduled RAF fire after updateMessageById below, it would
+            // read the already-updated ID and find the message, but the status would
+            // have already been set to 'sent' — safe but wasteful. Flushing first is
+            // cleaner and guarantees the last tokens are included in the same render
+            // as the status change.
+            cancelAndFlushDelta();
+
+            const previousId = activeStreamingMessageId;
+            activeStreamingMessageId = messageId;
+            updateMessageById(
+              previousId,
+              (msg) => ({ ...msg, id: messageId, status: 'sent' }),
+              { isAwaitingResponse: false, error: null },
+            );
+          },
+
+          onError: (code, message) => {
+            // The service will throw a handled error after calling this, which
+            // the catch block below intercepts to trigger sendFallbackResponse.
+            // Log here if you want visibility into why streaming failed.
+            console.warn(`[useChatSession] SSE stream error (code ${code}): ${message}`);
           },
         });
 
-        if (mountedRef.current) {
-          setState((current) => ({
-            ...current,
-            isAwaitingResponse: false,
-            error: null,
-          }));
-        }
+        // FIX: removed the redundant setState here. onEnd already sets
+        // isAwaitingResponse: false via updateMessageById's nextState param.
+        // Adding a second setState caused an extra re-render with no visible
+        // effect but could race with the onEnd update in fast completions.
       } catch {
+        cancelAndFlushDelta();
         if (controller.signal.aborted) {
           if (mountedRef.current) {
             const currentStreamingMessage = messagesRef.current.find(
@@ -577,28 +630,24 @@ export function useChatSession({
             );
 
             if (currentStreamingMessage && currentStreamingMessage.content.trim().length > 0) {
+              // Keep partial content — the user got something useful.
               updateMessageById(activeStreamingMessageId, (message) => ({
                 ...message,
                 status: 'sent',
-              }));
+              }), { isAwaitingResponse: false });
             } else {
+              // Nothing was streamed yet — remove the empty placeholder.
               removeMessageById(activeStreamingMessageId, {
                 isAwaitingResponse: false,
               });
             }
-
-            setState((current) => ({
-              ...current,
-              isAwaitingResponse: false,
-            }));
           }
           return;
         }
 
-        if (mountedRef.current) {
-          removeMessageById(activeStreamingMessageId);
-        }
-
+        // FIX: no longer calling removeMessageById before sendFallbackResponse.
+        // The streaming placeholder stays visible as a ThinkingIndicator while
+        // the fallback request is in flight — no blank period in the chat.
         await sendFallbackResponse();
       } finally {
         if (abortRef.current === controller) {
@@ -606,15 +655,23 @@ export function useChatSession({
         }
       }
     },
+    // FIX: added appendMessage, commitMessages, updateMessageById, removeMessageById
+    // to the dep array. They are stable refs (their own deps bottom out at []),
+    // so this does not cause extra re-renders — it just makes the linter happy
+    // and guards against future refactors that might make them unstable.
     [
       ageGroup,
+      appendMessage,
       childId,
+      commitMessages,
       gradeLevel,
+      removeMessageById,
       resolveLiveSession,
       startSession,
       subjectContext?.subjectId,
       subjectContext?.subjectName,
       subjectContext?.topicId,
+      updateMessageById,
     ],
   );
 
@@ -991,7 +1048,6 @@ export function useChatSession({
   useEffect(() => {
     if (minutesRemaining === null || minutesRemaining === undefined) return;
     if (warningHapticFiredRef.current) return;
-    // Convert to seconds for precision: warn when ≤ 300 s (5 min) remain
     const remainingSeconds =
       dailyLimitMinutes !== null && dailyLimitMinutes !== undefined
         ? dailyLimitMinutes * 60 - elapsedSeconds

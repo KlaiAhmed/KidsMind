@@ -9,7 +9,11 @@
  *   DELETE /api/v1/chat/history/{uid}/{cid}/{sid}   → delete session history
  *
  * The current message endpoint returns a flat JSON response when stream:false.
- * SSE streaming is also supported via sendChatMessageStreaming().
+ * SSE streaming is supported via sendChatMessageStreaming() which uses
+ * XMLHttpRequest + onprogress — the only reliable streaming primitive in
+ * React Native / Expo (fetch's ReadableStream is either absent or fully
+ * buffered on the native networking stack, meaning onDelta fires all at
+ * once after the response finishes rather than incrementally).
  */
 import { apiRequest, getApiBaseUrl } from '@/services/apiClient';
 import { useAuthStore } from '@/store/authStore';
@@ -70,7 +74,7 @@ function normalizeOptionalString(value: unknown): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
-function getCurrentUserId(): string {
+export function getCurrentUserId(): string {
   const userId = useAuthStore.getState().user?.id;
   if (!userId) {
     throw new Error('You must be signed in to start a chat session.');
@@ -248,7 +252,7 @@ export async function sendChatMessage(payload: ChatRequestPayload, signal?: Abor
           })),
         }),
         input_source: payload.inputSource ?? 'keyboard',
-        stream: true,
+        stream: false,
       },
       signal,
     },
@@ -288,7 +292,113 @@ function createHandledStreamError(message: string): Error {
   return handledError;
 }
 
-export async function sendChatMessageStreaming(params: {
+interface SseEventPayload {
+  message_id?: unknown;
+  text?: unknown;
+  content?: unknown;
+  delta?: unknown;
+  code?: unknown;
+  message?: unknown;
+}
+
+/**
+ * Parses and dispatches a single buffered SSE event.
+ *
+ * Returns a handled stream error if the event was an SSE `error` event,
+ * or null if the event was processed successfully or silently skipped.
+ */
+function dispatchSseEvent(
+  eventType: string,
+  dataLines: string[],
+  params: {
+    onStart: (messageId: string) => void;
+    onDelta: (text: string) => void;
+    onEnd: (messageId: string) => void;
+    onError: (code: number, message: string) => void;
+  },
+): Error | null {
+  if (!eventType || dataLines.length === 0) {
+    return null;
+  }
+ 
+  const json = dataLines.join('\n').trim();
+  if (!json) {
+    return null;
+  }
+ 
+  let payload: SseEventPayload;
+  try {
+    payload = JSON.parse(json) as SseEventPayload;
+  } catch (err) {
+    // JSON parse failed. Log with the raw content so we can diagnose whether
+    // this is a server issue or a chunk-boundary reassembly issue. Do NOT
+    // silently return null — that caused tokens to vanish without any trace.
+    console.warn(
+      `[chatService] SSE JSON parse failed for event "${eventType}":`,
+      JSON.stringify(json.slice(0, 200)), // truncate huge payloads in log
+      err,
+    );
+    return null;
+  }
+ 
+  if (eventType === 'start') {
+    if (typeof payload.message_id === 'string' && payload.message_id) {
+      params.onStart(payload.message_id);
+    } else {
+      console.warn('[chatService] SSE start event missing message_id:', payload);
+    }
+    return null;
+  }
+ 
+  if (eventType === 'delta') {
+    // Resolve the text field defensively: prefer `text`, fall back to
+    // `content` then `delta` to survive minor server-side renames.
+    const raw = payload.text ?? payload.content ?? payload.delta;
+ 
+    if (raw == null) {
+      // Server sent a delta event with no recognisable text field. Log and
+      // skip — don't crash the stream.
+      console.warn('[chatService] SSE delta event has no text field:', payload);
+      return null;
+    }
+ 
+    // Coerce to string. Handles {"text": 5} or {"text": true} gracefully
+    // instead of silently dropping the event.
+    const text = typeof raw === 'string' ? raw : String(raw);
+ 
+    if (text.length > 0) {
+      params.onDelta(text);
+    }
+    return null;
+  }
+ 
+  if (eventType === 'end') {
+    if (typeof payload.message_id === 'string' && payload.message_id) {
+      params.onEnd(payload.message_id);
+    } else {
+      console.warn('[chatService] SSE end event missing message_id:', payload);
+    }
+    return null;
+  }
+ 
+  if (eventType === 'error') {
+    const code = typeof payload.code === 'number' ? payload.code : 0;
+    const message =
+      typeof payload.message === 'string' && payload.message.trim().length > 0
+        ? payload.message
+        : 'Stream error';
+    params.onError(code, message);
+    return createHandledStreamError(message);
+  }
+ 
+  // Unknown event type — ignore. Log at debug level if you want visibility.
+  return null;
+}
+
+/**
+ * Streams a chat message using XMLHttpRequest + onprogress.
+ */
+export function sendChatMessageStreaming(params: {
   userId: string;
   childId: string;
   sessionId: string;
@@ -301,134 +411,208 @@ export async function sendChatMessageStreaming(params: {
   onEnd: (messageId: string) => void;
   onError: (code: number, message: string) => void;
 }): Promise<void> {
-  const token = getCurrentAccessToken();
-
-  try {
-    const response = await fetch(buildChatMessageUrl(params.userId, params.childId, params.sessionId), {
-      method: 'POST',
-      headers: {
-        Accept: 'text/event-stream',
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-        'X-Client-Type': 'mobile',
-      },
-      body: JSON.stringify({
+  return new Promise<void>((resolve, reject) => {
+    if (params.signal.aborted) {
+      resolve();
+      return;
+    }
+ 
+    const token = getCurrentAccessToken();
+    const url = buildChatMessageUrl(params.userId, params.childId, params.sessionId);
+ 
+    const xhr = new XMLHttpRequest();
+ 
+    // ── SSE parser state ──────────────────────────────────────────────────────
+    let processedLength = 0;
+ 
+    // lineBuffer: holds any incomplete line that arrived mid-chunk. Split/pop
+    // keeps it here until the next onprogress delivers the rest of the line.
+    let lineBuffer = '';
+ 
+    // currentEvent / currentDataLines: accumulates the fields of the SSE event
+    // block currently being parsed. Flushed on blank line (the SSE block
+    // separator) or when a new event: field is encountered.
+    let currentEvent = '';
+    let currentDataLines: string[] = [];
+ 
+    /**
+     * Flush the currently accumulated SSE event and reset parser state.
+     * Called on every blank line (the SSE block separator).
+     */
+    const flushCurrentEvent = (): Error | null => {
+      const eventType = currentEvent;
+      const dataLines = currentDataLines;
+      currentEvent = '';
+      currentDataLines = [];
+      return dispatchSseEvent(eventType, dataLines, params);
+    };
+ 
+    /**
+     * Parse only the new portion of xhr.responseText not yet consumed.
+     * processedLength tracks the character offset of the last byte we read.
+     */
+    const parseNewChunk = (fullText: string): Error | null => {
+      const newChunk = fullText.slice(processedLength);
+      processedLength = fullText.length;
+ 
+      lineBuffer += newChunk;
+ 
+      // Split on CRLF or LF per the SSE spec.
+      const lines = lineBuffer.split(/\r?\n/);
+ 
+      // The last element may be an incomplete line (no newline yet). Hold it
+      // in lineBuffer until the next progress event completes it.
+      lineBuffer = lines.pop() ?? '';
+ 
+      for (const line of lines) {
+        if (!line) {
+          // Blank line = SSE event block terminator. Dispatch the event.
+          const error = flushCurrentEvent();
+          if (error) {
+            return error;
+          }
+          continue;
+        }
+ 
+        if (line.startsWith('event:')) {
+          // A new named event starts here. Flush any previously accumulated
+          // event first (handles servers that omit blank lines between events).
+          const error = flushCurrentEvent();
+          if (error) {
+            return error;
+          }
+          currentEvent = line.slice(6).trim();
+          continue;
+        }
+ 
+        if (line.startsWith('data:')) {
+          // Per SSE spec: one optional leading space after the colon is stripped.
+          // .trim() handles both "data: value" and "data:value" safely.
+          const data = line.slice(5).trim();
+          if (data) {
+            currentDataLines.push(data);
+          }
+          continue;
+        }
+ 
+        // id:, retry:, comments (`:`) — all ignored.
+      }
+ 
+      return null;
+    };
+ 
+    // ── AbortSignal wiring ────────────────────────────────────────────────────
+ 
+    const abortHandler = () => {
+      xhr.abort();
+    };
+ 
+    params.signal.addEventListener('abort', abortHandler);
+ 
+    const cleanup = () => {
+      params.signal.removeEventListener('abort', abortHandler);
+    };
+ 
+    const resolveAndClean = () => {
+      cleanup();
+      resolve();
+    };
+ 
+    const rejectAndClean = (reason: unknown) => {
+      cleanup();
+      reject(reason);
+    };
+ 
+    // ── XHR event handlers ────────────────────────────────────────────────────
+ 
+    xhr.onprogress = () => {
+      if (!xhr.responseText) {
+        return;
+      }
+      const error = parseNewChunk(xhr.responseText);
+      if (error) {
+        xhr.abort();
+        rejectAndClean(error);
+      }
+    };
+ 
+    xhr.onload = () => {
+      if (xhr.status < 200 || xhr.status >= 300) {
+        const message = `Request failed with status ${xhr.status}.`;
+        params.onError(xhr.status, message);
+        rejectAndClean(createHandledStreamError(message));
+        return;
+      }
+ 
+      // Parse any bytes that arrived after the final onprogress event.
+      if (xhr.responseText) {
+        const error = parseNewChunk(xhr.responseText);
+        if (error) {
+          rejectAndClean(error);
+          return;
+        }
+      }
+ 
+      // Flush any event not terminated by a trailing blank line.
+      const error = flushCurrentEvent();
+      if (error) {
+        rejectAndClean(error);
+        return;
+      }
+ 
+      resolveAndClean();
+    };
+ 
+    xhr.onerror = () => {
+      if (params.signal.aborted) {
+        // Abort-triggered network error — treat as normal cancellation.
+        resolveAndClean();
+        return;
+      }
+      const message = 'Network request failed.';
+      params.onError(0, message);
+      rejectAndClean(new Error(message));
+    };
+ 
+    xhr.onabort = () => {
+      // XHR aborted via our AbortSignal handler. Resolve cleanly so the hook's
+      // catch block can inspect signal.aborted and handle it appropriately.
+      resolveAndClean();
+    };
+ 
+    xhr.ontimeout = () => {
+      const message = 'Request timed out.';
+      params.onError(0, message);
+      rejectAndClean(new Error(message));
+    };
+ 
+    // ── Fire the request ──────────────────────────────────────────────────────
+ 
+    xhr.open('POST', url, /* async= */ true);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.setRequestHeader('Accept', 'text/event-stream');
+    xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    xhr.setRequestHeader('X-Client-Type', 'mobile');
+ 
+    // Force UTF-8 decoding of the response body.
+    xhr.overrideMimeType?.('text/event-stream; charset=utf-8');
+ 
+    // Prevent XHR from trying to parse the streaming body as XML/JSON.
+    xhr.responseType = 'text';
+ 
+    xhr.send(
+      JSON.stringify({
         text: params.text,
         context: params.context,
         input_source: params.inputSource ?? 'keyboard',
         stream: true,
       }),
-      signal: params.signal,
-    });
-
-    if (!response.ok) {
-      const message = `Request failed with status ${response.status}.`;
-      params.onError(response.status, message);
-      throw createHandledStreamError(message);
-    }
-
-    if (!response.body) {
-      const message = 'Streaming response body is unavailable.';
-      params.onError(0, message);
-      throw createHandledStreamError(message);
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let currentEvent = '';
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-
-        if (done) {
-          break;
-        }
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split(/\r?\n/);
-        buffer = lines.pop() ?? '';
-
-        for (const line of lines) {
-          if (!line) {
-            currentEvent = '';
-            continue;
-          }
-
-          if (line.startsWith('event:')) {
-            currentEvent = line.slice(6).trim();
-            continue;
-          }
-
-          if (!line.startsWith('data:')) {
-            continue;
-          }
-
-          const json = line.slice(5).trim();
-          if (!json) {
-            continue;
-          }
-
-          try {
-            const payload = JSON.parse(json) as {
-              message_id?: unknown;
-              text?: unknown;
-              code?: unknown;
-              message?: unknown;
-            };
-
-            if (currentEvent === 'start' && typeof payload.message_id === 'string') {
-              params.onStart(payload.message_id);
-            } else if (currentEvent === 'delta' && typeof payload.text === 'string') {
-              params.onDelta(payload.text);
-            } else if (currentEvent === 'end' && typeof payload.message_id === 'string') {
-              params.onEnd(payload.message_id);
-            } else if (currentEvent === 'error') {
-              const code = typeof payload.code === 'number' ? payload.code : 0;
-              const message =
-                typeof payload.message === 'string' && payload.message.trim().length > 0
-                  ? payload.message
-                  : 'Stream error';
-              params.onError(code, message);
-              throw createHandledStreamError(message);
-            }
-          } catch (chunkError) {
-            if (chunkError instanceof Error && (chunkError as Error & { __streamHandled?: boolean }).__streamHandled) {
-              throw chunkError;
-            }
-
-            // Ignore malformed stream chunks and continue reading the SSE payload.
-          } finally {
-            currentEvent = '';
-          }
-        }
-      }
-    } finally {
-      try {
-        reader.releaseLock();
-      } catch {
-        // Ignore reader cleanup failures.
-      }
-    }
-  } catch (error) {
-    if (error instanceof Error && (error as Error & { __streamHandled?: boolean }).__streamHandled) {
-      throw error;
-    }
-
-    if (error instanceof Error && error.name === 'AbortError') {
-      return;
-    }
-
-    if (params.signal.aborted) {
-      return;
-    }
-
-    const message = error instanceof Error && error.message ? error.message : 'Stream error';
-    params.onError(0, message);
-    throw error instanceof Error ? error : new Error(message);
-  }
+    );
+  });
 }
+
+
+// ── Quiz submission ─────────────────────────────────────────────────────────
 
 interface QuizSubmitAnswer {
   question_id: number;
