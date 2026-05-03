@@ -20,7 +20,7 @@ Each component has its own detailed README with setup, API reference, and operat
 | Component | Path | Contents |
 | :--- | :--- | :--- |
 | Core API | [services/api/README.md](./services/api/README.md) | Routes, auth model, migrations, Redis usage, security model |
-| STT Service | [services/stt/README.md](./services/stt/README.md) | Dual-model pipeline, GPU/CPU modes, configuration |
+| VOICE Service | [services/voice/README.md](./services/voice/README.md) | Dual-model pipeline, GPU/CPU modes, configuration |
 | Web Client | [Apps/web/README.md](./Apps/web/README.md) | Routes, hooks, design tokens, i18n, onboarding flow |
 | Mobile Client | [Apps/mobile/README.md](./Apps/mobile/README.md) | Expo setup, file-based routing |
 | Storage & Buckets | [infra/storage/README.md](./infra/storage/README.md) | Bucket provisioning, privacy-first voice storage, cleanup logic |
@@ -46,25 +46,25 @@ The project follows a **Monorepo** structure, separating frontend applications f
 | **Web Frontend** | React 19 + Vite 7 + TypeScript 5.9 (strict) | CSS custom properties + `data-theme`; no Tailwind, no CSS Modules |
 | **Mobile Frontend** | Expo SDK 54 + Expo Router v6 + TypeScript 5.9 | Zustand + TanStack Query; Zod v4 for validation |
 | **Backend** | FastAPI 0.128 (Python 3.12) | Uvicorn ASGI; all client traffic enters through `core-api` |
-| **AI / LLM** | LangChain LCEL + OpenAI GPT | Lives inside `core-api` — no separate AI service container |
+| **AI / LLM** | LangChain LCEL + OpenAI GPT | Lives inside `core-api` (`core/llm.py`, `services/chat/ai_service.py`) |
 | **STT** | Faster-Whisper 1.2.1 + CTranslate2 4.7.1 | Requires NVIDIA GPU; dual-model pipeline (tiny + main) |
 | **Database** | PostgreSQL 18.2-alpine | Migrations via Alembic |
 | **Cache** | Redis 8.6.1-alpine | Rate limits, token blocklist, domain cache |
 | **Object Storage** | MinIO (S3-compatible) | Avatars, badges, voice recordings, Loki chunks |
-| **Observability** | Prometheus 3.9 + Grafana 12.3 + Loki 3.6 + Promtail 3.6 | Auto-provisioned datasources |
-| **CI** | Docker Compose + GitLab CI | Multi-file compose selection via `COMPOSE_FILE` env var |
+| **Observability** | Prometheus 3.9 + Grafana 12.3 + Loki 3.6.7 + Promtail 3.6.7 | Auto-provisioned datasources |
+| **CI** | Docker Compose | Multi-file compose selection via `COMPOSE_FILE` env var |
 
 ### Core Services
 
 | Service | Container Port | Host Port (default) | Description |
 | :--- | :--- | :--- | :--- |
 | **core-api** | `:8000` | `${API_PORT:-8000}` | Main backend (FastAPI). Handles routing, business logic, AI/LLM, and database interactions. |
-| **stt-service** | `:8000` | not published | Speech-to-text via Faster-Whisper (GPU required). Accessible only via `docker-compose.debug.yml`. |
+| **voice-service** | `:8000` | not published | Speech-to-text via Faster-Whisper (GPU preferred; set `WHISPER_MODE=cpu` to run on CPU). Accessible only via `docker-compose.debug.yml`. |
 | **database** | `:5432` | not published | PostgreSQL 18.2. Accessible only via `docker-compose.debug.yml`. |
-| **cache** | `:6379` | not published | Redis 8.6.1. Rate limits, token blocklist, domain cache. Accessible only via `docker-compose.debug.yml`. |
+| **cache** | `:6379` | not published | Redis 8.6.1-alpine. Rate limits, token blocklist, domain cache. Accessible only via `docker-compose.debug.yml`. |
 | **file-storage** | `:9000` / `:9001` | not published | MinIO S3 API (`:9000`) + Console UI (`:9001`). Accessible only via `docker-compose.debug.yml`. |
 
-> There is **no separate `ai-service` container**. AI/LLM functionality (LangChain LCEL pipeline) lives inside `core-api` at `core/llm.py` and `services/ai_service.py`. The `AI_PORT=8001` variable in `.env.example` is a debug-only port for an optional remote upstream profile.
+> There is **no separate `ai-service` container**. AI/LLM functionality (LangChain LCEL pipeline) lives inside `core-api` at `core/llm.py` and `services/chat/ai_service.py`.
 
 ### Additional Services
 
@@ -109,7 +109,6 @@ KidsMind/
 │   │   │   ├── routers/            # HTTP routes by domain
 │   │   │   ├── controllers/        # Multi-service orchestration
 │   │   │   ├── services/           # Business/domain operations (incl. ai_service.py)
-│   │   │   ├── crud/               # Reusable DB query helpers
 │   │   │   ├── models/             # SQLAlchemy ORM models
 │   │   │   ├── schemas/            # Pydantic request/response contracts
 │   │   │   ├── core/               # Config, database, cache, logging, LLM client
@@ -118,7 +117,7 @@ KidsMind/
 │   │   ├── alembic/                # Database migrations
 │   │   ├── requirements.txt        # Pinned dependencies (used by Docker)
 │   │   └── Dockerfile
-│   └── stt/                        # STT Service (Faster-Whisper, GPU required)
+│   └── voice/                      # STT+TTS Service (Faster-Whisper, GPU required)
 │       ├── app/
 │       │   ├── routers/            # HTTP routes
 │       │   ├── controllers/        # Business logic
@@ -150,7 +149,7 @@ KidsMind/
 | **Node.js** | 18+ | Local frontend development |
 | **npm** | 9+ | Package management |
 | **Physical Device** | iOS/Android | Mobile testing with **Expo Go** installed |
-| **NVIDIA GPU + Container Toolkit** | CUDA 12.8+ | STT service (Faster-Whisper). CPU-only mode available with `WHISPER_MODE=cpu` |
+| **NVIDIA GPU + Container Toolkit** | CUDA 12.8+ | voice service (Faster-Whisper). CPU-only mode available with `WHISPER_MODE=cpu` |
 | **Python** | 3.12+ | Local backend development (outside Docker) |
 
 ## Installation
@@ -173,8 +172,8 @@ cp .env.example .env
 # Core API — JWT secrets, AI keys, service tokens
 cp services/api/app/.env.example services/api/app/.env
 
-# STT Service
-cp services/stt/app/.env.example services/stt/app/.env
+# VOICE Service
+cp services/voice/app/.env.example services/voice/app/.env
 
 # Web Client
 cp Apps/web/.env.example Apps/web/.env
@@ -197,7 +196,7 @@ cp Apps/web/.env.example Apps/web/.env
 
 ### 3. Build & Run Backend Services
 
-The entire backend stack (API, STT, PostgreSQL, Redis, MinIO, observability) is containerized using Docker. You do not need to install Python or PostgreSQL locally.
+The entire backend stack (API, Voice, PostgreSQL, Redis, MinIO, observability) is containerized using Docker. You do not need to install Python or PostgreSQL locally.
 
 ```bash
 # Build the images and start all containers
@@ -228,7 +227,7 @@ When `docker-compose.debug.yml` is loaded:
 | Service | Host URL |
 | :--- | :--- |
 | Core API | `http://localhost:8000` |
-| STT Service | `http://localhost:8002` |
+| Voice Service | `http://localhost:8002` |
 | PostgreSQL | `localhost:5432` |
 | Redis | `localhost:6379` |
 | MinIO API | `http://localhost:9000` |
@@ -337,24 +336,22 @@ If you prefer running the backend directly with Python:
 ```bash
 cd services/api/app
 
-# Install dependencies (uv preferred, or pip)
-uv sync
-# OR: pip install -r ../requirements.txt
+# Install dependencies (requirements.txt — pyproject.toml is incomplete)
+pip install -r ../requirements.txt
 
 # Start with hot-reload
 uvicorn main:app --reload --port 8000
 ```
 
-**STT Service** (requires GPU or `WHISPER_MODE=cpu`):
+**VOICE Service** (requires GPU or `WHISPER_MODE=cpu`):
 
 ```bash
-cd services/stt/app
+cd services/voice/app
 
-# Install dependencies
-uv sync
-# OR: pip install -r ../requirements.txt
+# Install dependencies (requirements.txt — pyproject.toml is incomplete)
+pip install -r ../requirements.txt
 
-# Start with hot-reload
+# Start with hot-reload (set WHISPER_MODE=cpu if no GPU)
 uvicorn main:app --reload --port 8000
 ```
 

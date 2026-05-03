@@ -1,10 +1,10 @@
 # KidsMind Mobile Client (Expo + React Native)
 
 ![Expo](https://img.shields.io/badge/Expo_SDK_54-000020?logo=expo)
-![React Native](https://img.shields.io/badge/React_Native-0.81-61DAFB?logo=react)
-![TypeScript](https://img.shields.io/badge/TypeScript_5.9-3178C6?logo=typescript&logoColor=white)
-![Zustand](https://img.shields.io/badge/Zustand_5-443E38?logo=zustand)
-![TanStack Query](https://img.shields.io/badge/TanStack_Query_5-FF4154?logo=reactquery&logoColor=white)
+![React Native](https://img.shields.io/badge/React_Native-0.81.5-61DAFB?logo=react)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.9.2-3178C6?logo=typescript&logoColor=white)
+![Zustand](https://img.shields.io/badge/Zustand-5.0.12-443E38?logo=zustand)
+![TanStack Query](https://img.shields.io/badge/TanStack_Query-5.99.1-FF4154?logo=reactquery&logoColor=white)
 
 AI-powered, child-safe learning mobile app for ages 3–15 and parents.
 
@@ -97,6 +97,7 @@ EXPO_PUBLIC_API_BASE_IP_URL=http://192.123.1.1:8000
 | `/(child-tabs)/chat` | AIChatScreen | Qubie AI chat |
 | `/(child-tabs)/explore` | SubjectTopicBrowser | Subject & topic browser |
 | `/(child-tabs)/profile` | ProfileScreen | Child profile view |
+| `/(child-tabs)/badges` | BadgesScreen | Badge collection (hidden tab) |
 
 ### Other routes
 
@@ -320,11 +321,16 @@ apps/mobile/
 | --- | --- | --- |
 | `Colors.primary` | `#3B2FCC` | Deep Indigo — primary brand |
 | `Colors.primaryDark` | `#2100B5` | Gradient end (Indigo Depth) |
+| `Colors.secondary` | `#785a00` | Warm Gold — discovery, joy |
+| `Colors.secondaryContainer` | `#FFD166` | Joy/discovery glow |
+| `Colors.tertiary` | `#730012` | Deep Maroon — CTA |
 | `Colors.surface` | `#FCF8FF` | Soft Lavender White — base background |
 | `Colors.text` | `#1A1A2E` | Near-Black (lavender-tinted) — primary text |
-| `Colors.secondaryContainer` | `#FFD166` | Joy/discovery glow |
+| `Colors.textSecondary` | `#4A4A68` | Secondary text |
 | `Colors.success` | `#10B981` | Success green |
 | `Colors.error` | `#BA1A1A` | Error red |
+| `Colors.accentPurple` | `#7C3AED` | Accent purple (badges) |
+| `Colors.accentAmber` | `#F59E0B` | Accent amber (progress) |
 
 ### Typography tokens (examples)
 
@@ -332,9 +338,14 @@ apps/mobile/
 | --- | --- | --- | --- |
 | `Typography.display` | 56 | 800 | PlusJakartaSans_800ExtraBold |
 | `Typography.headline` | 28 | 700 | PlusJakartaSans_700Bold |
+| `Typography.title` | 18 | 700 | PlusJakartaSans_700Bold |
 | `Typography.body` | 16 | 400 | Inter_400Regular |
+| `Typography.bodyMedium` | 16 | 500 | Inter_500Medium |
+| `Typography.bodySemiBold` | 16 | 600 | Inter_600SemiBold |
 | `Typography.caption` | 14 | 400 | Inter_400Regular |
+| `Typography.captionMedium` | 14 | 500 | Inter_500Medium |
 | `Typography.label` | 12 | 500 | Inter_500Medium (uppercase, +0.6 tracking) |
+| `Typography.stat` | 48 | 800 | PlusJakartaSans_800ExtraBold |
 
 ### Spacing (8 px base unit)
 
@@ -346,6 +357,35 @@ apps/mobile/
 | `Spacing.lg` | 24 |
 | `Spacing.xl` | 32 |
 | `Spacing.xxl` | 48 |
+| `Spacing.xxxl` | 80 |
+
+### Radii
+
+| Token | Value |
+| --- | --- |
+| `Radii.sm` | 8 |
+| `Radii.md` | 12 |
+| `Radii.lg` | 16 |
+| `Radii.xl` | 24 |
+| `Radii.xxl` | 32 |
+| `Radii.full` | 9999 |
+
+### Gradients
+
+| Token | Colors | Direction |
+| --- | --- | --- |
+| `Gradients.indigoDepth` | `#3B2FCC` → `#2100B5` | Diagonal |
+
+### Sizing
+
+| Token | Value |
+| --- | --- |
+| `Sizing.buttonHeight` | 56 |
+| `Sizing.buttonHeightSm` | 44 |
+| `Sizing.inputHeight` | 44 |
+| `Sizing.minTapTarget` | 44 |
+| `Sizing.iconBadge` | 48 |
+| `Sizing.containerMaxWidth` | 480 |
 
 ### Design principles
 
@@ -432,5 +472,7 @@ flowchart LR
 - When adding screens to the child tab group, always disable `gestureEnabled` and add `useChildNavigationLock`.
 - Preserve minimum 44 px tap targets on all interactive elements.
 - `IS_PROD` must be set correctly in `.env` — it controls which API base URL the app uses at runtime.
+- All API requests automatically include `X-Client-Type: mobile` header.
+- Child space security: Android hardware back is suppressed inline in `(child-tabs)/_layout.tsx` (not via `useChildNavigationLock` hook). Both exist — the hook is for standalone screens.
 
 ---

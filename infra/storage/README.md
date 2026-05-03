@@ -262,7 +262,7 @@ media-private/voice-messages/temp/**
 
 - No sensitive child voice data can accumulate in the `temp/` directory beyond a 24-hour window.
 - The cleanup task is idempotent — running it against an already-empty prefix is a no-op.
-- The task operates at the storage layer (S3/MinIO prefix delete), not at the application layer, ensuring it runs even if the AI or STT service itself is degraded.
+- The task operates at the storage layer (S3/MinIO prefix delete), not at the application layer, ensuring it runs even if the AI or voice service itself is degraded.
 
 > **Compliance note:** This dual-layer deletion strategy (immediate + scheduled) is intentional. The 24-hour window is an upper bound, not a target — the primary mechanism is always immediate request-scoped deletion.
 

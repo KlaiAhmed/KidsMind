@@ -1,8 +1,8 @@
 # KidsMind Core API
 
-![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi) ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql) ![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.128-009688?logo=fastapi) ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql) ![Redis](https://img.shields.io/badge/Redis-8.6-DC382D?logo=redis)
 
-KidsMind Core API is the single client-facing entry point for all web and mobile traffic. It owns authentication, child profile logic, parental safety controls, and chat orchestration. Inference is delegated to the AI service; transcription to the STT service. Clients never call upstream services directly. By default, only `core-api` is published; AI/STT stay private on the internal Docker network unless localhost debug ports are enabled with `docker-compose.debug.yml`.
+KidsMind Core API is the single client-facing entry point for all web and mobile traffic. It owns authentication, child profile logic, parental safety controls, chat orchestration, and AI inference. Audio transcription is delegated to the voice service. Clients never call upstream services directly. By default, only `core-api` is published; others stay private on the internal Docker network unless localhost debug ports are enabled with `docker-compose.debug.yml`.
 
 ```mermaid
 graph LR
@@ -12,12 +12,11 @@ graph LR
   end
 
   subgraph Core API Service
-    API["Core API<br/>:8000<br/>FastAPI"]
+    API["Core API<br/>:8000<br/>FastAPI + LangChain LCEL"]
   end
 
   subgraph Upstream Services
-    AI["AI Service<br/>internal :8000<br/>LangChain LCEL"]
-    STT["STT Service<br/>internal :8000<br/>Whisper (GPU)"]
+    VOICE["Voice Service<br/>internal :8000<br/>Whisper (GPU)"]
   end
 
   subgraph Data Layer
@@ -28,13 +27,11 @@ graph LR
 
   WEB -->|HTTPS| API
   MOB -->|HTTPS| API
-  API -->|"HTTP POST<br/>X-Service-Token"| AI
-  API -->|"HTTP POST<br/>X-Service-Token"| STT
+  API -->|"HTTP POST<br/>X-Service-Token"| VOICE
   API -->|"SQL<br/>psycopg2"| PG
   API -->|"redis.asyncio<br/>TCP"| RD
   API -->|"S3 SDK<br/>HTTP"| MINIO
-  AI -->|"Presigned URL<br/>HTTP GET"| MINIO
-  STT -->|"Presigned URL<br/>HTTP GET"| MINIO
+  VOICE -->|"Presigned URL<br/>HTTP GET"| MINIO
 ```
 
 ## Quick Start
@@ -49,7 +46,7 @@ graph LR
 2. Copy `app/.env.example` to `app/.env` and fill secrets.
 
 3. ```bash
-   docker compose up -d database cache file-storage ai-service stt-service
+   docker compose up -d database cache file-storage voice-service
    ```
 4. ```bash
    alembic upgrade head
@@ -77,35 +74,25 @@ graph LR
 
 Expected: `{"status":"ok","cache":"ok"}`
 
-Local-only debug ports for AI/STT/DB/MinIO/observability:
+Local-only debug ports for voice/DB/MinIO/observability:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.debug.yml up -d
 ```
 
-Prod-style upstream mode:
-
-```bash
-COMPOSE_PROFILES=
-AI_SERVICE_URL=https://your-remote-ai.example
-STT_SERVICE_URL=https://your-remote-stt.example
-```
-
-Start `core-api` with the shared dependencies after overriding those values.
-
 ## Request Pipeline
 
-*Every request passes through five middleware layers before reaching business logic.*
+*Every request passes through five middleware layers before reaching business logic. Middleware is registered in reverse order — the last added is the outermost (closest to the client).*
 
 ```text
-Client → CORS → CSRF → Tracing → Rate Limit → Auth → Router → Controller → Service → DB / Cache / Storage / AI / STT
+Client → CORS → Tracing → CSRF → Rate Limit → Auth → Router → Controller → Service → DB / Cache / Storage / Voice
 ```
 
 | Layer | What it does | Rejects with |
 |---|---|---|
 | CORS | Origin and header whitelist checks | Browser blocks request |
-| CSRF | Cookie/header double-submit for web state-changing requests | `403` |
 | Tracing | Attaches `X-Request-ID` to request | Non-blocking |
+| CSRF | Cookie/header double-submit for web state-changing requests | `403` |
 | Rate limit | Tiered Redis-backed quota check | `429` |
 | Auth | JWT decode, audience validation, blocklist check, user lookup | `401` / `403` |
 
@@ -190,6 +177,26 @@ Client → CORS → CSRF → Tracing → Rate Limit → Auth → Router → Cont
 | GET | `/api/v1/media/admin/badges` | Admin | T1 | List all badges |
 | PATCH | `/api/v1/media/admin/badges/{media_id}` | Admin | T4 | Update badge + invalidate cache |
 | DELETE | `/api/v1/media/admin/badges/{media_id}` | Admin | T4 | Delete badge + invalidate cache |
+
+### Voice
+
+| Method | Path | Auth | Rate Tier | Description |
+|---|---|---|---|---|
+| POST | `/api/v1/voice/{user_id}/{child_id}/{session_id}/transcribe` | Access + ownership | STT | Stream audio transcription (SSE) |
+| POST | `/api/v1/voice/{user_id}/{child_id}/{session_id}/transcribe/sync` | Access + ownership | STT | Sync audio transcription (JSON) |
+
+### Quiz
+
+| Method | Path | Auth | Rate Tier | Description |
+|---|---|---|---|---|
+| POST | `/api/v1/quizzes/{child_id}/submit` | Access token | T4 | Submit quiz answers for scoring |
+
+### Safety and Rules
+
+| Method | Path | Auth | Rate Tier | Description |
+|---|---|---|---|---|
+| PATCH | `/api/v1/safety-and-rules` | Access token | T4 | Update safety settings and child rules |
+| POST | `/api/v1/safety-and-rules/verify-parent-pin` | Access token | T3 | Verify parent PIN for child mode access |
 
 ## Auth Model
 
@@ -318,8 +325,8 @@ Key production rate limits:
 | Register (web + mobile) | IP 10/h + credential 3/h |
 | Web refresh | 40/min + 600/h per user |
 | Mobile refresh | 20/min (user + device) + 300/h |
-| Chat text | 6/min burst, 60/h sustained, 200/day |
-| Chat voice | 3/min burst, 30/h sustained, 100/day |
+| Chat text | 6/min burst, 30/h sustained, 100/day |
+| Voice transcription | 10/min burst, 60/h sustained, 200/day |
 
 Dev mode multiplies all limits by `DEV_MULTIPLIER` (default 1000).
 
@@ -334,9 +341,8 @@ services/api/
 ├── app/
 │   ├── controllers/        # Multi-service orchestration
 │   ├── core/               # Config, database, cache, logging, rate limit policy
-│   ├── crud/               # Reusable DB query helpers
 │   ├── dependencies/       # FastAPI Depends() providers
-│   ├── middlewares/         # CSRF + rate-limit pipeline
+│   ├── middlewares/        # CSRF + rate-limit pipeline
 │   ├── models/             # SQLAlchemy ORM models
 │   ├── routers/            # HTTP routes by domain
 │   ├── schemas/            # Pydantic request/response contracts

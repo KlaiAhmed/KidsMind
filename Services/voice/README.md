@@ -1,4 +1,4 @@
-# STT Service
+# voice Service
 
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.128-009688?logo=fastapi)
@@ -12,9 +12,9 @@
 
 | Field | Value |
 |-------|-------|
-| **Service name** | `stt-service` |
+| **Service name** | `voice-service` |
 | **Container port** | 8000 (Uvicorn) |
-| **Host port** | Not published by default; opt-in via `docker-compose.debug.yml` → `127.0.0.1:${STT_PORT}:8000` |
+| **Host port** | Not published by default; opt-in via `docker-compose.debug.yml` → `127.0.0.1:${voice_PORT}:8000` |
 | **Role** | Speech-to-text microservice. Upstream services (mainly core-api) send audio URLs; the service fetches the audio, detects language, and returns transcription text. |
 | **Runtime** | NVIDIA CUDA 12.8 + cuDNN on Ubuntu 24.04 (GPU mode) · Python 3.12 (CPU mode) |
 | **Database** | None — this service is stateless beyond model caches |
@@ -33,7 +33,7 @@
 ### With pip (local)
 
 ```bash
-cd services/stt/app
+cd services/voice/app
 pip install -r ../requirements.txt
 cp .env.example .env          # then edit .env for your environment
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
@@ -44,7 +44,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ### With uv (local, preferred for development)
 
 ```bash
-cd services/stt/app
+cd services/voice/app
 uv sync                       # install from uv.lock
 cp .env.example .env          # then edit .env for your environment
 uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
@@ -53,12 +53,12 @@ uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ### With Docker Compose
 
 ```bash
-# 1. Ensure root .env and services/stt/app/.env exist
+# 1. Ensure root .env and services/voice/app/.env exist
 cp ../../.env.example ../../.env
 cp app/.env.example app/.env
 
 # 2. Start the service (requires COMPOSE_PROFILES=local-upstreams)
-docker compose up stt-service
+docker compose up voice-service
 ```
 
 **GPU mode** (default) requires the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html). Docker Compose GPU reservation:
@@ -87,13 +87,13 @@ curl http://localhost:8000/health
 # {"status":"ok"}
 ```
 
-To access from the host, use `docker-compose.debug.yml` which binds `127.0.0.1:${STT_PORT}:8000`.
+To access from the host, use `docker-compose.debug.yml` which binds `127.0.0.1:${voice_PORT}:8000`.
 
 ## 3. Service Dependencies & Topology
 
 | Dependency | Purpose | Connection Method | Endpoint / Port |
 |---|---|---|---|
-| Core API (caller) | Sends transcription requests | HTTP | `POST /v1/stt/transcriptions` |
+| Core API (caller) | Sends transcription requests | HTTP | `POST /v1/voice/transcriptions` |
 | Audio source URL (often MinIO presigned URL) | Provides audio bytes to transcribe | Outbound HTTP GET | `request.audio_url` |
 | Hugging Face Hub (optional) | Model download / cache warmup | HTTPS | `huggingface.co` |
 | Prometheus | Metrics scraping | HTTP pull | `GET /metrics` |
@@ -103,10 +103,10 @@ To access from the host, use `docker-compose.debug.yml` which binds `127.0.0.1:$
 
 ```mermaid
 flowchart TD
-    Client([Caller]) --> MW[RequestTracingMiddleware]
-    MW --> Router[POST /v1/stt/transcriptions]
+    Client([Caller]) --> MW[RequevoiceracingMiddleware]
+    MW --> Router[POST /v1/voice/transcriptions]
     Router --> Sem[acquire_worker semaphore]
-    Router --> Ctrl[stt_controller]
+    Router --> Ctrl[voice_controller]
     Ctrl --> Fetch[fetch_audio<br/>validate ext · HTTP GET · validate size]
     Ctrl --> Decode[decode_audio<br/>faster_whisper.audio.decode_audio]
     Ctrl --> Lang[detect_language<br/>tiny model · beam_size=1 · asyncio.to_thread]
@@ -176,12 +176,12 @@ The `tiny` model is fast enough that its language detection cost is negligible r
 ```mermaid
 sequenceDiagram
     participant C as Caller
-    participant API as STT Service
+    participant API as voice Service
     participant SRC as Audio URL Source
     participant T as Tiny Model
     participant M as Main Model
 
-    C->>API: POST /v1/stt/transcriptions
+    C->>API: POST /v1/voice/transcriptions
     API->>API: acquire semaphore
     API->>SRC: GET audio_url
     SRC-->>API: audio bytes
@@ -227,7 +227,7 @@ sequenceDiagram
 
 | Method | Path | Auth | Semaphore | Description |
 |--------|------|------|-----------|-------------|
-| `POST` | `/v1/stt/transcriptions` | `X-Service-Token` (prod only) | Yes | Main endpoint — accepts audio URL, returns transcription |
+| `POST` | `/v1/voice/transcriptions` | `X-Service-Token` (prod only) | Yes | Main endpoint — accepts audio URL, returns transcription |
 | `GET` | `/health` | No | No | Health check — returns `{"status": "ok"}` |
 | `GET` | `/metrics` | No | No | Prometheus metrics (auto-exposed by instrumentator) |
 
@@ -250,7 +250,7 @@ All settings are loaded via `pydantic-settings` from environment variables or `.
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `SERVICE_NAME` | No | `stt-service` | Service identifier, used in logs and FastAPI title |
+| `SERVICE_NAME` | No | `voice-service` | Service identifier, used in logs and FastAPI title |
 | `IS_PROD` | No | `True` | Production mode flag (used for rate limit multiplier and dev mode startup guard) |
 | `EXPLICIT_DEV_MODE` | **Yes** when `IS_PROD=False` | `false` | Must be `"true"` if `IS_PROD=False`, otherwise the service **crashes at startup**. This is a safety guard — not optional. |
 | `CORS_ORIGINS` | No | `["*"]` | Allowed CORS origins (JSON-serializable list) |
@@ -267,7 +267,7 @@ All settings are loaded via `pydantic-settings` from environment variables or `.
 
 Set automatically by `WHISPER_MODE` via the `validate_environment` model validator in `core/config.py`. You can override `WHISPER_DEVICE`, `WHISPER_COMPUTE_TYPE`, and `WHISPER_CPU_THREADS` explicitly — empty/zero values fall back to the derived defaults.
 
-| `WHISPER_MODE` | `WHISPER_DEVICE` | `WHISPER_COMPUTE_TYPE` | `WHISPER_CPU_THREADS` | `STT_TIMEOUT_SECONDS` |
+| `WHISPER_MODE` | `WHISPER_DEVICE` | `WHISPER_COMPUTE_TYPE` | `WHISPER_CPU_THREADS` | `voice_TIMEOUT_SECONDS` |
 |----------------|-----------------|----------------------|----------------------|----------------------|
 | `gpu` | `cuda` | `float16` | `0` (unused) | `5` |
 | `cpu` | `cpu` | `int8` | `8` | `30` |
@@ -305,7 +305,7 @@ These are set in the `Dockerfile` and do not need to be configured in `.env`:
 
 ### Domain exceptions
 
-Defined in `exceptions.py`, mapped to HTTP status codes in `stt_router.py`:
+Defined in `exceptions.py`, mapped to HTTP status codes in `voice_router.py`:
 
 | Exception | HTTP Status | Trigger |
 |-----------|-------------|---------|
@@ -320,7 +320,7 @@ Defined in `exceptions.py`, mapped to HTTP status codes in `stt_router.py`:
 
 - An `asyncio.Semaphore` controls concurrency: size = `WHISPER_NUM_WORKERS` (GPU mode) or `WHISPER_CPU_THREADS` (CPU mode).
 - Each request must acquire a semaphore slot before proceeding.
-- If acquisition times out after `STT_TIMEOUT_SECONDS` (5 s GPU / 30 s CPU), the service returns **503** with `"STT service busy, please retry"`.
+- If acquisition times out after `voice_TIMEOUT_SECONDS` (5 s GPU / 30 s CPU), the service returns **503** with `"Voice service busy, please retry"`.
 - The semaphore is always released in a `finally` block, even on exceptions.
 - **No internal retry/backoff logic** — the service fails fast and delegates retry decisions to the caller. Clients should retry with exponential backoff.
 
@@ -352,7 +352,7 @@ When `IS_PROD=False`, the `EXPLICIT_DEV_MODE` guard requires explicit `"true"` c
 ## Directory Structure
 
 ```
-services/stt/
+services/voice/
 ├── .dockerignore
 ├── Dockerfile                  # CUDA 12.8 base, pip install from requirements.txt
 ├── README.md
@@ -366,18 +366,18 @@ services/stt/
     ├── exceptions.py           # domain exception hierarchy
     ├── core/
     │   ├── config.py           # pydantic-settings: all env vars + derived defaults
-    │   └── logging_setup.py    # JSON formatter + RequestTracingMiddleware
+    │   └── logging_setup.py    # JSON formatter + RequevoiceracingMiddleware
     ├── routers/
-    │   └── stt_router.py       # POST /v1/stt/transcriptions
+    │   └── voice_router.py       # POST /v1/voice/transcriptions
     ├── controllers/
-    │   └── stt_controller.py   # pipeline orchestrator (fetch → decode → detect → transcribe)
+    │   └── voice_controller.py   # pipeline orchestrator (fetch → decode → detect → transcribe)
     ├── services/
     │   ├── transcribe.py       # main model transcription (async, thread-offloaded)
     │   └── detect_lang.py      # tiny model language detection (async, thread-offloaded)
     ├── models/
     │   └── whisper.py          # WhisperModel registry + lifecycle (load at startup)
     ├── schemas/
-    │   └── stt_schemas.py      # Pydantic request/response models
+    │   └── voice_schemas.py      # Pydantic request/response models
     └── utils/
         ├── acquire_worker.py   # semaphore dependency for concurrency control
         ├── auth.py             # X-Service-Token verification (secrets.compare_digest)
