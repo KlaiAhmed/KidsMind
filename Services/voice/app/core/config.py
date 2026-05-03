@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     )
 
     # Service
-    SERVICE_NAME: str = "stt-service"
+    SERVICE_NAME: str = "voice-service"
 
     # App State - defaults to True (safe), overridden by IS_PROD env var
     IS_PROD: bool = True

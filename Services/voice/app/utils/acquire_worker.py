@@ -26,7 +26,7 @@ async def acquire_worker(request: Request):
                 "available_workers": semaphore._value,
             },
         )
-        raise HTTPException(status_code=503, detail="STT service busy, please retry")
+        raise HTTPException(status_code=503, detail="Voice service busy, please retry")
 
     try:
         # route runs here

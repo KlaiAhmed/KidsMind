@@ -15,7 +15,7 @@ from utils.logger import logger
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info(
-        "STT service starting up",
+        "Voice service starting up",
         extra={
             "service": settings.SERVICE_NAME,
             "whisper_mode": settings.WHISPER_MODE,
@@ -39,7 +39,7 @@ async def lifespan(app: FastAPI):
     app.state.worker_semaphore = asyncio.Semaphore(settings.WHISPER_NUM_WORKERS if settings.WHISPER_MODE == "gpu" else settings.WHISPER_CPU_THREADS)
 
     logger.info(
-        "STT service startup complete",
+        "Voice service startup complete",
         extra={
             "service": settings.SERVICE_NAME,
             "max_audio_mb": settings.MAX_AUDIO_BYTES / (1024 * 1024),
@@ -49,7 +49,7 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info(
-        "STT service shutdown complete",
+        "Voice service shutdown complete",
         extra={"service": settings.SERVICE_NAME},
     )
 

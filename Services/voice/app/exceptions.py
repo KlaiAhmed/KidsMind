@@ -1,5 +1,5 @@
 class STTBaseError(Exception):
-    """Base class for all STT service domain exceptions."""
+    """Base class for all voice service domain exceptions."""
     pass
 
 class AudioTooLargeError(STTBaseError):
