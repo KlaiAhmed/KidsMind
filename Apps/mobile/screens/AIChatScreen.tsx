@@ -179,6 +179,9 @@ function AIChatSessionGate({
 
   const [welcomePhraseIndex, setWelcomePhraseIndex] = useState(0);
   const welcomeOpacity = useSharedValue(1);
+  const flatListRef = useRef<FlatList<ChatListItem>>(null);
+  const isNearBottom = useRef(true);
+  const NEAR_BOTTOM_THRESHOLD = 80;
 
   // Cycle phrase: fade out → swap index after fade completes
   useEffect(() => {
@@ -205,15 +208,15 @@ function AIChatSessionGate({
     welcomeOpacity.value = withTiming(1, { duration: 300 });
   }, [welcomePhraseIndex, welcomeOpacity]);
 
-  const flatListRef = useRef<FlatList<ChatListItem>>(null);
-
   useEffect(() => {
-    if (state.messages.length > 0) {
-      requestAnimationFrame(() => {
-        flatListRef.current?.scrollToOffset?.({ offset: 0, animated: true });
-      });
+    if (!isNearBottom.current || state.messages.length === 0) {
+      return;
     }
-  }, [state.messages.length]);
+
+    requestAnimationFrame(() => {
+      flatListRef.current?.scrollToOffset?.({ offset: 0, animated: false });
+    });
+  }, [state.messages]);
 
   const listData = useMemo<ChatListItem[]>(() => {
     const messageItems = [...state.messages].reverse().map((message) => ({
@@ -222,7 +225,9 @@ function AIChatSessionGate({
       message,
     }));
 
-    if (state.isAwaitingResponse) {
+    const hasStreamingMessage = state.messages.some((message) => message.status === 'streaming');
+
+    if (state.isAwaitingResponse && !hasStreamingMessage) {
       return [
         {
           id: TYPING_PLACEHOLDER_ID,
@@ -244,8 +249,12 @@ function AIChatSessionGate({
       safetyFlags: [],
       createdAt: new Date().toISOString(),
     }),
-    [state.sessionId]
+    [state.sessionId],
   );
+
+  const handleListScroll = useCallback((event: { nativeEvent: { contentOffset: { y: number } } }) => {
+    isNearBottom.current = event.nativeEvent.contentOffset.y < NEAR_BOTTOM_THRESHOLD;
+  }, []);
 
   const handleSend = useCallback(
     async (text: string, inputSource: 'keyboard' | 'voice' = 'keyboard') => {
@@ -388,6 +397,8 @@ function AIChatSessionGate({
             keyExtractor={keyExtractor}
             renderItem={renderItem}
             inverted
+            onScroll={handleListScroll}
+            scrollEventThrottle={16}
             removeClippedSubviews
             maxToRenderPerBatch={10}
             windowSize={5}
@@ -424,10 +435,10 @@ function AIChatSessionGate({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: Colors.surface,
   },
   container: {
     flex: 1,
+    backgroundColor: Colors.surface,
     paddingHorizontal: Spacing.md,
     gap: Spacing.sm,
   },

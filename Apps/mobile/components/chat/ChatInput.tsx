@@ -16,6 +16,8 @@ import Animated, {
   FadeOut,
   LinearTransition,
   SlideInUp,
+  interpolate,
+  interpolateColor,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -69,6 +71,13 @@ interface ControlButtonProps {
   disabled?: boolean;
   solid?: boolean;
   onPress: () => void;
+}
+
+interface QuizToggleButtonProps {
+  active: boolean;
+  disabled: boolean;
+  onActivate: () => void;
+  onDeactivate: () => void;
 }
 
 function inputReducer(state: InputState, action: InputAction): InputState {
@@ -185,6 +194,66 @@ function ControlButton({
   );
 }
 
+function QuizToggleButton({ active, disabled, onActivate, onDeactivate }: QuizToggleButtonProps) {
+  const progress = useSharedValue(active ? 1 : 0);
+
+  useEffect(() => {
+    progress.value = withTiming(active ? 1 : 0, {
+      duration: 240,
+      easing: Easing.out(Easing.ease),
+    });
+  }, [active, progress]);
+
+  const containerStyle = useAnimatedStyle(() => ({
+    width: interpolate(progress.value, [0, 1], [44, 138]),
+    backgroundColor: interpolateColor(
+      progress.value,
+      [0, 1],
+      [Colors.surfaceContainer, Colors.primaryFixed],
+    ),
+  }));
+
+  const labelStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0.35, 1], [0, 1]),
+    transform: [{ translateX: interpolate(progress.value, [0, 1], [-8, 0]) }],
+  }));
+
+  const closeStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0.55, 1], [0, 1]),
+    transform: [{ scale: interpolate(progress.value, [0.55, 1], [0.4, 1]) }],
+  }));
+
+  const handlePress = useCallback(() => {
+    if (disabled) return;
+    active ? onDeactivate() : onActivate();
+  }, [active, disabled, onActivate, onDeactivate]);
+
+  const iconColor = active ? Colors.primary : Colors.textTertiary;
+
+  return (
+    <Animated.View style={[styles.quizToggle, containerStyle]}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={active ? 'Exit quiz mode' : 'Start quiz mode'}
+        accessibilityState={{ disabled }}
+        disabled={disabled}
+        onPress={handlePress}
+        style={styles.quizToggleInner}
+      >
+        <MaterialCommunityIcons name="comment-question-outline" size={22} color={iconColor} />
+        <Animated.Text style={[styles.quizToggleText, labelStyle]} numberOfLines={1}>
+          Quiz Mode
+        </Animated.Text>
+        <Animated.View style={closeStyle}>
+          <MaterialCommunityIcons name="close" size={16} color={Colors.primary} />
+        </Animated.View>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+
+{/* The main ChatInput component */}
 function ChatInputComponent({
   value,
   ageGroup,
@@ -409,34 +478,7 @@ function ChatInputComponent({
   }, [busy]);
 
   return (
-    <Animated.View layout={LinearTransition.duration(120)} style={styles.container}>
-      {quizActive ? (
-        <Animated.View
-          entering={SlideInUp.duration(150).easing(Easing.out(Easing.ease)).withInitialValues({
-            opacity: 0,
-            transform: [{ translateY: 8 }],
-          })}
-          exiting={FadeOut.duration(150).easing(Easing.out(Easing.ease))}
-          style={styles.quizPillShell}
-        >
-          <Animated.View entering={FadeIn.duration(150).easing(Easing.out(Easing.ease))} style={styles.quizPill}>
-            <MaterialCommunityIcons name="comment-question-outline" size={16} color={Colors.primary} />
-            <Text style={styles.quizPillText}>Quiz Mode</Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Exit quiz mode"
-              onPress={handleDeactivateQuiz}
-              style={({ pressed }) => [
-                styles.quizCloseButton,
-                pressed ? styles.iconButtonPressed : null,
-              ]}
-            >
-              <MaterialCommunityIcons name="close" size={16} color={Colors.primary} />
-            </Pressable>
-          </Animated.View>
-        </Animated.View>
-      ) : null}
-
+    <Animated.View layout={LinearTransition.duration(120)} style={styles.pillContainer}>
       <Animated.View
         layout={LinearTransition.duration(120)}
         style={styles.topRow}
@@ -521,16 +563,15 @@ function ChatInputComponent({
           layout={LinearTransition.duration(120)}
           style={styles.bottomRow}
         >
-          <ControlButton
-            name="comment-question-outline"
-            label={quizActive ? 'Quiz mode active' : 'Start quiz mode'}
+          <QuizToggleButton
             active={quizActive}
             disabled={busy}
-            onPress={quizActive ? handleDeactivateQuiz : handleActivateQuiz}
+            onActivate={handleActivateQuiz}
+            onDeactivate={handleDeactivateQuiz}
           />
 
           <Animated.View style={styles.rightControls}>
-            {!quizActive ? (
+            {!showSendButton ? (
               <Animated.View
                 entering={FadeIn.duration(120).easing(Easing.out(Easing.ease))}
                 exiting={FadeOut.duration(100).easing(Easing.out(Easing.ease))}
@@ -538,17 +579,19 @@ function ChatInputComponent({
                 style={styles.rightControls}
               >
                 <ControlButton
-                  name="headphones"
-                  label="Speech to speech"
-                  disabled={busy}
-                  onPress={handleVoiceToVoice}
-                />
-                <ControlButton
                   name="microphone"
                   label="Record voice"
                   disabled={busy}
                   onPress={beginRecording}
                 />
+                { !quizActive &&
+                  <ControlButton
+                    name="headphones"
+                    label="Speech to speech"
+                    disabled={busy}
+                    onPress={handleVoiceToVoice}
+                  />
+                }
               </Animated.View>
             ) : null}
 
@@ -583,36 +626,15 @@ function ChatInputComponent({
 export const ChatInput = memo(ChatInputComponent);
 
 const styles = StyleSheet.create({
-  container: {
-    gap: Spacing.xs,
-  },
-  quizPillShell: {
-    alignItems: 'flex-start',
-  },
-  quizPill: {
-    minHeight: 32,
-    borderRadius: Radii.full,
-    backgroundColor: Colors.primaryFixed,
-    paddingLeft: Spacing.sm,
-    paddingRight: Spacing.xs,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-  },
-  quizPillText: {
-    ...Typography.captionMedium,
-    color: Colors.primary,
-  },
-  quizCloseButton: {
-    width: 28,
-    height: 28,
-    borderRadius: Radii.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  topRow: {
+  pillContainer: {
     borderRadius: Radii.xl,
     backgroundColor: Colors.surfaceContainerLow,
+    paddingHorizontal: Spacing.xs,
+    paddingTop: Spacing.xs,
+    paddingBottom: Spacing.xs,
+    overflow: 'hidden',
+  },
+  topRow: {
     paddingLeft: Spacing.sm,
     paddingRight: Spacing.xs,
     paddingTop: Spacing.xs,
@@ -649,6 +671,26 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingLeft: Spacing.xs,
     paddingRight: Spacing.xs,
+    paddingBottom: Spacing.xs,
+  },
+  quizToggle: {
+    height: 44,
+    borderRadius: Radii.full,
+    overflow: 'hidden',
+  },
+  quizToggleInner: {
+    flex: 1,
+    height: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: 11,
+    paddingRight: Spacing.xs,
+    gap: Spacing.xs,
+  },
+  quizToggleText: {
+    ...Typography.captionMedium,
+    color: Colors.primary,
+    flex: 1,
   },
   rightControls: {
     flexDirection: 'row',
@@ -659,7 +701,6 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: Radii.full,
-    backgroundColor: Colors.surfaceContainer,
     alignItems: 'center',
     justifyContent: 'center',
   },

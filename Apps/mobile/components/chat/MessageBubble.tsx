@@ -45,6 +45,8 @@ function MessageBubbleComponent({
   const hasSafetyFlags = message.safetyFlags.length > 0;
   const hasQuiz = Boolean(message.quiz && message.quiz.length > 0);
   const hasQuizScore = Boolean(message.quizScore);
+  const isStreamingPlaceholder = message.status === 'streaming' && message.content.trim().length === 0;
+  const shouldShowThinkingIndicator = isTypingPlaceholder || isStreamingPlaceholder;
   const isErrorMessage = message.status === 'error';
   const senderLabel = isAiMessage ? 'AI' : 'Child';
 
@@ -105,7 +107,7 @@ function MessageBubbleComponent({
   const showActionBar =
     isAiMessage &&
     !isErrorMessage &&
-    !isTypingPlaceholder &&
+    !shouldShowThinkingIndicator &&
     !hasSafetyFlags &&
     !hasQuiz &&
     !hasQuizScore &&
@@ -155,13 +157,13 @@ function MessageBubbleComponent({
               : `${senderLabel} said: ${message.content} at ${formatTimeLabel(message.createdAt)}`
           }
           onLongPress={() => {
-            if (!isTypingPlaceholder && onLongPressMessage && message.content.trim().length > 0) {
+            if (!shouldShowThinkingIndicator && onLongPressMessage && message.content.trim().length > 0) {
               onLongPressMessage(message.content);
             }
           }}
           style={[styles.bubble, isAiMessage ? styles.aiBubble : styles.childBubble]}
         >
-          {isTypingPlaceholder ? (
+          {shouldShowThinkingIndicator ? (
             <ThinkingIndicator />
           ) : hasSafetyFlags ? (
             <SafetyFlagBanner flags={message.safetyFlags} />

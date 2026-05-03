@@ -1,6 +1,6 @@
 /**
  * Chat service contract (current):
- *   POST /api/v1/chat/sessions                     → start session
+ *   POST /api/v1/chat/sessions                      → start session
  *   POST /api/v1/chat/sessions/{sid}/close          → end session
  *   POST /api/v1/chat/{uid}/{cid}/{sid}/message     → send message (SSE-capable; currently called with stream:false, returns flat JSON)
  *   POST /api/v1/chat/{uid}/{cid}/{sid}/quiz        → request quiz generation
@@ -8,11 +8,10 @@
  *   GET  /api/v1/chat/history/{uid}/{cid}           → parent conversation history
  *   DELETE /api/v1/chat/history/{uid}/{cid}/{sid}   → delete session history
  *
- * The deprecated endpoint POST /api/v1/chat/text/{uid}/{cid}/{sid} has been removed.
  * The current message endpoint returns a flat JSON response when stream:false.
- * SSE streaming support will be added in a future iteration.
+ * SSE streaming is also supported via sendChatMessageStreaming().
  */
-import { apiRequest } from '@/services/apiClient';
+import { apiRequest, getApiBaseUrl } from '@/services/apiClient';
 import { useAuthStore } from '@/store/authStore';
 import type {
   ChatMessageResponse,
@@ -249,7 +248,7 @@ export async function sendChatMessage(payload: ChatRequestPayload, signal?: Abor
           })),
         }),
         input_source: payload.inputSource ?? 'keyboard',
-        stream: false,
+        stream: true,
       },
       signal,
     },
@@ -267,6 +266,168 @@ export async function sendChatMessage(payload: ChatRequestPayload, signal?: Abor
       : [],
     createdAt: new Date().toISOString(),
   };
+}
+
+function buildChatMessageUrl(userId: string, childId: string, sessionId: string): string {
+  return `${getApiBaseUrl()}/api/v1/chat/${encodeURIComponent(userId)}/${encodeURIComponent(childId)}/${encodeURIComponent(sessionId)}/message`;
+}
+
+function getCurrentAccessToken(): string {
+  const token = useAuthStore.getState().accessToken;
+
+  if (!token) {
+    throw new Error('You must be signed in to send chat messages.');
+  }
+
+  return token;
+}
+
+function createHandledStreamError(message: string): Error {
+  const handledError = new Error(message) as Error & { __streamHandled?: boolean };
+  handledError.__streamHandled = true;
+  return handledError;
+}
+
+export async function sendChatMessageStreaming(params: {
+  userId: string;
+  childId: string;
+  sessionId: string;
+  text: string;
+  context?: unknown;
+  inputSource?: string;
+  signal: AbortSignal;
+  onStart: (messageId: string) => void;
+  onDelta: (text: string) => void;
+  onEnd: (messageId: string) => void;
+  onError: (code: number, message: string) => void;
+}): Promise<void> {
+  const token = getCurrentAccessToken();
+
+  try {
+    const response = await fetch(buildChatMessageUrl(params.userId, params.childId, params.sessionId), {
+      method: 'POST',
+      headers: {
+        Accept: 'text/event-stream',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        'X-Client-Type': 'mobile',
+      },
+      body: JSON.stringify({
+        text: params.text,
+        context: params.context,
+        input_source: params.inputSource ?? 'keyboard',
+        stream: true,
+      }),
+      signal: params.signal,
+    });
+
+    if (!response.ok) {
+      const message = `Request failed with status ${response.status}.`;
+      params.onError(response.status, message);
+      throw createHandledStreamError(message);
+    }
+
+    if (!response.body) {
+      const message = 'Streaming response body is unavailable.';
+      params.onError(0, message);
+      throw createHandledStreamError(message);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let currentEvent = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+
+        if (done) {
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split(/\r?\n/);
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (!line) {
+            currentEvent = '';
+            continue;
+          }
+
+          if (line.startsWith('event:')) {
+            currentEvent = line.slice(6).trim();
+            continue;
+          }
+
+          if (!line.startsWith('data:')) {
+            continue;
+          }
+
+          const json = line.slice(5).trim();
+          if (!json) {
+            continue;
+          }
+
+          try {
+            const payload = JSON.parse(json) as {
+              message_id?: unknown;
+              text?: unknown;
+              code?: unknown;
+              message?: unknown;
+            };
+
+            if (currentEvent === 'start' && typeof payload.message_id === 'string') {
+              params.onStart(payload.message_id);
+            } else if (currentEvent === 'delta' && typeof payload.text === 'string') {
+              params.onDelta(payload.text);
+            } else if (currentEvent === 'end' && typeof payload.message_id === 'string') {
+              params.onEnd(payload.message_id);
+            } else if (currentEvent === 'error') {
+              const code = typeof payload.code === 'number' ? payload.code : 0;
+              const message =
+                typeof payload.message === 'string' && payload.message.trim().length > 0
+                  ? payload.message
+                  : 'Stream error';
+              params.onError(code, message);
+              throw createHandledStreamError(message);
+            }
+          } catch (chunkError) {
+            if (chunkError instanceof Error && (chunkError as Error & { __streamHandled?: boolean }).__streamHandled) {
+              throw chunkError;
+            }
+
+            // Ignore malformed stream chunks and continue reading the SSE payload.
+          } finally {
+            currentEvent = '';
+          }
+        }
+      }
+    } finally {
+      try {
+        reader.releaseLock();
+      } catch {
+        // Ignore reader cleanup failures.
+      }
+    }
+  } catch (error) {
+    if (error instanceof Error && (error as Error & { __streamHandled?: boolean }).__streamHandled) {
+      throw error;
+    }
+
+    if (error instanceof Error && error.name === 'AbortError') {
+      return;
+    }
+
+    if (params.signal.aborted) {
+      return;
+    }
+
+    const message = error instanceof Error && error.message ? error.message : 'Stream error';
+    params.onError(0, message);
+    throw error instanceof Error ? error : new Error(message);
+  }
 }
 
 interface QuizSubmitAnswer {

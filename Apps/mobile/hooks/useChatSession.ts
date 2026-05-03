@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   endChatSession,
   sendChatMessage,
+  sendChatMessageStreaming,
   sendQuizRequest as requestQuiz,
   startChatSession,
   submitQuizAnswers,
@@ -172,6 +173,38 @@ export function useChatSession({
   useEffect(() => {
     messagesRef.current = state.messages;
   }, [state.messages]);
+
+  const commitMessages = useCallback((nextMessages: Message[], nextState: Partial<ChatState> = {}) => {
+    messagesRef.current = nextMessages;
+    setState((current) => ({
+      ...current,
+      ...nextState,
+      messages: nextMessages,
+    }));
+  }, []);
+
+  const appendMessage = useCallback(
+    (message: Message, nextState: Partial<ChatState> = {}) => {
+      commitMessages([...messagesRef.current, message], nextState);
+    },
+    [commitMessages],
+  );
+
+  const updateMessageById = useCallback(
+    (messageId: string, updater: (message: Message) => Message, nextState: Partial<ChatState> = {}) => {
+      const nextMessages = messagesRef.current.map((message) => (message.id === messageId ? updater(message) : message));
+      commitMessages(nextMessages, nextState);
+    },
+    [commitMessages],
+  );
+
+  const removeMessageById = useCallback(
+    (messageId: string, nextState: Partial<ChatState> = {}) => {
+      const nextMessages = messagesRef.current.filter((message) => message.id !== messageId);
+      commitMessages(nextMessages, nextState);
+    },
+    [commitMessages],
+  );
 
   const replaceActiveSession = useCallback(
     (newSession: Session) => {
@@ -373,20 +406,45 @@ export function useChatSession({
       };
 
       const contextualMessages = [...messagesRef.current, optimisticMessage];
-      messagesRef.current = contextualMessages;
-
-      setState((current) => ({
-        ...current,
-        messages: contextualMessages,
+      commitMessages(contextualMessages, {
         inputText: '',
         isAwaitingResponse: true,
         error: null,
-      }));
+      });
 
-        const startedRequestAt = Date.now();
+      const startedRequestAt = Date.now();
+      const controller = new AbortController();
+      abortRef.current = controller;
 
-        const controller = new AbortController();
-        abortRef.current = controller;
+      const streamingMessageId = `ai-stream-${optimisticMessage.id}`;
+      let activeStreamingMessageId = streamingMessageId;
+
+      appendMessage(
+        {
+          id: streamingMessageId,
+          sessionId: liveSession.id,
+          sender: 'ai',
+          content: '',
+          safetyFlags: [],
+          createdAt: new Date().toISOString(),
+          triggeredBy: optimisticMessage.id,
+          status: 'streaming',
+        },
+        {
+          isAwaitingResponse: true,
+          error: null,
+        },
+      );
+
+      const sendFallbackResponse = async () => {
+        const elapsed = Date.now() - startedRequestAt;
+        if (elapsed < MIN_TYPING_INDICATOR_MS) {
+          await waitMs(MIN_TYPING_INDICATOR_MS - elapsed);
+        }
+
+        if (!mountedRef.current) {
+          return;
+        }
 
         try {
           const response = await sendChatMessage(
@@ -407,11 +465,6 @@ export function useChatSession({
             controller.signal,
           );
 
-          const elapsed = Date.now() - startedRequestAt;
-          if (elapsed < MIN_TYPING_INDICATOR_MS) {
-            await waitMs(MIN_TYPING_INDICATOR_MS - elapsed);
-          }
-
           if (!mountedRef.current) {
             return;
           }
@@ -427,16 +480,11 @@ export function useChatSession({
             status: 'sent',
           };
 
-          const nextMessages = [...messagesRef.current, aiMessage];
-          messagesRef.current = nextMessages;
-
-          setState((current) => ({
-            ...current,
-            messages: nextMessages,
+          appendMessage(aiMessage, {
             isAwaitingResponse: false,
             error: null,
-          }));
-        } catch (err) {
+          });
+        } catch {
           if (controller.signal.aborted) {
             if (mountedRef.current) {
               setState((current) => ({
@@ -445,11 +493,6 @@ export function useChatSession({
               }));
             }
             return;
-          }
-
-          const elapsed = Date.now() - startedRequestAt;
-          if (elapsed < MIN_TYPING_INDICATOR_MS) {
-            await waitMs(MIN_TYPING_INDICATOR_MS - elapsed);
           }
 
           if (!mountedRef.current) {
@@ -467,22 +510,112 @@ export function useChatSession({
             status: 'error',
           };
 
-          const nextMessages = [...messagesRef.current, failedMessage];
-          messagesRef.current = nextMessages;
+          appendMessage(failedMessage, {
+            isAwaitingResponse: false,
+            error: null,
+          });
+        }
+      };
 
+      try {
+        await sendChatMessageStreaming({
+          userId: getCurrentUserId(),
+          childId,
+          sessionId: liveSession.id,
+          text,
+          inputSource,
+          context: buildSerializedContext(ageGroup, gradeLevel, subjectContext, contextualMessages),
+          signal: controller.signal,
+          onStart: (messageId) => {
+            const previousMessageId = activeStreamingMessageId;
+            activeStreamingMessageId = messageId;
+            updateMessageById(previousMessageId, (message) => ({
+              ...message,
+              id: messageId,
+            }));
+          },
+          onDelta: (deltaText) => {
+            updateMessageById(activeStreamingMessageId, (message) => ({
+              ...message,
+              content: `${message.content}${deltaText}`,
+            }));
+          },
+          onEnd: (messageId) => {
+            const previousMessageId = activeStreamingMessageId;
+            activeStreamingMessageId = messageId;
+            updateMessageById(previousMessageId, (message) => ({
+              ...message,
+              id: messageId,
+              status: 'sent',
+            }));
+
+            if (mountedRef.current) {
+              setState((current) => ({
+                ...current,
+                isAwaitingResponse: false,
+                error: null,
+              }));
+            }
+          },
+          onError: () => {
+            // Fall back to the current JSON response path so the user still gets an answer.
+          },
+        });
+
+        if (mountedRef.current) {
           setState((current) => ({
             ...current,
-            messages: nextMessages,
             isAwaitingResponse: false,
             error: null,
           }));
-        } finally {
-          if (abortRef.current === controller) {
-            abortRef.current = null;
-          }
         }
+      } catch {
+        if (controller.signal.aborted) {
+          if (mountedRef.current) {
+            const currentStreamingMessage = messagesRef.current.find(
+              (message) => message.id === activeStreamingMessageId || message.id === streamingMessageId,
+            );
+
+            if (currentStreamingMessage && currentStreamingMessage.content.trim().length > 0) {
+              updateMessageById(activeStreamingMessageId, (message) => ({
+                ...message,
+                status: 'sent',
+              }));
+            } else {
+              removeMessageById(activeStreamingMessageId, {
+                isAwaitingResponse: false,
+              });
+            }
+
+            setState((current) => ({
+              ...current,
+              isAwaitingResponse: false,
+            }));
+          }
+          return;
+        }
+
+        if (mountedRef.current) {
+          removeMessageById(activeStreamingMessageId);
+        }
+
+        await sendFallbackResponse();
+      } finally {
+        if (abortRef.current === controller) {
+          abortRef.current = null;
+        }
+      }
     },
-    [ageGroup, childId, gradeLevel, resolveLiveSession, startSession, subjectContext?.subjectId, subjectContext?.subjectName, subjectContext?.topicId],
+    [
+      ageGroup,
+      childId,
+      gradeLevel,
+      resolveLiveSession,
+      startSession,
+      subjectContext?.subjectId,
+      subjectContext?.subjectName,
+      subjectContext?.topicId,
+    ],
   );
 
   const buildAndAppendSummaryMessage = useCallback(
