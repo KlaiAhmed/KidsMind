@@ -269,7 +269,6 @@ function ChatInputComponent({
     feedback: null,
     isTranscribing: false,
   });
-  const [metering, setMetering] = useState(DEFAULT_METERING);
   const recorderRef = useRef<AudioRecorder | null>(null);
 
   const recorder = useAudioRecorder(RECORDING_OPTIONS, (status) => {
@@ -294,11 +293,10 @@ function ChatInputComponent({
   const showSendButton = canSendText && !isAiLoading;
   const showStopButton = isAiLoading && !recordingActive;
 
-  useEffect(() => {
-    if (recorderState.isRecording && typeof recorderState.metering === 'number') {
-      setMetering(recorderState.metering);
-    }
-  }, [recorderState.isRecording, recorderState.metering]);
+  const metering =
+    recordingActive && recorderState.metering != null
+      ? recorderState.metering
+      : DEFAULT_METERING;
 
   const restoreAudioMode = useCallback(async () => {
     await setAudioModeAsync({
@@ -368,7 +366,6 @@ function ChatInputComponent({
       await recorder.prepareToRecordAsync();
       recorder.record();
       recorderRef.current = recorder;
-      setMetering(DEFAULT_METERING);
       dispatch({ type: 'enter_recording' });
     } catch {
       recorderRef.current = null;
@@ -385,7 +382,6 @@ function ChatInputComponent({
 
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
     await stopActiveRecording();
-    setMetering(DEFAULT_METERING);
     dispatch({ type: 'exit_recording' });
   }, [inputState.isTranscribing, stopActiveRecording]);
 
@@ -416,7 +412,6 @@ function ChatInputComponent({
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
 
     const audioUri = await stopActiveRecording();
-    setMetering(DEFAULT_METERING);
     dispatch({ type: 'exit_recording' });
 
     if (!audioUri) {
