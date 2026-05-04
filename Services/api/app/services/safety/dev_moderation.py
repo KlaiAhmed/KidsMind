@@ -1,45 +1,24 @@
-from core.config import settings
-from fastapi import HTTPException
-import httpx
-from utils.shared.logger import logger
+from __future__ import annotations
+
 import time
-import asyncio
 from urllib.parse import urlparse
 
-# ML mode only officially supports English.
-# Other languages should use mode=rules instead.
-_ML_SUPPORTED_LANGUAGES = {"en"}
+import httpx
 
-def _is_valid_provider_url(url: str | None) -> bool:
-    if not url or not url.strip():
-        return False
-    parsed = urlparse(url.strip())
-    return parsed.scheme in ("http", "https") and bool(parsed.netloc)
-
-
-def _blocked_result(category: str, score: float | None = None, threshold: float | None = None) -> dict[str, object]:
-    return {
-        "blocked": True,
-        "category": category,
-        "score": score,
-        "threshold": threshold,
-    }
-
-def _pass_result() -> dict[str, object]:
-    return {
-        "blocked": False,
-        "category": None,
-        "score": None,
-        "threshold": None,
-    }
-
-
-DEV_GUARD_TIMEOUT = httpx.Timeout(
-    connect=settings.DEV_GUARD_CONNECT_TIMEOUT,
-    read=settings.DEV_GUARD_READ_TIMEOUT,
-    write=settings.DEV_GUARD_WRITE_TIMEOUT,
-    pool=settings.DEV_GUARD_POOL_TIMEOUT,
+from core.config import settings
+from services.safety.moderation_common import (
+    build_blocked_result,
+    build_pass_result,
+    moderation_circuit_breaker,
+    retry_async_call,
 )
+from utils.observability.metrics import flagged_rate_total, moderation_failures_total, moderation_timeout_total
+from utils.shared.logger import logger
+
+
+_ML_SUPPORTED_LANGUAGES = {"en"}
+DEV_GUARD_TIMEOUT_SECONDS = settings.DEV_GUARD_READ_TIMEOUT
+DEV_GUARD_ATTEMPTS = 3
 
 DEV_KIDS_THRESHOLDS = {
     "violent": 0.5,
@@ -51,6 +30,13 @@ DEV_KIDS_THRESHOLDS = {
 }
 
 
+def _is_valid_provider_url(url: str | None) -> bool:
+    if not url or not url.strip():
+        return False
+    parsed = urlparse(url.strip())
+    return parsed.scheme in ("http", "https") and bool(parsed.netloc)
+
+
 async def dev_check_moderation(
     message: str,
     context: str,
@@ -59,22 +45,51 @@ async def dev_check_moderation(
 ):
     provider_url = settings.DEV_GUARD_API_URL
 
-    if not _is_valid_provider_url(provider_url):
-        logger.warning(
-            "Dev moderation skipped: provider URL is missing or invalid",
-            extra={"provider_url": provider_url},
+    if moderation_circuit_breaker.is_open():
+        logger.error(
+            "Dev moderation circuit open; failing closed",
+            extra={"blocked": True, "failure_kind": "circuit_open"},
         )
-        return _pass_result()
+        moderation_failures_total.labels(provider="sightengine", failure_kind="circuit_open").inc()
+        return build_blocked_result(
+            category="moderation_unavailable",
+            reason="Moderation temporarily unavailable",
+            failure_kind="circuit_open",
+            raw={"provider": "sightengine", "mode": "dev"},
+        )
+
+    if not _is_valid_provider_url(provider_url):
+        moderation_circuit_breaker.record_failure()
+        moderation_failures_total.labels(provider="sightengine", failure_kind="config_missing").inc()
+        logger.error(
+            "Dev moderation blocked: provider URL is missing or invalid",
+            extra={"provider_url": provider_url, "failure_kind": "config_missing"},
+        )
+        return build_blocked_result(
+            category="moderation_unavailable",
+            reason="Moderation service is not configured",
+            failure_kind="config_missing",
+            raw={"provider": "sightengine", "mode": "dev"},
+        )
 
     if not settings.DEV_API_USER or not settings.DEV_GUARD_API_KEY:
-        logger.warning(
-            "Dev moderation skipped: API credentials not configured",
-            extra={"has_api_user": bool(settings.DEV_API_USER), "has_api_key": bool(settings.DEV_GUARD_API_KEY)},
+        moderation_circuit_breaker.record_failure()
+        moderation_failures_total.labels(provider="sightengine", failure_kind="config_missing").inc()
+        logger.error(
+            "Dev moderation blocked: API credentials not configured",
+            extra={
+                "has_api_user": bool(settings.DEV_API_USER),
+                "has_api_key": bool(settings.DEV_GUARD_API_KEY),
+                "failure_kind": "config_missing",
+            },
         )
-        return _pass_result()
+        return build_blocked_result(
+            category="moderation_unavailable",
+            reason="Moderation service is not configured",
+            failure_kind="config_missing",
+            raw={"provider": "sightengine", "mode": "dev"},
+        )
 
-    # ML mode only supports English. Fall back to "en" for unsupported langs
-    # rather than sending an invalid request and getting a 400 back.
     effective_lang = language if language in _ML_SUPPORTED_LANGUAGES else "en"
     if effective_lang != language:
         logger.info(
@@ -82,28 +97,39 @@ async def dev_check_moderation(
             extra={"requested_language": language, "effective_language": effective_lang},
         )
 
-    try:
-        timer = time.perf_counter()
-        text = f"APP CONTEXT: {context}\nUSER Input: {message}"
+    timer = time.perf_counter()
+    text = f"APP CONTEXT: {context}\nUSER Input: {message}"
+    payload = {
+        "text": text,
+        "mode": "ml",
+        "models": "general,self-harm",
+        "lang": effective_lang,
+        "api_user": settings.DEV_API_USER,
+        "api_secret": settings.DEV_GUARD_API_KEY,
+    }
 
-        payload = {
-            "text": text,
-            "mode": "ml",
-            "models": "general,self-harm",
-            "lang": effective_lang,
-            "api_user": settings.DEV_API_USER,
-            "api_secret": settings.DEV_GUARD_API_KEY,
-        }
-
-        response = await asyncio.wait_for(
-            client.post(
-                provider_url,
-                data=payload,
-                timeout=DEV_GUARD_TIMEOUT,
+    async def _post() -> httpx.Response:
+        response = await client.post(
+            provider_url,
+            data=payload,
+            timeout=httpx.Timeout(
+                connect=settings.DEV_GUARD_CONNECT_TIMEOUT,
+                read=settings.DEV_GUARD_READ_TIMEOUT,
+                write=settings.DEV_GUARD_WRITE_TIMEOUT,
+                pool=settings.DEV_GUARD_POOL_TIMEOUT,
             ),
-            timeout=15.0,
         )
         response.raise_for_status()
+        return response
+
+    try:
+        response = await retry_async_call(
+            _post,
+            attempts=DEV_GUARD_ATTEMPTS,
+            timeout_seconds=DEV_GUARD_TIMEOUT_SECONDS,
+            retryable_exceptions=(httpx.TimeoutException, httpx.RequestError, httpx.HTTPStatusError, TimeoutError),
+            operation_name="dev_moderation",
+        )
 
         data = response.json()
         scores = data.get("moderation_classes", {})
@@ -114,70 +140,72 @@ async def dev_check_moderation(
             if api_score > threshold:
                 logger.warning(
                     "Content blocked by dev moderation",
-                    extra={
-                        "category": category,
-                        "score": round(api_score, 3),
-                        "threshold": threshold,
-                    },
+                    extra={"category": category, "score": round(api_score, 3), "threshold": threshold},
                 )
-                return _blocked_result(category, api_score, threshold)
+                moderation_circuit_breaker.record_success()
+                flagged_rate_total.labels(stage="input", category=category).inc()
+                return build_blocked_result(
+                    category=category,
+                    reason="Content exceeded a kid-safe threshold",
+                    score=api_score,
+                    threshold=threshold,
+                    raw=data,
+                )
 
         elapsed = time.perf_counter() - timer
+        moderation_circuit_breaker.record_success()
         logger.info(
             "Dev moderation check completed",
-            extra={
-                "duration_seconds": round(elapsed, 3),
-                "scores": scores,
-            },
+            extra={"duration_seconds": round(elapsed, 3), "scores": scores},
         )
-        return _pass_result()
+        return build_pass_result(raw=data)
 
-    except HTTPException:
-        raise
     except (httpx.UnsupportedProtocol, httpx.InvalidURL):
-        logger.warning(
-            "Dev moderation skipped: provider URL has invalid scheme or format",
-            extra={"provider_url": provider_url},
+        moderation_circuit_breaker.record_failure()
+        moderation_failures_total.labels(provider="sightengine", failure_kind="invalid_url").inc()
+        logger.error(
+            "Dev moderation provider URL invalid; failing closed",
+            extra={"provider_url": provider_url, "failure_kind": "invalid_url"},
         )
-        return _pass_result()
-    except (httpx.TimeoutException, httpx.RequestError, TimeoutError):
-        logger.warning(
-            "Dev moderation provider unavailable; skipping moderation in development",
-            extra={"provider_url": provider_url},
+        return build_blocked_result(
+            category="moderation_unavailable",
+            reason="Moderation service temporarily unavailable",
+            failure_kind="invalid_url",
+            raw={"provider": "sightengine", "mode": "dev"},
         )
-        return _pass_result()
-    except httpx.HTTPStatusError as exc:
-        status_code = exc.response.status_code
-
-        # Always log the response body — Sightengine puts the real error there.
+    except (httpx.TimeoutException, httpx.RequestError, TimeoutError, httpx.HTTPStatusError) as exc:
+        moderation_circuit_breaker.record_failure()
+        if isinstance(exc, (httpx.TimeoutException, TimeoutError)):
+            moderation_timeout_total.labels(provider="sightengine").inc()
+        moderation_failures_total.labels(provider="sightengine", failure_kind="provider_error").inc()
+        status_code = getattr(getattr(exc, "response", None), "status_code", None)
         try:
-            error_body = exc.response.json()
+            error_body = exc.response.json() if isinstance(exc, httpx.HTTPStatusError) else None
         except Exception:
-            error_body = exc.response.text
+            error_body = exc.response.text if isinstance(exc, httpx.HTTPStatusError) else None
 
-        logger.warning(
-            "Dev moderation provider returned HTTP error",
+        logger.error(
+            "Dev moderation provider failure; failing closed",
             extra={
                 "provider_url": provider_url,
                 "status_code": status_code,
-                "error_body": error_body,      # ← now you'll see the actual reason
+                "error_body": error_body,
+                "failure_kind": "provider_error",
             },
         )
-
-        if status_code == 400:
-            # 400 = bad request (e.g. unsupported parameter value).
-            # Treat as a soft failure so users are not blocked — log is enough
-            # to diagnose the problem without taking down the chat endpoint.
-            logger.error(
-                "Dev moderation 400 bad request — check payload parameters. "
-                "Skipping moderation to avoid blocking users.",
-                extra={"error_body": error_body},
-            )
-            return _pass_result()
-
-        # 5xx → genuine provider outage, surface as 502
-        raise HTTPException(status_code=502, detail="Dev moderation provider error")
-
+        return build_blocked_result(
+            category="moderation_unavailable",
+            reason="Moderation service temporarily unavailable",
+            failure_kind="provider_error",
+            raw={"provider": "sightengine", "mode": "dev", "status_code": status_code, "error_body": error_body},
+        )
     except Exception:
+        moderation_circuit_breaker.record_failure()
+        moderation_failures_total.labels(provider="sightengine", failure_kind="unexpected_error").inc()
         logger.exception("Unexpected error during dev moderation check")
-        raise HTTPException(status_code=500, detail="Internal Dev Moderation Error")
+        return build_blocked_result(
+            category="moderation_unavailable",
+            reason="Moderation service temporarily unavailable",
+            failure_kind="unexpected_error",
+            raw={"provider": "sightengine", "mode": "dev"},
+        )
