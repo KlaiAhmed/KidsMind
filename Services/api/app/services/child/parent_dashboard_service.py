@@ -139,7 +139,7 @@ class ParentDashboardService:
             self.db.query(
                 ChatHistory.session_id,
                 func.count(ChatHistory.id).label("flagged_count"),
-                func.max(ChatHistory.created_at).label("last_flagged_at"),
+                func.max(func.coalesce(ChatHistory.flagged_at, ChatHistory.created_at)).label("last_flagged_at"),
             )
             .filter(
                 ChatHistory.session_id.in_(session_ids),
@@ -277,25 +277,21 @@ class ParentDashboardService:
     ) -> ParentHistoryResponse:
         self._require_child_for_parent(child_id, parent_id)
 
-        query = self.db.query(ChatSession).filter(ChatSession.child_profile_id == child_id)
+        session_filters = [ChatSession.child_profile_id == child_id]
         if date_from:
-            query = query.filter(ChatSession.started_at >= date_from)
+            session_filters.append(ChatSession.started_at >= date_from)
         if date_to:
-            query = query.filter(ChatSession.started_at <= date_to)
+            session_filters.append(ChatSession.started_at <= date_to)
         if flagged_only:
-            query = query.filter(
+            session_filters.append(
                 self.db.query(ChatHistory.id).filter(
                     ChatHistory.session_id == ChatSession.id,
                     ChatHistory.is_flagged.is_(True)
                 ).exists()
             )
 
-        total_count = (
-            self.db.query(func.count())
-            .select_from(query.with_entities(ChatSession.id).distinct().subquery())
-            .scalar()
-            or 0
-        )
+        query = self.db.query(ChatSession).filter(*session_filters)
+        total_count = self.db.query(func.count(ChatSession.id)).filter(*session_filters).scalar() or 0
 
         rows = (
             query.order_by(ChatSession.started_at.desc())
@@ -324,7 +320,7 @@ class ParentDashboardService:
                 self.db.query(
                     ChatHistory.session_id,
                     func.count(ChatHistory.id).label("flagged_count"),
-                    func.max(ChatHistory.created_at).label("last_flagged_at"),
+                    func.max(func.coalesce(ChatHistory.flagged_at, ChatHistory.created_at)).label("last_flagged_at"),
                 )
                 .filter(
                     ChatHistory.session_id.in_(session_ids),
