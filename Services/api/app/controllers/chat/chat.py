@@ -874,43 +874,26 @@ def _normalize_quiz_options(value: Any) -> list[str] | None:
 
 
 def _normalize_quiz_template(payload: dict, *, subject: str, topic: str, level: str) -> dict:
-    raw_questions = payload.get("questions")
-    if not isinstance(raw_questions, list):
-        raise HTTPException(status_code=502, detail="Quiz generation returned invalid questions.")
+    """
+    Normalize quiz template.
+    
+    STRICT: No silent drops. Validation already passed via validate_quiz_payload().
+    This function only formats for storage.
+    """
+    from services.quiz.quiz_validation import validate_quiz_payload, QuizValidationError
 
-    questions: list[dict[str, Any]] = []
-    for raw_question in raw_questions:
-        if not isinstance(raw_question, dict):
-            continue
-
-        prompt = _as_clean_string(raw_question.get("prompt"))
-        answer = _as_clean_string(raw_question.get("answer"))
-        if not prompt or not answer:
-            continue
-
-        question_type = _as_clean_string(raw_question.get("type"), "mcq")
-        if question_type not in QUIZ_QUESTION_TYPES:
-            question_type = "mcq"
-
-        questions.append(
-            {
-                "type": question_type,
-                "prompt": prompt,
-                "options": _normalize_quiz_options(raw_question.get("options")),
-                "answer": answer,
-                "explanation": _as_clean_string(raw_question.get("explanation")),
-            }
-        )
-
-    if not questions:
-        raise HTTPException(status_code=502, detail="Quiz generation returned no usable questions.")
+    try:
+        question_count = len(payload.get("questions", []))
+        validated = validate_quiz_payload(payload, expected_count=question_count)
+    except QuizValidationError as e:
+        raise HTTPException(status_code=502, detail=str(e.detail))
 
     return {
-        "intro": _as_clean_string(payload.get("intro"), "Here is a quiz to try."),
+        "intro": validated["intro"],
         "subject": subject,
         "topic": topic,
         "level": level,
-        "questions": questions,
+        "questions": validated["questions"],
     }
 
 
