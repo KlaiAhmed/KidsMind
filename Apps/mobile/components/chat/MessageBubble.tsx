@@ -14,6 +14,8 @@ interface MessageBubbleProps {
   message: Message;
   isTypingPlaceholder?: boolean;
   ageGroup?: AgeGroup;
+  childId?: string | null;
+  voiceEnabled?: boolean;
   onLongPressMessage?: (text: string) => void;
   onRetryAiMessage?: (aiMessageId: string) => void;
   onQuizAnswer?: (questionId: number, answer: string) => void;
@@ -36,6 +38,8 @@ function MessageBubbleComponent({
   message,
   isTypingPlaceholder = false,
   ageGroup = '7-11',
+  childId,
+  voiceEnabled = false,
   onLongPressMessage,
   onRetryAiMessage,
   onQuizAnswer,
@@ -184,8 +188,11 @@ function MessageBubbleComponent({
       {showActionBar ? (
         <MessageActionBar
           messageId={message.id}
+          childId={childId}
+          sessionId={message.sessionId}
           content={message.content}
           ageGroup={ageGroup}
+          voiceEnabled={voiceEnabled}
           onRetry={() => onRetryAiMessage?.(message.id)}
         />
       ) : null}
@@ -199,6 +206,8 @@ function areMessageBubblePropsEqual(previous: MessageBubbleProps, next: MessageB
   if (previous.message.status !== next.message.status) return false;
   if (previous.isTypingPlaceholder !== next.isTypingPlaceholder) return false;
   if (previous.ageGroup !== next.ageGroup) return false;
+  if (previous.childId !== next.childId) return false;
+  if (previous.voiceEnabled !== next.voiceEnabled) return false;
 
   const hasStructuredContent =
     previous.message.quiz ||

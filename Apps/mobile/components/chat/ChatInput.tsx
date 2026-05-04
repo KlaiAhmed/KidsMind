@@ -27,6 +27,7 @@ import type { ChatInputSource } from '@/types/chat';
 
 type InputMode = 'text' | 'recording' | 'quiz_text' | 'quiz_recording';
 type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
+type RecordingIntent = 'transcription' | 'speech';
 
 const MIN_CHILD_TAP_TARGET = 56;
 const MAX_MESSAGE_LENGTH = 500;
@@ -55,10 +56,12 @@ interface ChatInputProps {
   value: string;
   ageGroup: AgeGroup;
   isLoading: boolean;
+  voiceEnabled?: boolean;
   onChangeText: (text: string) => void;
   onSend: (text: string, inputSource?: ChatInputSource) => Promise<boolean | void> | boolean | void;
   onSendQuiz: (topic: string) => Promise<boolean | void> | boolean | void;
   onTranscribeAudio: (audioUri: string) => Promise<string>;
+  onSpeechToSpeechAudio: (audioUri: string) => Promise<void>;
   onCancelResponse: () => void;
 }
 
@@ -261,10 +264,12 @@ function ChatInputComponent({
   value,
   ageGroup,
   isLoading,
+  voiceEnabled = false,
   onChangeText,
   onSend,
   onSendQuiz,
   onTranscribeAudio,
+  onSpeechToSpeechAudio,
   onCancelResponse,
 }: ChatInputProps) {
   const [inputState, dispatch] = useReducer(inputReducer, {
@@ -273,6 +278,7 @@ function ChatInputComponent({
     isTranscribing: false,
   });
   const recorderRef = useRef<AudioRecorder | null>(null);
+  const recordingIntentRef = useRef<RecordingIntent>('transcription');
 
   const recorder = useAudioRecorder(RECORDING_OPTIONS, (status) => {
     if (status.hasError) {
@@ -337,11 +343,23 @@ function ChatInputComponent({
     };
   }, [restoreAudioMode]);
 
-  const beginRecording = useCallback(async () => {
-    if (busy || recorderRef.current) {
+  useEffect(() => {
+    if (voiceEnabled) {
       return;
     }
 
+    void stopActiveRecording();
+    recordingIntentRef.current = 'transcription';
+    dispatch({ type: 'exit_recording' });
+    dispatch({ type: 'set_feedback', message: null });
+  }, [dispatch, stopActiveRecording, voiceEnabled]);
+
+  const beginRecording = useCallback(async (intent: RecordingIntent = 'transcription') => {
+    if (!voiceEnabled || busy || recorderRef.current) {
+      return;
+    }
+
+    recordingIntentRef.current = intent;
     dispatch({ type: 'set_feedback', message: null });
     await Haptics.selectionAsync().catch(() => undefined);
 
@@ -373,17 +391,18 @@ function ChatInputComponent({
       dispatch({ type: 'exit_recording' });
       dispatch({ type: 'set_feedback', message: 'Voice recording could not start. Please try again.' });
     }
-  }, [busy, recorder, restoreAudioMode]);
+  }, [busy, recorder, restoreAudioMode, voiceEnabled]);
 
   const handleCancelRecording = useCallback(async () => {
-    if (inputState.isTranscribing) {
+    if (!voiceEnabled || inputState.isTranscribing) {
       return;
     }
 
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
     await stopActiveRecording();
+    recordingIntentRef.current = 'transcription';
     dispatch({ type: 'exit_recording' });
-  }, [inputState.isTranscribing, stopActiveRecording]);
+  }, [inputState.isTranscribing, stopActiveRecording, voiceEnabled]);
 
   const handleSubmitText = useCallback(async () => {
     const text = value.trim();
@@ -402,7 +421,7 @@ function ChatInputComponent({
   }, [busy, onChangeText, onSend, onSendQuiz, quizActive, value]);
 
   const handleConfirmRecording = useCallback(async () => {
-    if (busy) {
+    if (!voiceEnabled || busy) {
       return;
     }
 
@@ -410,16 +429,24 @@ function ChatInputComponent({
     dispatch({ type: 'set_feedback', message: null });
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
 
+    const recordingIntent = recordingIntentRef.current;
     const audioUri = await stopActiveRecording();
     dispatch({ type: 'exit_recording' });
 
     if (!audioUri) {
+      recordingIntentRef.current = 'transcription';
       dispatch({ type: 'set_transcribing', value: false });
       dispatch({ type: 'set_feedback', message: 'I could not save that recording. Please try again.' });
       return;
     }
 
     try {
+      if (recordingIntent === 'speech') {
+        await onSpeechToSpeechAudio(audioUri);
+        onChangeText('');
+        return;
+      }
+
       const transcript = (await onTranscribeAudio(audioUri)).trim();
       if (!transcript) {
         dispatch({ type: 'set_feedback', message: 'I could not hear words in that recording. Please try again.' });
@@ -430,12 +457,15 @@ function ChatInputComponent({
     } catch {
       dispatch({
         type: 'set_feedback',
-        message: 'Voice transcription is unavailable right now. Please try again.',
+        message: recordingIntent === 'speech'
+          ? 'Speech-to-speech is unavailable right now. Please try again.'
+          : 'Voice transcription is unavailable right now. Please try again.',
       });
     } finally {
+      recordingIntentRef.current = 'transcription';
       dispatch({ type: 'set_transcribing', value: false });
     }
-  }, [busy, onChangeText, onTranscribeAudio, stopActiveRecording]);
+  }, [busy, onChangeText, onSpeechToSpeechAudio, onTranscribeAudio, stopActiveRecording, voiceEnabled]);
 
   const handleActivateQuiz = useCallback(async () => {
     if (busy) {
@@ -452,16 +482,12 @@ function ChatInputComponent({
   }, []);
 
   const handleVoiceToVoice = useCallback(async () => {
-    if (busy) {
+    if (!voiceEnabled || busy) {
       return;
     }
 
-    await Haptics.selectionAsync().catch(() => undefined);
-    dispatch({
-      type: 'set_feedback',
-      message: 'Speech-to-speech is coming soon. Use the microphone button for voice.',
-    });
-  }, [busy]);
+    await beginRecording('speech');
+  }, [beginRecording, busy, voiceEnabled]);
 
   return (
     <Animated.View layout={LinearTransition.duration(120)} style={styles.pillContainer}>
@@ -469,7 +495,7 @@ function ChatInputComponent({
         layout={LinearTransition.duration(120)}
         style={styles.topRow}
       >
-        {recordingActive ? (
+        {voiceEnabled && recordingActive ? (
           <Animated.View
             entering={FadeIn.duration(120).easing(Easing.out(Easing.ease))}
             style={styles.waveformSlot}
@@ -517,7 +543,7 @@ function ChatInputComponent({
           </Animated.View>
         ) : null}
 
-        {recordingActive ? (
+        {voiceEnabled && recordingActive ? (
           <Animated.View
             entering={FadeIn.duration(120).easing(Easing.out(Easing.ease))}
             exiting={FadeOut.duration(120).easing(Easing.out(Easing.ease))}
@@ -557,29 +583,29 @@ function ChatInputComponent({
           />
 
           <Animated.View style={styles.rightControls}>
-            {!showSendButton ? (
-              <Animated.View
-                entering={FadeIn.duration(120).easing(Easing.out(Easing.ease))}
-                exiting={FadeOut.duration(100).easing(Easing.out(Easing.ease))}
-                layout={LinearTransition.duration(120)}
-                style={styles.rightControls}
-              >
+            <Animated.View
+              entering={FadeIn.duration(120).easing(Easing.out(Easing.ease))}
+              exiting={FadeOut.duration(100).easing(Easing.out(Easing.ease))}
+              layout={LinearTransition.duration(120)}
+              style={styles.rightControls}
+            >
+              {voiceEnabled ? (
                 <ControlButton
                   name="microphone"
                   label="Record voice"
                   disabled={busy}
                   onPress={beginRecording}
                 />
-                { !quizActive &&
-                  <ControlButton
-                    name="headphones"
-                    label="Speech to speech"
-                    disabled={busy}
-                    onPress={handleVoiceToVoice}
-                  />
-                }
-              </Animated.View>
-            ) : null}
+              ) : null}
+              {voiceEnabled && !quizActive && !showSendButton ? (
+                <ControlButton
+                  name="headphones"
+                  label="Speech to speech"
+                  disabled={busy}
+                  onPress={handleVoiceToVoice}
+                />
+              ) : null}
+            </Animated.View>
 
             {showSendButton ? (
               <Animated.View

@@ -8,7 +8,8 @@ import {
   startChatSession,
   submitQuizAnswers,
 } from '@/services/chatService';
-import { sendVoiceTranscriptionStreaming } from '@/services/voiceService';
+import { sendSpeechToSpeechStreaming, sendVoiceTranscriptionStreaming } from '@/services/voiceService';
+import { ttsSpeak } from '@/src/utils/tts';
 import { isLocalSessionId } from '@/src/utils/sessionId';
 import { triggerHaptic } from '@/src/utils/haptics';
 import type { AgeGroup } from '@/types/child';
@@ -46,6 +47,7 @@ interface UseChatSessionOptions {
   childId: string | null;
   ageGroup: AgeGroup;
   gradeLevel: string;
+  voiceEnabled?: boolean;
   subjectContext?: SubjectContext;
   dailyLimitMinutes?: number;
   onQuizComplete?: (summary: QuizSummary) => void;
@@ -83,6 +85,7 @@ interface UseChatSessionResult {
   resetQuizMode: () => void;
   cancelResponse: () => void;
   transcribeRecording: (audioUri: string) => Promise<string>;
+  speechToSpeechRecording: (audioUri: string) => Promise<void>;
   setInputText: (text: string) => void;
   clearError: () => void;
   onQuizSummaryDismissed?: () => void;
@@ -184,6 +187,7 @@ export function useChatSession({
   childId,
   ageGroup,
   gradeLevel,
+  voiceEnabled = false,
   subjectContext,
   dailyLimitMinutes,
   onQuizComplete,
@@ -205,6 +209,7 @@ export function useChatSession({
   const transcriptionSnapshotRef = useRef<string>('');
   const transcriptionBufferRef = useRef<string>('');
   const transcriptionRafRef = useRef<ReturnType<typeof requestAnimationFrame> | null>(null);
+  const transcriptionCommittedRef = useRef<string>('');
 
   useEffect(() => {
     return () => {
@@ -339,10 +344,18 @@ export function useChatSession({
       transcriptionText: text,
     }));
 
-    setState((current) => ({
-      ...current,
-      inputText: text,
-    }));
+    setState((current) => {
+      const base = current.inputText || '';
+      const chunk = text || '';
+      if (!chunk) {
+        return { ...current, inputText: base };
+      }
+      const needsSpace = base.length > 0 && !base.endsWith(' ');
+      return {
+        ...current,
+        inputText: base + (needsSpace ? ' ' : '') + chunk,
+      };
+    });
   }, []);
 
   const flushTranscriptionBuffer = useCallback(() => {
@@ -359,9 +372,11 @@ export function useChatSession({
     }
 
     transcriptionBufferRef.current = '';
+    const prevCommitted = transcriptionCommittedRef.current;
     const nextText = mergeTranscriptionText(transcriptionSnapshotRef.current, nextChunk);
-    transcriptionSnapshotRef.current = nextText;
-    commitTranscriptionText(nextText);
+    transcriptionCommittedRef.current = nextText;
+    const delta = nextText.slice(prevCommitted.length);
+    commitTranscriptionText(delta);
   }, [commitTranscriptionText]);
 
   const scheduleTranscriptionFlush = useCallback(() => {
@@ -479,6 +494,14 @@ export function useChatSession({
     async (rawText: string, inputSource: ChatInputSource = 'keyboard') => {
       const text = rawText.trim();
       if (!text || !childId) {
+        return;
+      }
+
+      if (inputSource === 'voice' && !voiceEnabled) {
+        setState((current) => ({
+          ...current,
+          error: 'Voice is disabled for this child profile.',
+        }));
         return;
       }
 
@@ -777,6 +800,7 @@ export function useChatSession({
       subjectContext?.subjectId,
       subjectContext?.subjectName,
       subjectContext?.topicId,
+      voiceEnabled,
       updateMessageById,
     ],
   );
@@ -1089,6 +1113,10 @@ export function useChatSession({
         throw new Error('Choose a child profile before using voice.');
       }
 
+      if (!voiceEnabled) {
+        throw new Error('Voice is disabled for this child profile.');
+      }
+
       const activeSession = sessionRef.current ?? (await startSession());
       if (!activeSession || isLocalSessionId(activeSession.id)) {
         throw new Error('Voice is unavailable until a live chat session starts.');
@@ -1099,23 +1127,18 @@ export function useChatSession({
       transcriptionAbortRef.current = controller;
 
       transcriptionSnapshotRef.current = state.inputText;
-      transcriptionBufferRef.current = '';
+      transcriptionBufferRef.current = state.inputText;
       clearTranscriptionStream();
 
       let finalText = '';
       let finalMetadata: TranscriptionMetadata | null = null;
 
       setTranscription({
-        transcriptionText: '',
+        transcriptionText: state.inputText,
         isTranscribing: true,
         transcriptionError: null,
         transcriptionMetadata: null,
       });
-
-      setState((current) => ({
-        ...current,
-        inputText: '',
-      }));
 
       try {
         await sendVoiceTranscriptionStreaming({
@@ -1126,7 +1149,6 @@ export function useChatSession({
           context: buildSerializedContext(ageGroup, gradeLevel, subjectContext, messagesRef.current),
           signal: controller.signal,
           onStart: ({ transcriptionId, messageId, childId: eventChildId }) => {
-            transcriptionBufferRef.current = '';
             setTranscription((current) => ({
               ...current,
               isTranscribing: true,
@@ -1153,7 +1175,6 @@ export function useChatSession({
 
             const combinedText = mergeTranscriptionText(transcriptionBufferRef.current, text);
             transcriptionBufferRef.current = '';
-            transcriptionSnapshotRef.current = combinedText;
             finalText = combinedText;
             finalMetadata = {
               transcriptionId,
@@ -1164,7 +1185,10 @@ export function useChatSession({
               childId,
             };
 
-            commitTranscriptionText(combinedText);
+            const prevSnapshot = transcriptionSnapshotRef.current;
+            transcriptionSnapshotRef.current = combinedText;
+            const delta = combinedText.slice(prevSnapshot.length);
+            commitTranscriptionText(delta);
             setTranscription((current) => ({
               ...current,
               isTranscribing: false,
@@ -1222,7 +1246,304 @@ export function useChatSession({
         }
       }
     },
-    [ageGroup, childId, clearTranscriptionStream, commitTranscriptionText, gradeLevel, scheduleTranscriptionFlush, startSession, subjectContext, state.inputText]
+    [ageGroup, childId, clearTranscriptionStream, commitTranscriptionText, gradeLevel, scheduleTranscriptionFlush, startSession, subjectContext, state.inputText, voiceEnabled]
+  );
+
+  const speechToSpeechRecording = useCallback(
+    async (audioUri: string): Promise<void> => {
+      if (!childId) {
+        throw new Error('Choose a child profile before using voice.');
+      }
+
+      if (!voiceEnabled) {
+        throw new Error('Voice is disabled for this child profile.');
+      }
+
+      const activeSession = sessionRef.current ?? (await startSession());
+      if (!activeSession) {
+        throw new Error('Unable to start chat right now. Please try again in a moment.');
+      }
+
+      const liveSession = await resolveLiveSession();
+      if (!liveSession || isLocalSessionId(liveSession.id)) {
+        setState((current) => ({
+          ...current,
+          isAwaitingResponse: false,
+          isLoading: false,
+          error: 'I cannot reach the server right now. Please check your connection and try again.',
+        }));
+        throw new Error('I cannot reach the server right now. Please check your connection and try again.');
+      }
+
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      clearTranscriptionStream();
+      setTranscription({
+        transcriptionText: '',
+        isTranscribing: true,
+        transcriptionError: null,
+        transcriptionMetadata: null,
+      });
+      setState((current) => ({
+        ...current,
+        isAwaitingResponse: true,
+        error: null,
+      }));
+
+      const childMessageId = `child-voice-${Date.now()}`;
+      const streamingMessageId = `ai-stream-${childMessageId}`;
+      let activeStreamingMessageId = streamingMessageId;
+      let childMessageAppended = false;
+      let aiMessageAppended = false;
+      let finalTranscript = '';
+      let finalAiText = '';
+      let pendingDelta = '';
+      let rafId: ReturnType<typeof requestAnimationFrame> | null = null;
+
+      const appendSpeechMessages = (transcript: string) => {
+        if (childMessageAppended || !mountedRef.current) {
+          return;
+        }
+
+        const childMessage: Message = {
+          id: childMessageId,
+          sessionId: liveSession.id,
+          sender: 'child',
+          content: transcript,
+          safetyFlags: [],
+          createdAt: new Date().toISOString(),
+          status: 'sent',
+        };
+
+        const aiMessage: Message = {
+          id: streamingMessageId,
+          sessionId: liveSession.id,
+          sender: 'ai',
+          content: '',
+          safetyFlags: [],
+          createdAt: new Date().toISOString(),
+          triggeredBy: childMessageId,
+          status: 'streaming',
+        };
+
+        childMessageAppended = true;
+        aiMessageAppended = true;
+        commitMessages([...messagesRef.current, childMessage, aiMessage], {
+          inputText: '',
+          isAwaitingResponse: true,
+          error: null,
+        });
+      };
+
+      const flushPendingDelta = () => {
+        rafId = null;
+        if (!pendingDelta || !mountedRef.current || !aiMessageAppended) return;
+        const batch = pendingDelta;
+        pendingDelta = '';
+        finalAiText += batch;
+        updateMessageById(activeStreamingMessageId, (message) => ({
+          ...message,
+          content: message.content + batch,
+        }));
+      };
+
+      const scheduleDeltaFlush = () => {
+        if (rafId === null) {
+          rafId = requestAnimationFrame(flushPendingDelta);
+        }
+      };
+
+      const cancelAndFlushDelta = () => {
+        if (rafId !== null) {
+          cancelAnimationFrame(rafId);
+          rafId = null;
+        }
+        flushPendingDelta();
+      };
+
+      const markSpeechError = (message: string) => {
+        if (!mountedRef.current) {
+          return;
+        }
+
+        if (aiMessageAppended) {
+          updateMessageById(
+            activeStreamingMessageId,
+            (currentMessage) => ({
+              ...currentMessage,
+              id: `ai-error-${childMessageId}`,
+              content: message,
+              safetyFlags: [],
+              createdAt: new Date().toISOString(),
+              status: 'error',
+            }),
+            {
+              isAwaitingResponse: false,
+              error: null,
+            },
+          );
+          activeStreamingMessageId = `ai-error-${childMessageId}`;
+          return;
+        }
+
+        setState((current) => ({
+          ...current,
+          isAwaitingResponse: false,
+          error: message,
+        }));
+      };
+
+      try {
+        const result = await sendSpeechToSpeechStreaming({
+          userId: getCurrentUserId(),
+          childId,
+          sessionId: liveSession.id,
+          audioUri,
+          context: buildSerializedContext(ageGroup, gradeLevel, subjectContext, messagesRef.current),
+          signal: controller.signal,
+          onTranscriptionStart: ({ transcriptionId, messageId, childId: eventChildId }) => {
+            setTranscription((current) => ({
+              ...current,
+              isTranscribing: true,
+              transcriptionError: null,
+              transcriptionMetadata: {
+                transcriptionId,
+                messageId,
+                childId: eventChildId,
+              },
+            }));
+          },
+          onTranscriptionDelta: (deltaText) => {
+            setTranscription((current) => ({
+              ...current,
+              transcriptionText: mergeTranscriptionText(current.transcriptionText, deltaText),
+            }));
+          },
+          onTranscriptionEnd: ({ transcriptionId, messageId, text, language, durationSeconds, finishReason }) => {
+            finalTranscript = text.trim();
+            setTranscription({
+              transcriptionText: finalTranscript,
+              isTranscribing: false,
+              transcriptionError: null,
+              transcriptionMetadata: {
+                transcriptionId,
+                messageId,
+                language,
+                durationSeconds,
+                finishReason,
+                childId,
+              },
+            });
+
+            if (finalTranscript) {
+              appendSpeechMessages(finalTranscript);
+            }
+          },
+          onChatStart: ({ messageId }) => {
+            if (finalTranscript) {
+              appendSpeechMessages(finalTranscript);
+            }
+
+            if (!aiMessageAppended) {
+              return;
+            }
+
+            const previousId = activeStreamingMessageId;
+            activeStreamingMessageId = messageId;
+            updateMessageById(previousId, (message) => ({
+              ...message,
+              id: messageId,
+            }));
+          },
+          onChatDelta: (deltaText) => {
+            pendingDelta += deltaText;
+            scheduleDeltaFlush();
+          },
+          onChatEnd: ({ messageId }) => {
+            cancelAndFlushDelta();
+
+            if (!aiMessageAppended) {
+              return;
+            }
+
+            const previousId = activeStreamingMessageId;
+            activeStreamingMessageId = messageId;
+            updateMessageById(
+              previousId,
+              (message) => ({ ...message, id: messageId, status: 'sent' }),
+              { isAwaitingResponse: false, error: null },
+            );
+          },
+          onError: (code, message) => {
+            console.warn(`[useChatSession] speech-to-speech stream error (code ${code}): ${message}`);
+          },
+        });
+
+        cancelAndFlushDelta();
+
+        const spokenText = (result.aiText || finalAiText).trim();
+        if (!spokenText) {
+          throw new Error('I could not answer that recording. Please try again.');
+        }
+
+        if (!finalTranscript && result.transcriptionText.trim()) {
+          finalTranscript = result.transcriptionText.trim();
+          appendSpeechMessages(finalTranscript);
+        }
+
+        if (mountedRef.current) {
+          await ttsSpeak({
+            text: spokenText,
+            childId,
+            sessionId: liveSession.id,
+            messageId: result.messageId ?? activeStreamingMessageId,
+            language: result.ttsLanguage,
+            voiceEnabled,
+          });
+        }
+      } catch (error) {
+        cancelAndFlushDelta();
+        if (controller.signal.aborted) {
+          if (mountedRef.current) {
+            setState((current) => ({
+              ...current,
+              isAwaitingResponse: false,
+            }));
+          }
+          return;
+        }
+
+        const message = error instanceof Error ? error.message : 'Speech-to-speech is unavailable right now. Please try again.';
+        setTranscription((current) => ({
+          ...current,
+          isTranscribing: false,
+          transcriptionError: message,
+        }));
+        markSpeechError(message);
+        throw error instanceof Error ? error : new Error(message);
+      } finally {
+        if (rafId !== null) {
+          cancelAnimationFrame(rafId);
+        }
+        if (abortRef.current === controller) {
+          abortRef.current = null;
+        }
+      }
+    },
+    [
+      ageGroup,
+      childId,
+      clearTranscriptionStream,
+      commitMessages,
+      gradeLevel,
+      resolveLiveSession,
+      startSession,
+      subjectContext,
+      updateMessageById,
+      voiceEnabled,
+    ],
   );
 
   useEffect(() => {
@@ -1300,6 +1621,7 @@ export function useChatSession({
     resetQuizMode,
     cancelResponse,
     transcribeRecording,
+    speechToSpeechRecording,
     setInputText,
     clearError,
   };

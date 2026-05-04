@@ -27,6 +27,7 @@ import { useKeyboardHeight } from '@/hooks/useKeyboardHeight';
 import { useAuth } from '@/contexts/AuthContext';
 import { getChildTabSceneBottomPadding } from '@/components/navigation/bottomNavTokens';
 import { showToast } from '@/services/toastClient';
+import { ttsStop } from '@/src/utils/tts';
 import type { ChildProfile, SessionGateState } from '@/types/child';
 import type { Message } from '@/types/chat';
 
@@ -142,6 +143,7 @@ function AIChatSessionGate({
   const navigation = useNavigation();
   const { getSubjectById } = useSubjects();
   const { addQuizXp, refreshChildData } = useAuth();
+  const voiceEnabled = profile?.rules?.voiceModeEnabled ?? false;
 
   const resolvedSubjectName =
     params.subjectName ??
@@ -171,12 +173,14 @@ function AIChatSessionGate({
     resetQuizMode,
     cancelResponse,
     transcribeRecording,
+    speechToSpeechRecording,
     setInputText,
     clearError,
   } = useChatSession({
     childId: profile?.id ?? null,
     ageGroup: profile?.ageGroup ?? '7-11',
     gradeLevel: profile?.gradeLevel ?? 'Grade 4',
+    voiceEnabled,
     subjectContext: {
       subjectId: params.subjectId,
       subjectName: resolvedSubjectName,
@@ -192,6 +196,12 @@ function AIChatSessionGate({
   const flatListRef = useRef<FlatList<ChatListItem>>(null);
   const isNearBottom = useRef(true);
   const NEAR_BOTTOM_THRESHOLD = 80;
+
+  useEffect(() => {
+    return () => {
+      ttsStop();
+    };
+  }, []);
 
   // Cycle phrase: fade out → swap index after fade completes
   useEffect(() => {
@@ -317,13 +327,23 @@ function AIChatSessionGate({
 
   const renderItem = useCallback<ListRenderItem<ChatListItem>>(({ item }) => {
     if (item.type === 'typing') {
-      return <MessageBubble message={typingPlaceholderMessage} isTypingPlaceholder ageGroup={profile?.ageGroup} />;
+      return (
+        <MessageBubble
+          message={typingPlaceholderMessage}
+          isTypingPlaceholder
+          ageGroup={profile?.ageGroup}
+          childId={profile?.id ?? null}
+          voiceEnabled={voiceEnabled}
+        />
+      );
     }
 
     return (
       <MessageBubble
         message={item.message}
         ageGroup={profile?.ageGroup}
+        childId={profile?.id ?? null}
+        voiceEnabled={voiceEnabled}
         onLongPressMessage={handleLongPressMessage}
         onRetryAiMessage={handleRetryAiMessage}
         onQuizAnswer={handleQuizAnswer}
@@ -336,6 +356,8 @@ function AIChatSessionGate({
     handleQuizTryAnother,
     handleRetryAiMessage,
     profile?.ageGroup,
+    profile?.id,
+    voiceEnabled,
     typingPlaceholderMessage,
   ]);
 
@@ -430,10 +452,12 @@ function AIChatSessionGate({
             value={state.inputText}
             ageGroup={profile?.ageGroup ?? '7-11'}
             isLoading={state.isAwaitingResponse || state.isLoading}
+            voiceEnabled={voiceEnabled}
             onChangeText={setInputText}
             onSend={handleSend}
             onSendQuiz={handleSendQuiz}
             onTranscribeAudio={transcribeRecording}
+            onSpeechToSpeechAudio={speechToSpeechRecording}
             onCancelResponse={cancelResponse}
           />
         </Animated.View>
