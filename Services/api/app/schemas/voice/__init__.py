@@ -1,3 +1,3 @@
-from .voice_schema import TranscribeResponse
+from .voice_schema import SpeechToSpeechResponse, TranscribeResponse
 
-__all__ = ["TranscribeResponse"]
+__all__ = ["SpeechToSpeechResponse", "TranscribeResponse"]

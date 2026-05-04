@@ -9,7 +9,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
-from controllers.chat.chat import _resolve_owned_child_profile
+from controllers.chat.chat import _resolve_owned_child_profile, chat_message_controller
 from core.config import settings
 from core.database import SessionLocal
 from core.storage import minio_client
@@ -19,7 +19,7 @@ from services.chat.chat_session_service import create_session_for_child
 from services.child.child_profile_context_cache import get_child_profile_context
 from utils.media.file_name import generate_audio_file_storage_path
 from utils.shared.logger import logger
-from utils.chat.sse import format_chat_delta, format_chat_end, format_chat_error, format_chat_start, format_sse
+from utils.chat.sse import format_chat_delta, format_chat_end, format_chat_error, format_chat_start, format_sse, new_message_id
 
 
 def _resolve_or_create_chat_session(
@@ -230,6 +230,41 @@ def _map_tts_status_to_error(status_code: int) -> dict[str, str]:
     return {"code": "tts_unreachable", "message": "Voice service unavailable. Please try again."}
 
 
+def _parse_sse_event(event_bytes: bytes) -> tuple[str | None, dict]:
+    event_type: str | None = None
+    data_lines: list[str] = []
+    try:
+        text = event_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        return None, {}
+
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if line.startswith("event:"):
+            event_type = line[6:].strip()
+        elif line.startswith("data:"):
+            data_lines.append(line[5:].strip())
+
+    return event_type, _parse_json_payload("\n".join(data_lines))
+
+
+def _http_exception_to_sse_error(exc: HTTPException, message_id: str | None = None) -> bytes:
+    detail = exc.detail
+    if isinstance(detail, dict):
+        message = str(detail.get("message") or detail.get("detail") or "Request failed")
+    elif isinstance(detail, str):
+        message = detail
+    else:
+        message = "Request failed"
+    return format_chat_error(f"http_{exc.status_code}", message, message_id or new_message_id())
+
+
+def _speech_tts_language(profile_context: dict, transcription_language: str | None = None) -> str:
+    language = str(profile_context.get("language") or transcription_language or settings.DEFAULT_LANGUAGE)
+    normalized = language.strip().lower()
+    return normalized or settings.DEFAULT_LANGUAGE
+
+
 def voice_transcribe_controller(
     *,
     user_id: UUID,
@@ -275,6 +310,54 @@ def voice_transcribe_controller(
     )
 
 
+def voice_speech_to_speech_controller(
+    *,
+    user_id: UUID,
+    child_id: UUID,
+    session_id: UUID,
+    profile_context: dict,
+    audio_file: UploadFile,
+    context: str,
+    content_type: str,
+    background_tasks,
+    db: Session,
+    redis: object,
+    stt_client: httpx.AsyncClient,
+    external_client: httpx.AsyncClient,
+    stream: bool = False,
+) -> dict | AsyncGenerator[bytes, None]:
+    if stream:
+        return _voice_speech_to_speech_stream_controller(
+            user_id=user_id,
+            child_id=child_id,
+            session_id=session_id,
+            profile_context=profile_context,
+            audio_file=audio_file,
+            context=context,
+            content_type=content_type,
+            background_tasks=background_tasks,
+            db=db,
+            redis=redis,
+            stt_client=stt_client,
+            external_client=external_client,
+        )
+
+    return _voice_speech_to_speech_sync_controller(
+        user_id=user_id,
+        child_id=child_id,
+        session_id=session_id,
+        profile_context=profile_context,
+        audio_file=audio_file,
+        context=context,
+        content_type=content_type,
+        background_tasks=background_tasks,
+        db=db,
+        redis=redis,
+        stt_client=stt_client,
+        external_client=external_client,
+    )
+
+
 async def voice_tts_controller(
     *,
     user_id: UUID,
@@ -306,6 +389,185 @@ async def voice_tts_controller(
         language=language,
         stt_client=stt_client,
     )
+
+
+async def _voice_speech_to_speech_sync_controller(
+    *,
+    user_id: UUID,
+    child_id: UUID,
+    session_id: UUID,
+    profile_context: dict,
+    audio_file: UploadFile,
+    context: str,
+    content_type: str,
+    background_tasks,
+    db: Session,
+    redis: object,
+    stt_client: httpx.AsyncClient,
+    external_client: httpx.AsyncClient,
+) -> dict:
+    transcription = await voice_transcribe_controller(
+        user_id=user_id,
+        child_id=child_id,
+        session_id=session_id,
+        profile_context=profile_context,
+        audio_file=audio_file,
+        context=context,
+        content_type=content_type,
+        background_tasks=background_tasks,
+        db=db,
+        redis=redis,
+        stt_client=stt_client,
+        stream=False,
+    )
+
+    transcribed_text = str(transcription.get("text") or "").strip()
+    if not transcribed_text:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not hear you clearly. Try again in a quiet place.",
+        )
+
+    chat_payload = await chat_message_controller(
+        db=db,
+        redis=redis,
+        user_id=user_id,
+        child_id=child_id,
+        session_id=session_id,
+        text=transcribed_text,
+        context=context,
+        input_source="voice",
+        stream=False,
+        external_client=external_client,
+        background_tasks=background_tasks,
+    )
+
+    content = str(chat_payload.get("content") or "").strip()
+    if not content:
+        raise HTTPException(status_code=502, detail="AI response was empty. Please try again.")
+
+    language = _speech_tts_language(profile_context, str(transcription.get("language") or ""))
+
+    return {
+        "transcription": {
+            "transcription_id": str(transcription.get("transcription_id") or ""),
+            "text": transcribed_text,
+            "language": str(transcription.get("language") or ""),
+            "duration_seconds": float(transcription.get("duration_seconds") or 0.0),
+        },
+        "message": {
+            "message_id": str(chat_payload.get("message_id") or new_message_id()),
+            "child_id": str(chat_payload.get("child_id") or child_id),
+            "session_id": str(chat_payload.get("session_id") or session_id),
+            "content": content,
+        },
+        "tts": {
+            "language": language,
+            "media_type": "audio/mpeg",
+        },
+    }
+
+
+async def _voice_speech_to_speech_stream_controller(
+    *,
+    user_id: UUID,
+    child_id: UUID,
+    session_id: UUID,
+    profile_context: dict,
+    audio_file: UploadFile,
+    context: str,
+    content_type: str,
+    background_tasks,
+    db: Session,
+    redis: object,
+    stt_client: httpx.AsyncClient,
+    external_client: httpx.AsyncClient,
+) -> AsyncGenerator[bytes, None]:
+    final_text = ""
+    transcription_message_id: str | None = None
+
+    try:
+        transcription_stream = voice_transcribe_controller(
+            user_id=user_id,
+            child_id=child_id,
+            session_id=session_id,
+            profile_context=profile_context,
+            audio_file=audio_file,
+            context=context,
+            content_type=content_type,
+            background_tasks=background_tasks,
+            db=db,
+            redis=redis,
+            stt_client=stt_client,
+            stream=True,
+        )
+
+        async for chunk in transcription_stream:
+            yield chunk
+            event_type, payload = _parse_sse_event(chunk)
+            if event_type == "start":
+                transcription_message_id = str(payload.get("message_id") or "")
+            elif event_type == "end":
+                final_text = str(payload.get("text") or "").strip()
+            elif event_type == "error":
+                return
+    except HTTPException as exc:
+        yield _http_exception_to_sse_error(exc, transcription_message_id)
+        return
+    except Exception:
+        logger.exception(
+            "Speech-to-speech transcription stream failed",
+            extra={"user_id": str(user_id), "child_id": str(child_id), "session_id": str(session_id)},
+        )
+        yield format_chat_error(
+            "stt_unreachable",
+            "Voice service unavailable. Please try again.",
+            transcription_message_id or new_message_id(),
+        )
+        return
+
+    if not final_text:
+        yield format_chat_error(
+            "empty_audio",
+            "Could not hear you clearly. Try again in a quiet place.",
+            transcription_message_id or new_message_id(),
+        )
+        return
+
+    try:
+        chat_response = await chat_message_controller(
+            db=db,
+            redis=redis,
+            user_id=user_id,
+            child_id=child_id,
+            session_id=session_id,
+            text=final_text,
+            context=context,
+            input_source="voice",
+            stream=True,
+            external_client=external_client,
+            background_tasks=background_tasks,
+        )
+    except HTTPException as exc:
+        yield _http_exception_to_sse_error(exc)
+        return
+    except Exception:
+        logger.exception(
+            "Speech-to-speech chat stream failed",
+            extra={"user_id": str(user_id), "child_id": str(child_id), "session_id": str(session_id)},
+        )
+        yield format_chat_error("internal_error", "Stream interrupted", new_message_id())
+        return
+
+    if not isinstance(chat_response, StreamingResponse):
+        yield format_chat_error("internal_error", "Stream interrupted", new_message_id())
+        return
+
+    async for chunk in chat_response.body_iterator:
+        if isinstance(chunk, bytes):
+            yield chunk
+        else:
+            yield str(chunk).encode("utf-8")
 
 
 async def _voice_tts_sync_controller(

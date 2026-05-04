@@ -6,13 +6,13 @@ from fastapi.responses import Response, StreamingResponse
 from redis.asyncio import Redis
 from sqlalchemy.orm import Session
 
-from controllers.voice.voice import voice_transcribe_controller, voice_tts_controller
+from controllers.voice.voice import voice_speech_to_speech_controller, voice_transcribe_controller, voice_tts_controller
 from dependencies.auth.auth import get_current_user
-from dependencies.infrastructure.infrastructure import get_client, get_db, get_redis
+from dependencies.infrastructure.infrastructure import get_client, get_db, get_external_client, get_redis
 from dependencies.media.media import validate_audio_file
 from dependencies.voice.voice import check_voice_mode_enabled
 from models.user.user import User
-from schemas.voice.voice_schema import TranscribeResponse
+from schemas.voice.voice_schema import SpeechToSpeechResponse, TranscribeResponse
 
 
 router = APIRouter()
@@ -99,6 +99,55 @@ async def transcribe_sync_route(
         stream=False,
     )
     return TranscribeResponse(**payload)
+
+
+@router.post(
+    "/{user_id}/{child_id}/{session_id}/speech-to-speech",
+    summary="Transcribe audio, generate an AI answer, and prepare TTS playback",
+    description="Upload audio and receive either a JSON AI answer or normalized SSE text events. Audio playback uses the existing binary TTS endpoint.",
+    response_model=None,
+)
+async def speech_to_speech_route(
+    user_id: UUID,
+    child_id: UUID,
+    session_id: UUID,
+    background_tasks: BackgroundTasks,
+    audio_file: UploadFile = Depends(validate_audio_file),
+    context: str = Form(""),
+    content_type: str = Form(...),
+    stream: bool = Query(False),
+    current_user: User = Depends(get_current_user),
+    profile_context: dict = Depends(check_voice_mode_enabled),
+    db: Session = Depends(get_db),
+    redis: Redis = Depends(get_redis),
+    stt_client: httpx.AsyncClient = Depends(get_client),
+    external_client: httpx.AsyncClient = Depends(get_external_client),
+):
+    controller_result = voice_speech_to_speech_controller(
+        user_id=user_id,
+        child_id=child_id,
+        session_id=session_id,
+        profile_context=profile_context,
+        audio_file=audio_file,
+        context=context,
+        content_type=content_type,
+        background_tasks=background_tasks,
+        db=db,
+        redis=redis,
+        stt_client=stt_client,
+        external_client=external_client,
+        stream=stream,
+    )
+    if stream:
+        return StreamingResponse(
+            controller_result,
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            background=background_tasks,
+        )
+
+    payload = await controller_result
+    return SpeechToSpeechResponse(**payload)
 
 
 @router.post(
