@@ -18,6 +18,7 @@ from models.child.child_profile import ChildProfile
 from models.chat.chat_session import ChatSession
 from models.chat.chat_history import ChatHistory
 from models.gamification.notification_prefs import ParentNotificationPrefs
+from models.gamification.child_gamification_stats import ChildGamificationStats
 from schemas.audit.audit_schema import AuditLogEntry, AuditLogResponse
 from schemas.child.parent_dashboard_schema import (
     BulkDeleteResponse,
@@ -55,6 +56,17 @@ class ParentDashboardService:
         xp = int(child.xp or 0)
         level = (xp // 100) + 1
 
+        stats = (
+            self.db.query(ChildGamificationStats)
+            .filter(ChildGamificationStats.child_profile_id == child_id)
+            .first()
+        )
+
+        if not stats:
+            stats = ChildGamificationStats(child_profile_id=child_id)
+            self.db.add(stats)
+            self.db.flush()
+
         session_stats = (
             self.db.query(
                 func.count(ChatSession.id).label("total_sessions"),
@@ -84,8 +96,6 @@ class ParentDashboardService:
             .scalar() or 0
         )
 
-        streak = self._compute_streak(child_id)
-
         return ParentOverviewResponse(
             child_id=child.id,
             child_nickname=child.nickname,
@@ -94,9 +104,9 @@ class ParentDashboardService:
             stats=ParentOverviewStats(
                 total_sessions=total_sessions,
                 total_messages=int(total_messages),
-                total_exercises_completed=0,
+                total_exercises_completed=stats.total_quizzes_completed,
                 total_xp=xp,
-                streak_days=streak,
+                streak_days=stats.current_streak,
                 flagged_message_count=flagged_count,
                 last_active_at=last_active_at,
             ),
