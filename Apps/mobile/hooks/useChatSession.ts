@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   endChatSession,
   getCurrentUserId,
@@ -21,12 +22,13 @@ import type {
   Message,
   QuizLevel,
   QuizSummary,
+  QuizSubmitResponse,
   Session,
 } from '@/types/chat';
 
 const MAX_CONTEXT_MESSAGES = 20;
 const MIN_TYPING_INDICATOR_MS = 500;
-const XP_PER_CORRECT = 10;
+const PENDING_QUIZ_SUBMISSIONS_KEY = 'kidsmind.pendingQuizSubmissions';
 
 interface SubjectContext {
   subjectId?: string;
@@ -82,6 +84,7 @@ interface UseChatSessionResult {
   retryMessage: (aiMessageId: string) => Promise<void>;
   sendQuizRequest: (topic: string) => Promise<void>;
   submitQuizAnswer: (questionId: number, answer: string) => void;
+  retryQuizSubmission: (quizId: string) => void;
   resetQuizMode: () => void;
   cancelResponse: () => void;
   transcribeRecording: (audioUri: string) => Promise<string>;
@@ -174,13 +177,53 @@ function mergeTranscriptionText(previousText: string, nextChunk: string): string
   return previousText + nextChunk;
 }
 
-function normalizeAnswerForComparison(answer: string, questionType: string): string {
-  const normalized = answer.trim().toLowerCase();
-  if (questionType === 'true_false') {
-    if (['true', 'vrai', 'yes', 'oui', '1', 'correct'].includes(normalized)) return 'true';
-    if (['false', 'faux', 'no', 'non', '0', 'incorrect', 'wrong'].includes(normalized)) return 'false';
+interface PendingQuizSubmission {
+  childId: string;
+  quizId: string;
+  payload: {
+    quiz_id: string;
+    answers: { question_id: number; answer: string }[];
+    duration_seconds?: number;
+    subject?: string;
+  };
+  createdAt: string;
+}
+
+async function loadPendingQuizSubmissions(): Promise<PendingQuizSubmission[]> {
+  const rawValue = await AsyncStorage.getItem(PENDING_QUIZ_SUBMISSIONS_KEY).catch(() => null);
+  if (!rawValue) {
+    return [];
   }
-  return normalized;
+
+  try {
+    const parsed = JSON.parse(rawValue);
+    return Array.isArray(parsed)
+      ? parsed.filter((entry): entry is PendingQuizSubmission =>
+          Boolean(entry && typeof entry === 'object' && typeof entry.childId === 'string' && typeof entry.quizId === 'string' && entry.payload),
+        )
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+async function storePendingQuizSubmission(entry: PendingQuizSubmission): Promise<void> {
+  const pending = await loadPendingQuizSubmissions();
+  const nextPending = [
+    ...pending.filter((item) => item.quizId !== entry.quizId || item.childId !== entry.childId),
+    entry,
+  ];
+  await AsyncStorage.setItem(PENDING_QUIZ_SUBMISSIONS_KEY, JSON.stringify(nextPending)).catch(() => undefined);
+}
+
+async function removePendingQuizSubmission(childId: string, quizId: string): Promise<void> {
+  const pending = await loadPendingQuizSubmissions();
+  const nextPending = pending.filter((item) => item.quizId !== quizId || item.childId !== childId);
+  if (nextPending.length === 0) {
+    await AsyncStorage.removeItem(PENDING_QUIZ_SUBMISSIONS_KEY).catch(() => undefined);
+    return;
+  }
+  await AsyncStorage.setItem(PENDING_QUIZ_SUBMISSIONS_KEY, JSON.stringify(nextPending)).catch(() => undefined);
 }
 
 export function useChatSession({
@@ -806,30 +849,16 @@ export function useChatSession({
   );
 
   const buildAndAppendSummaryMessage = useCallback(
-    (quizState: ActiveQuizState) => {
-      const questions = quizState.questions;
-      const answeredIds = quizState.answeredQuestionIds;
-      let correctCount = 0;
-      let totalXp = 0;
-
-      for (const q of questions) {
-        if (!answeredIds.has(q.id)) continue;
-        if (q.isCorrect) {
-          correctCount++;
-          totalXp += q.xpEarned ?? XP_PER_CORRECT;
-        }
-      }
-
-      const totalAnswered = answeredIds.size;
-      const totalQuestions = questions.length;
-
-      if (totalAnswered < totalQuestions) return;
-
+    (quizState: ActiveQuizState, serverResult: QuizSubmitResponse) => {
       const summary: QuizSummary = {
-        correctCount,
-        totalQuestions,
-        totalXp,
-        scorePercentage: totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0,
+        correctCount: serverResult.correctCount,
+        totalQuestions: serverResult.totalQuestions,
+        scorePercentage: serverResult.scorePercentage,
+        xpEarned: serverResult.xpEarned,
+        bonusXp: serverResult.bonusXp,
+        totalXp: serverResult.totalXp,
+        streakMultiplier: serverResult.streakMultiplier,
+        isPerfect: serverResult.isPerfect,
       };
 
       const activeSession = sessionRef.current;
@@ -862,6 +891,117 @@ export function useChatSession({
     [onQuizComplete],
   );
 
+  const updateQuizMessage = useCallback((quizId: string, updates: Partial<Message>) => {
+    setState((current) => {
+      const nextMessages = current.messages.map((msg) =>
+        msg.id === quizId
+          ? {
+              ...msg,
+              ...updates,
+            }
+          : msg,
+      );
+      messagesRef.current = nextMessages;
+      return { ...current, messages: nextMessages };
+    });
+  }, []);
+
+  const buildQuizSubmissionPayload = useCallback((quiz: ActiveQuizState) => ({
+    quiz_id: quiz.quizId,
+    answers: quiz.questions
+      .filter((q) => q.userAnswer !== undefined)
+      .map((q) => ({ question_id: q.id, answer: q.userAnswer! })),
+    duration_seconds: (Date.now() - quiz.startedAt) / 1000,
+    subject: quiz.subject,
+  }), []);
+
+  const applyQuizServerResult = useCallback(
+    async (quiz: ActiveQuizState, serverResult: QuizSubmitResponse) => {
+      const resultMap = new Map(serverResult.results.map((result) => [result.questionId, result]));
+      const validatedQuestions = quiz.questions.map((question) => {
+        const result = resultMap.get(question.id);
+        if (!result) {
+          return {
+            ...question,
+            status: 'incorrect' as const,
+            isCorrect: false,
+          };
+        }
+
+        return {
+          ...question,
+          status: result.isCorrect ? 'correct' as const : 'incorrect' as const,
+          isCorrect: result.isCorrect,
+          correctAnswer: result.correctAnswer,
+          explanation: result.explanation,
+        };
+      });
+
+      quiz.questions = validatedQuestions;
+      updateQuizMessage(quiz.quizId, {
+        quiz: validatedQuestions,
+        quizStatus: 'results',
+        quizError: undefined,
+      });
+
+      if (childId) {
+        await removePendingQuizSubmission(childId, quiz.quizId);
+      }
+
+      buildAndAppendSummaryMessage(quiz, serverResult);
+      activeQuizRef.current = null;
+    },
+    [buildAndAppendSummaryMessage, childId, updateQuizMessage],
+  );
+
+  const markQuizSubmissionError = useCallback((quiz: ActiveQuizState, message: string) => {
+    const answeredQuestions = quiz.questions.map((question) => ({
+      ...question,
+      status: question.userAnswer ? 'answered' as const : question.status,
+    }));
+    quiz.questions = answeredQuestions;
+    updateQuizMessage(quiz.quizId, {
+      quiz: answeredQuestions,
+      quizStatus: 'error',
+      quizError: message,
+    });
+  }, [updateQuizMessage]);
+
+  const submitQuizState = useCallback(
+    async (quiz: ActiveQuizState) => {
+      if (!childId) return;
+
+      const payload = buildQuizSubmissionPayload(quiz);
+      const pendingEntry: PendingQuizSubmission = {
+        childId,
+        quizId: quiz.quizId,
+        payload,
+        createdAt: new Date().toISOString(),
+      };
+
+      const pendingQuestions = quiz.questions.map((question) => ({
+        ...question,
+        status: 'pending' as const,
+      }));
+      quiz.questions = pendingQuestions;
+      updateQuizMessage(quiz.quizId, {
+        quiz: pendingQuestions,
+        quizStatus: 'submitting',
+        quizError: undefined,
+      });
+
+      await storePendingQuizSubmission(pendingEntry);
+
+      try {
+        const serverResult = await submitQuizAnswers(childId, payload);
+        await applyQuizServerResult(quiz, serverResult);
+      } catch {
+        markQuizSubmissionError(quiz, 'Could not submit the quiz. Your answers are saved for retry.');
+      }
+    },
+    [applyQuizServerResult, buildQuizSubmissionPayload, childId, markQuizSubmissionError, updateQuizMessage],
+  );
+
   const submitQuizAnswer = useCallback(
     (questionId: number, answer: string) => {
       const quiz = activeQuizRef.current;
@@ -870,17 +1010,10 @@ export function useChatSession({
       const question = quiz.questions.find((q) => q.id === questionId);
       if (!question) return;
 
-      const isCorrect =
-        normalizeAnswerForComparison(answer, question.type) ===
-        normalizeAnswerForComparison(question.answer, question.type);
-
-      const xpEarned = isCorrect ? XP_PER_CORRECT : 0;
-
       const updatedQuestion: ChatQuizQuestion = {
         ...question,
         userAnswer: answer,
-        isCorrect,
-        xpEarned,
+        status: 'answered',
       };
 
       quiz.questions = quiz.questions.map((q) => (q.id === questionId ? updatedQuestion : q));
@@ -894,6 +1027,7 @@ export function useChatSession({
           return {
             ...msg,
             quiz: msg.quiz.map((q) => (q.id === questionId ? updatedQuestion : q)),
+            quizStatus: 'answering' as const,
           };
         });
         messagesRef.current = nextMessages;
@@ -902,23 +1036,80 @@ export function useChatSession({
 
       const allAnswered = quiz.answeredQuestionIds.size >= quiz.questions.length;
       if (allAnswered) {
-        buildAndAppendSummaryMessage(quiz);
-
-        const currentQuiz = quiz;
-        if (childId) {
-          void submitQuizAnswers(childId, {
-            quiz_id: currentQuiz.quizId,
-            answers: currentQuiz.questions
-          .filter((q) => q.userAnswer !== undefined)
-          .map((q) => ({ question_id: q.id, answer: q.userAnswer! })),
-            duration_seconds: (Date.now() - currentQuiz.startedAt) / 1000,
-            subject: currentQuiz.subject,
-          }).catch(() => undefined);
-        }
+        void submitQuizState(quiz);
       }
     },
-    [buildAndAppendSummaryMessage, childId],
+    [submitQuizState],
   );
+
+  const retryQuizSubmission = useCallback(
+    (quizId: string) => {
+      const quiz = activeQuizRef.current;
+      if (quiz && quiz.quizId === quizId) {
+        void submitQuizState(quiz);
+        return;
+      }
+
+      void loadPendingQuizSubmissions()
+        .then(async (pending) => {
+          const entry = pending.find((item) => item.childId === childId && item.quizId === quizId);
+          if (!entry || !childId) return;
+          const serverResult = await submitQuizAnswers(childId, entry.payload);
+          await removePendingQuizSubmission(childId, quizId);
+          if (onQuizComplete) {
+            onQuizComplete({
+              correctCount: serverResult.correctCount,
+              totalQuestions: serverResult.totalQuestions,
+              scorePercentage: serverResult.scorePercentage,
+              xpEarned: serverResult.xpEarned,
+              bonusXp: serverResult.bonusXp,
+              totalXp: serverResult.totalXp,
+              streakMultiplier: serverResult.streakMultiplier,
+              isPerfect: serverResult.isPerfect,
+            });
+          }
+        })
+        .catch(() => undefined);
+    },
+    [childId, onQuizComplete, submitQuizState],
+  );
+
+  useEffect(() => {
+    if (!childId) return;
+
+    let cancelled = false;
+
+    void loadPendingQuizSubmissions()
+      .then(async (pending) => {
+        const childPending = pending.filter((entry) => entry.childId === childId);
+        for (const entry of childPending) {
+          if (cancelled) return;
+          try {
+            const serverResult = await submitQuizAnswers(childId, entry.payload);
+            await removePendingQuizSubmission(childId, entry.quizId);
+            if (!cancelled && onQuizComplete) {
+              onQuizComplete({
+                correctCount: serverResult.correctCount,
+                totalQuestions: serverResult.totalQuestions,
+                scorePercentage: serverResult.scorePercentage,
+                xpEarned: serverResult.xpEarned,
+                bonusXp: serverResult.bonusXp,
+                totalXp: serverResult.totalXp,
+                streakMultiplier: serverResult.streakMultiplier,
+                isPerfect: serverResult.isPerfect,
+              });
+            }
+          } catch {
+            break;
+          }
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [childId, onQuizComplete]);
 
   const retryMessage = useCallback(
     async (aiMessageId: string) => {
@@ -1027,7 +1218,7 @@ export function useChatSession({
         activeQuizRef.current = {
           quizId: response.quizId,
           subject: response.subject,
-          questions: response.questions.map((q) => ({ ...q })),
+          questions: response.questions.map((q) => ({ ...q, status: 'unanswered' })),
           answeredQuestionIds: new Set(),
           startedAt: Date.now(),
           triggerMessageId: optimisticMessage.id,
@@ -1038,7 +1229,8 @@ export function useChatSession({
           sessionId: liveSession.id,
           sender: 'ai',
           content: response.intro,
-          quiz: response.questions.map((q) => ({ ...q })),
+          quiz: response.questions.map((q) => ({ ...q, status: 'unanswered' })),
+          quizStatus: 'displaying',
           safetyFlags: [],
           createdAt: new Date().toISOString(),
           triggeredBy: optimisticMessage.id,
@@ -1185,9 +1377,9 @@ export function useChatSession({
               childId,
             };
 
-            const prevSnapshot = transcriptionSnapshotRef.current;
-            transcriptionSnapshotRef.current = combinedText;
-            const delta = combinedText.slice(prevSnapshot.length);
+            const prevCommitted = transcriptionCommittedRef.current;
+            transcriptionCommittedRef.current = combinedText;
+            const delta = combinedText.slice(prevCommitted.length);
             commitTranscriptionText(delta);
             setTranscription((current) => ({
               ...current,
@@ -1209,10 +1401,15 @@ export function useChatSession({
               transcriptionError: message,
             }));
 
-            if (transcriptionSnapshotRef.current) {
-              commitTranscriptionText(transcriptionSnapshotRef.current);
-            } else {
-              commitTranscriptionText('');
+            const remainingText = mergeTranscriptionText(
+              transcriptionBufferRef.current,
+              transcriptionSnapshotRef.current,
+            );
+            const prevCommitted = transcriptionCommittedRef.current;
+            transcriptionCommittedRef.current = remainingText;
+            const delta = remainingText.slice(prevCommitted.length);
+            if (delta) {
+              commitTranscriptionText(delta);
             }
           },
         });
@@ -1234,9 +1431,16 @@ export function useChatSession({
           transcriptionError: message,
         }));
 
-        if (transcriptionSnapshotRef.current) {
-          commitTranscriptionText(transcriptionSnapshotRef.current);
-        }
+        const remainingText = mergeTranscriptionText(
+              transcriptionBufferRef.current,
+              transcriptionSnapshotRef.current,
+            );
+            const prevCommitted = transcriptionCommittedRef.current;
+            transcriptionCommittedRef.current = remainingText;
+            const delta = remainingText.slice(prevCommitted.length);
+            if (delta) {
+              commitTranscriptionText(delta);
+            }
 
         throw error instanceof Error ? error : new Error(message);
       } finally {
@@ -1618,6 +1822,7 @@ export function useChatSession({
     retryMessage,
     sendQuizRequest,
     submitQuizAnswer,
+    retryQuizSubmission,
     resetQuizMode,
     cancelResponse,
     transcribeRecording,

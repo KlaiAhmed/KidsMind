@@ -24,7 +24,7 @@ import type {
   ChatQuizResponse,
   ChatRequestPayload,
   QuizRequestPayload,
-  QuizSummary,
+  QuizSubmitResponse,
   Session,
 } from '@/types/chat';
 
@@ -53,8 +53,6 @@ interface QuizQuestionApiResponse {
   type?: unknown;
   prompt?: unknown;
   options?: unknown;
-  answer?: unknown;
-  explanation?: unknown;
 }
 
 interface QuizApiResponse {
@@ -155,13 +153,12 @@ function flattenResponsePayload(payload: ChatResponsePayload): string {
 
 function normalizeQuizQuestion(value: unknown, fallbackId: number): ChatQuizQuestion | null {
   if (!value || typeof value !== 'object') {
+    console.warn('[chatService] Quiz question normalization failed: value is not an object.', value);
     return null;
   }
 
   const question = value as QuizQuestionApiResponse;
   const prompt = normalizeOptionalString(question.prompt);
-  const answer = normalizeOptionalString(question.answer);
-  const explanation = normalizeOptionalString(question.explanation) ?? '';
   const rawType = normalizeOptionalString(question.type);
   const type =
     rawType === 'true_false' || rawType === 'short_answer' || rawType === 'mcq'
@@ -171,7 +168,8 @@ function normalizeQuizQuestion(value: unknown, fallbackId: number): ChatQuizQues
     ? question.options.filter((option): option is string => typeof option === 'string')
     : null;
 
-  if (!prompt || !answer) {
+  if (!prompt) {
+    console.warn('[chatService] Quiz question normalization failed: missing prompt.', question);
     return null;
   }
 
@@ -180,8 +178,7 @@ function normalizeQuizQuestion(value: unknown, fallbackId: number): ChatQuizQues
     type,
     prompt,
     options,
-    answer,
-    explanation,
+    status: 'unanswered',
   };
 }
 
@@ -192,6 +189,11 @@ function normalizeQuizResponse(value: unknown): ChatQuizResponse {
         .map((question, index) => normalizeQuizQuestion(question, index + 1))
         .filter((question): question is ChatQuizQuestion => Boolean(question))
     : [];
+
+  if (questions.length === 0) {
+    console.warn('[chatService] Quiz response normalization failed: no valid questions.', payload);
+    throw new Error('The quiz came back without questions. Please try again.');
+  }
 
   return {
     quizId: normalizeOptionalString(payload.quiz_id) ?? `quiz-${Date.now()}`,
@@ -553,17 +555,21 @@ interface QuizSubmitPayload {
 }
 
 interface QuizSubmitApiResponse {
-  correct_count?: unknown;
-  total_questions?: unknown;
-  score_percentage?: unknown;
-  gamification?: unknown;
-  newly_earned_badges?: unknown;
+  correctCount?: unknown;
+  totalQuestions?: unknown;
+  scorePercentage?: unknown;
+  results?: unknown;
+  xpEarned?: unknown;
+  bonusXp?: unknown;
+  totalXp?: unknown;
+  streakMultiplier?: unknown;
+  isPerfect?: unknown;
 }
 
 export async function submitQuizAnswers(
   childId: string,
   payload: QuizSubmitPayload,
-): Promise<QuizSummary> {
+): Promise<QuizSubmitResponse> {
   const response = await apiRequest<QuizSubmitApiResponse>(
     `/api/v1/quizzes/${encodeURIComponent(childId)}/submit`,
     {
@@ -578,23 +584,53 @@ export async function submitQuizAnswers(
   );
 
   const correctCount =
-    typeof response.correct_count === 'number' ? response.correct_count : 0;
+    typeof response.correctCount === 'number' ? response.correctCount : 0;
   const totalQuestions =
-    typeof response.total_questions === 'number' ? response.total_questions : 0;
+    typeof response.totalQuestions === 'number' ? response.totalQuestions : 0;
   const scorePercentage =
-    typeof response.score_percentage === 'number' ? response.score_percentage : 0;
+    typeof response.scorePercentage === 'number' ? response.scorePercentage : 0;
+  const results = Array.isArray(response.results)
+    ? response.results
+        .map((result) => {
+          if (!result || typeof result !== 'object') {
+            return null;
+          }
 
-  const gamification = response.gamification as Record<string, unknown> | undefined;
-  const xpAwarded =
-    gamification && typeof gamification.xp_awarded === 'number'
-      ? gamification.xp_awarded
-      : correctCount * 10;
+          const record = result as Record<string, unknown>;
+          const questionId = typeof record.questionId === 'number' ? record.questionId : null;
+          const isCorrect = typeof record.isCorrect === 'boolean' ? record.isCorrect : null;
+          const correctAnswer = normalizeOptionalString(record.correctAnswer) ?? '';
+          const explanation = normalizeOptionalString(record.explanation) ?? '';
+
+          if (questionId === null || isCorrect === null) {
+            console.warn('[chatService] Quiz result normalization failed.', record);
+            return null;
+          }
+
+          return {
+            questionId,
+            isCorrect,
+            correctAnswer,
+            explanation,
+          };
+        })
+        .filter((result): result is QuizSubmitResponse['results'][number] => Boolean(result))
+    : [];
+
+  if (results.length === 0 && totalQuestions > 0) {
+    console.warn('[chatService] Quiz submission response missing per-question results.', response);
+  }
 
   return {
     correctCount,
     totalQuestions,
-    totalXp: xpAwarded,
     scorePercentage,
+    results,
+    xpEarned: typeof response.xpEarned === 'number' ? response.xpEarned : 0,
+    bonusXp: typeof response.bonusXp === 'number' ? response.bonusXp : 0,
+    totalXp: typeof response.totalXp === 'number' ? response.totalXp : 0,
+    streakMultiplier: typeof response.streakMultiplier === 'number' ? response.streakMultiplier : 1,
+    isPerfect: typeof response.isPerfect === 'boolean' ? response.isPerfect : false,
   };
 }
 

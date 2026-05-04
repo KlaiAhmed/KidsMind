@@ -7,6 +7,8 @@ export type SafetyFlag = string;
 export type ChatInputSource = 'keyboard' | 'voice';
 export type QuizLevel = 'easy' | 'medium' | 'hard';
 export type MessageStatus = 'sent' | 'streaming' | 'error';
+export type QuizMessageStatus = 'displaying' | 'answering' | 'submitting' | 'results' | 'error';
+export type QuizQuestionStatus = 'unanswered' | 'answered' | 'pending' | 'correct' | 'incorrect';
 
 export interface Message {
   id: string;
@@ -18,6 +20,8 @@ export interface Message {
   triggeredBy?: string;
   status?: MessageStatus;
   quiz?: ChatQuizQuestion[];
+  quizStatus?: QuizMessageStatus;
+  quizError?: string;
   quizScore?: QuizSummary;
 }
 
@@ -90,18 +94,33 @@ export interface ChatQuizQuestion {
   type: 'mcq' | 'true_false' | 'short_answer';
   prompt: string;
   options: string[] | null;
-  answer: string;
-  explanation: string;
   userAnswer?: string;
   isCorrect?: boolean;
-  xpEarned?: number;
+  correctAnswer?: string;
+  explanation?: string;
+  status?: QuizQuestionStatus;
 }
 
 export interface QuizSummary {
   correctCount: number;
   totalQuestions: number;
-  totalXp: number;
   scorePercentage: number;
+  xpEarned: number;
+  bonusXp: number;
+  totalXp: number;
+  streakMultiplier: number;
+  isPerfect: boolean;
+}
+
+export interface QuizQuestionResult {
+  questionId: number;
+  isCorrect: boolean;
+  correctAnswer: string;
+  explanation: string;
+}
+
+export interface QuizSubmitResponse extends QuizSummary {
+  results: QuizQuestionResult[];
 }
 
 export interface ChatQuizResponse {
