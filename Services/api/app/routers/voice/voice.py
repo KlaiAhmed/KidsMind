@@ -2,11 +2,11 @@ import httpx
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, Query, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from redis.asyncio import Redis
 from sqlalchemy.orm import Session
 
-from controllers.voice.voice import voice_transcribe_controller
+from controllers.voice.voice import voice_transcribe_controller, voice_tts_controller
 from dependencies.auth.auth import get_current_user
 from dependencies.infrastructure.infrastructure import get_client, get_db, get_redis
 from dependencies.media.media import validate_audio_file
@@ -22,6 +22,7 @@ router = APIRouter()
     "/{user_id}/{child_id}/{session_id}/transcribe",
     summary="Transcribe audio with optional streaming",
     description="Upload audio and receive either a JSON transcription or normalized SSE events.",
+    response_model=None,
 )
 async def transcribe_stream_route(
     user_id: UUID,
@@ -98,3 +99,32 @@ async def transcribe_sync_route(
         stream=False,
     )
     return TranscribeResponse(**payload)
+
+
+@router.post(
+    "/{user_id}/{child_id}/{session_id}/tts",
+    summary="Synthesize text to speech with optional streaming",
+    description="Upload text and receive either a binary MP3 file or streamed MP3 chunks.",
+    response_model=None,
+)
+async def tts_route(
+    user_id: UUID,
+    child_id: UUID,
+    session_id: UUID,
+    text: str = Form(...),
+    language: str = Form("en"),
+    stream: bool = Query(False),
+    current_user: User = Depends(get_current_user),
+    stt_client: httpx.AsyncClient = Depends(get_client),
+) -> Response | StreamingResponse:
+    controller_result = await voice_tts_controller(
+        user_id=user_id,
+        child_id=child_id,
+        session_id=session_id,
+        current_user_id=current_user.id,
+        text=text,
+        language=language,
+        stt_client=stt_client,
+        stream=stream,
+    )
+    return controller_result

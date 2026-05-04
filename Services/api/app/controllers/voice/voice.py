@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 import httpx
 from fastapi import HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
 from controllers.chat.chat import _resolve_owned_child_profile
@@ -215,6 +216,20 @@ def _map_stt_status_to_error(status_code: int) -> dict[str, str]:
     return {"code": "stt_unreachable", "message": "Voice service unavailable. Please try again."}
 
 
+def _map_tts_status_to_error(status_code: int) -> dict[str, str]:
+    if status_code == 400:
+        return {"code": "invalid_text", "message": "Text is required."}
+    if status_code == 413:
+        return {"code": "text_too_long", "message": "Text is too long."}
+    if status_code == 415:
+        return {"code": "unsupported_language", "message": "Unsupported language."}
+    if status_code == 422:
+        return {"code": "tts_validation_error", "message": "TTS request validation failed."}
+    if status_code == 503:
+        return {"code": "tts_busy", "message": "Voice service busy, try again."}
+    return {"code": "tts_unreachable", "message": "Voice service unavailable. Please try again."}
+
+
 def voice_transcribe_controller(
     *,
     user_id: UUID,
@@ -260,6 +275,133 @@ def voice_transcribe_controller(
     )
 
 
+async def voice_tts_controller(
+    *,
+    user_id: UUID,
+    child_id: UUID,
+    session_id: UUID,
+    current_user_id: UUID,
+    text: str,
+    language: str,
+    stt_client: httpx.AsyncClient,
+    stream: bool = False,
+) -> Response | StreamingResponse:
+    if stream:
+        return await _voice_tts_stream_controller(
+            user_id=user_id,
+            child_id=child_id,
+            session_id=session_id,
+            current_user_id=current_user_id,
+            text=text,
+            language=language,
+            stt_client=stt_client,
+        )
+
+    return await _voice_tts_sync_controller(
+        user_id=user_id,
+        child_id=child_id,
+        session_id=session_id,
+        current_user_id=current_user_id,
+        text=text,
+        language=language,
+        stt_client=stt_client,
+    )
+
+
+async def _voice_tts_sync_controller(
+    *,
+    user_id: UUID,
+    child_id: UUID,
+    session_id: UUID,
+    current_user_id: UUID,
+    text: str,
+    language: str,
+    stt_client: httpx.AsyncClient,
+) -> Response:
+    logger.info(
+        "TTS request received",
+        extra={
+            "user_id": str(current_user_id),
+            "path_user_id": str(user_id),
+            "child_id": str(child_id),
+            "session_id": str(session_id),
+            "text_length_chars": len(text),
+            "language": language,
+            "stream": False,
+        },
+    )
+
+    try:
+        response = await stt_client.post(
+            f"{settings.VOICE_SERVICE_URL}/v1/tts",
+            data={"text": text, "language": language},
+            timeout=settings.VOICE_REQUEST_TIMEOUT_SECONDS,
+        )
+    except httpx.RequestError as exc:
+        logger.warning("Voice service request failed", extra={"error": str(exc)})
+        raise HTTPException(status_code=502, detail="Voice service unavailable.") from exc
+
+    if response.status_code != 200:
+        error_payload = _map_tts_status_to_error(response.status_code)
+        raise HTTPException(
+            status_code=response.status_code if response.status_code in {400, 413, 415, 422, 503} else 502,
+            detail=error_payload["message"],
+        )
+
+    return Response(content=response.content, media_type="audio/mpeg")
+
+
+async def _voice_tts_stream_controller(
+    *,
+    user_id: UUID,
+    child_id: UUID,
+    session_id: UUID,
+    current_user_id: UUID,
+    text: str,
+    language: str,
+    stt_client: httpx.AsyncClient,
+) -> StreamingResponse:
+    logger.info(
+        "TTS streaming request received",
+        extra={
+            "user_id": str(current_user_id),
+            "path_user_id": str(user_id),
+            "child_id": str(child_id),
+            "session_id": str(session_id),
+            "text_length_chars": len(text),
+            "language": language,
+            "stream": True,
+        },
+    )
+
+    request = stt_client.build_request(
+        "POST",
+        f"{settings.VOICE_SERVICE_URL}/v1/tts/stream",
+        data={"text": text, "language": language},
+    )
+    try:
+        response = await stt_client.send(request, stream=True)
+    except httpx.RequestError as exc:
+        logger.warning("Voice service request failed", extra={"error": str(exc)})
+        raise HTTPException(status_code=502, detail="Voice service unavailable.") from exc
+
+    if response.status_code != 200:
+        error_payload = _map_tts_status_to_error(response.status_code)
+        await response.aclose()
+        raise HTTPException(status_code=response.status_code if response.status_code in {400, 413, 415, 422, 503} else 502, detail=error_payload["message"])
+
+    async def _audio_stream() -> AsyncGenerator[bytes, None]:
+        try:
+            async for chunk in response.aiter_bytes(chunk_size=4096):
+                yield chunk
+        finally:
+            await response.aclose()
+
+    return StreamingResponse(
+        _audio_stream(),
+        media_type="audio/mpeg",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 async def _voice_transcribe_sync_controller(
     *,
     user_id: UUID,
