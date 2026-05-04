@@ -31,13 +31,20 @@ from uuid import uuid4
 from typing import AsyncGenerator
 
 from openai import RateLimitError as OpenAIRateLimitError
+from fastapi import HTTPException
 
 from services.chat.build_chain import chain_builder
+from services.quiz.quiz_validation import validate_quiz_payload, QuizValidationError
 from core.config import settings
 from core.exceptions import AIRateLimitError
 from core.llm import build_llm_for_profile
 from utils.child.child_policy import child_policy
 from utils.shared.logger import logger
+
+QUIZ_MAX_RETRIES = 3
+QUIZ_RETRY_INITIAL_DELAY = 1.0
+QUIZ_RETRY_MAX_DELAY = 8.0
+QUIZ_RETRY_BACKOFF = 2.0
 
 
 class AIService:
@@ -230,6 +237,110 @@ class AIService:
                 },
             )
 
+    async def _invoke_quiz_chain(self, chain, invoke_payload: dict, timeout_seconds: float) -> dict:
+        """Single quiz generation attempt. Returns raw payload (unvalidated)."""
+        task = asyncio.create_task(chain.ainvoke(invoke_payload))
+        try:
+            response = await asyncio.wait_for(
+                asyncio.shield(task),
+                timeout=timeout_seconds,
+            )
+            return self._coerce_quiz_payload(response)
+        except asyncio.TimeoutError:
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+            raise TimeoutError(f"Quiz generation timed out after {timeout_seconds}s")
+        except ValueError as e:
+            raise ValueError(f"Failed to parse quiz response: {e}")
+
+    async def _generate_quiz_with_retry(
+        self,
+        chain,
+        invoke_payload: dict,
+        timeout_seconds: float,
+        question_count: int,
+    ) -> dict:
+        """Generate quiz with exponential backoff retry. Returns validated payload."""
+        last_error = None
+        delay = QUIZ_RETRY_INITIAL_DELAY
+
+        for attempt in range(1, QUIZ_MAX_RETRIES + 1):
+            try:
+                logger.info(
+                    "AIService.generate_quiz attempt",
+                    extra={
+                        "attempt": attempt,
+                        "max_retries": QUIZ_MAX_RETRIES,
+                        "subject": invoke_payload.get("subject"),
+                        "topic": invoke_payload.get("topic"),
+                    },
+                )
+
+                raw_payload = await self._invoke_quiz_chain(chain, invoke_payload, timeout_seconds)
+
+                validated_payload = validate_quiz_payload(
+                    raw_payload,
+                    expected_count=question_count,
+                )
+
+                logger.info(
+                    "AIService.generate_quiz validated",
+                    extra={
+                        "attempt": attempt,
+                        "question_count": len(validated_payload["questions"]),
+                    },
+                )
+
+                return validated_payload
+
+            except (ValueError, QuizValidationError) as e:
+                last_error = e
+                logger.warning(
+                    f"AIService.generate_quiz attempt {attempt} failed",
+                    extra={
+                        "attempt": attempt,
+                        "error_type": type(e).__name__,
+                        "error_message": str(e)[:200],
+                        "will_retry": attempt < QUIZ_MAX_RETRIES,
+                    },
+                )
+
+                if attempt < QUIZ_MAX_RETRIES:
+                    await asyncio.sleep(delay)
+                    delay = min(delay * QUIZ_RETRY_BACKOFF, QUIZ_RETRY_MAX_DELAY)
+
+            except TimeoutError as e:
+                last_error = e
+                logger.warning(
+                    f"AIService.generate_quiz attempt {attempt} timed out",
+                    extra={
+                        "attempt": attempt,
+                        "timeout_seconds": timeout_seconds,
+                        "will_retry": attempt < QUIZ_MAX_RETRIES,
+                    },
+                )
+
+                if attempt < QUIZ_MAX_RETRIES:
+                    await asyncio.sleep(delay)
+                    delay = min(delay * QUIZ_RETRY_BACKOFF, QUIZ_RETRY_MAX_DELAY)
+
+        logger.error(
+            "AIService.generate_quiz failed after all retries",
+            extra={
+                "total_attempts": QUIZ_MAX_RETRIES,
+                "final_error_type": type(last_error).__name__,
+                "final_error_message": str(last_error)[:200],
+            },
+        )
+
+        raise HTTPException(
+            status_code=502,
+            detail=f"Quiz generation failed after {QUIZ_MAX_RETRIES} attempts. Please try again.",
+        )
+
     async def generate_quiz(
         self,
         profile_context: dict,
@@ -239,6 +350,7 @@ class AIService:
         question_count: int = 3,
         context: str = "",
     ) -> dict:
+        """Generate quiz with retries and validation. Returns guaranteed valid payload."""
         timer = time.perf_counter()
         age_group = profile_context["age_group"]
         llm = build_llm_for_profile(age_group, streaming=False)
@@ -259,68 +371,48 @@ class AIService:
                 "level": level,
                 "question_count": question_count,
                 "timeout_seconds": timeout_seconds,
-                "model_name": settings.MODEL_NAME,
-                "llm_timeout_seconds": settings.LLM_TIMEOUT_SECONDS,
-                "llm_max_retries": settings.LLM_MAX_RETRIES,
-                "prompt_keys": list(invoke_payload.keys()),
+                "max_retries": QUIZ_MAX_RETRIES,
             },
         )
 
         try:
-            task = asyncio.create_task(chain.ainvoke(invoke_payload))
-            response = await asyncio.wait_for(
-                asyncio.shield(task),
-                timeout=timeout_seconds,
+            validated_payload = await self._generate_quiz_with_retry(
+                chain=chain,
+                invoke_payload=invoke_payload,
+                timeout_seconds=timeout_seconds,
+                question_count=question_count,
             )
+
             elapsed = time.perf_counter() - timer
             logger.info(
                 "AIService.generate_quiz completed",
                 extra={
                     "elapsed_seconds": round(elapsed, 3),
+                    "question_count": len(validated_payload["questions"]),
                 },
             )
-            payload = self._coerce_quiz_payload(response)
 
-            payload.setdefault("intro", "")
-            payload.setdefault("questions", [])
-            if not isinstance(payload["questions"], list) or len(payload["questions"]) == 0:
-                raise ValueError("Quiz generation returned no questions")
-            payload["quiz_id"] = payload.get("quiz_id") or str(uuid4())
-            payload["subject"] = subject
-            payload["topic"] = topic
-            payload["level"] = level
-            return payload
+            validated_payload["quiz_id"] = str(uuid4())
+            validated_payload["subject"] = subject
+            validated_payload["topic"] = topic
+            validated_payload["level"] = level
+
+            return validated_payload
+
         except OpenAIRateLimitError as e:
-            raise AIRateLimitError(str(e)) from e
-        except asyncio.TimeoutError:
-            task.cancel()
-            try:
-                await task
-            except (asyncio.CancelledError, Exception):
-                pass
-            elapsed = time.perf_counter() - timer
-            logger.error(
-                "AIService.generate_quiz timed out",
-                extra={
-                    "elapsed_seconds": round(elapsed, 3),
-                    "timeout_seconds": timeout_seconds,
-                    "subject": subject,
-                    "topic": topic,
-                    "model_name": settings.MODEL_NAME,
-                },
-            )
+            raise HTTPException(status_code=429, detail="AI service rate limit exceeded")
+        except HTTPException:
             raise
-        except Exception:
+        except Exception as e:
             elapsed = time.perf_counter() - timer
             logger.exception(
-                "AIService.generate_quiz failed",
+                "AIService.generate_quiz failed unexpectedly",
                 extra={
-                    "subject": subject,
-                    "topic": topic,
                     "elapsed_seconds": round(elapsed, 3),
+                    "error_type": type(e).__name__,
                 },
             )
-            raise
+            raise HTTPException(status_code=502, detail="Quiz generation failed unexpectedly")
 
 
 ai_service = AIService()
