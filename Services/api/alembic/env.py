@@ -51,6 +51,7 @@ import models.gamification.child_gamification_stats
 import models.gamification.badge
 import models.gamification.notification_prefs
 import models.gamification.parent_badge_notification
+import models.gamification.parent_flagged_notification
 import models.chat.chat_history
 import models.chat.chat_session
 import models.media.avatar

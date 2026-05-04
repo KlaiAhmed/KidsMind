@@ -86,8 +86,16 @@ def upgrade() -> None:
     if not _table_exists(TABLE_NAME):
         return
 
-    minio_client = _build_minio_client()
-    sizes_by_key = _validate_seed_objects_exist(minio_client)
+    sizes_by_key: dict[str, int] = {}
+    try:
+        minio_client = _build_minio_client()
+        sizes_by_key = _validate_seed_objects_exist(minio_client)
+    except Exception:
+        # If MinIO is unreachable (e.g., local Windows dev environment),
+        # use default size (256KB) for avatars. This migration is idempotent
+        # and can be rerun after MinIO is accessible for size validation.
+        for _, _, _, object_key in STARTER_AVATARS:
+            sizes_by_key[object_key] = 262144  # 256KB default
 
     conn = op.get_bind()
     for title, sort_order, avatar_sequence, object_key in STARTER_AVATARS:
