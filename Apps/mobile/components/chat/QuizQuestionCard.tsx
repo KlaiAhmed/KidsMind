@@ -1,5 +1,5 @@
 import { memo, useCallback, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import Animated, {
@@ -12,25 +12,31 @@ import Animated, {
 import { Colors, Radii, Shadows, Spacing, Typography } from '@/constants/theme';
 import type { ChatQuizQuestion } from '@/types/chat';
 
-const XP_PER_CORRECT = 10;
-
 interface QuizQuestionCardProps {
   question: ChatQuizQuestion;
   questionIndex: number;
   totalQuestions: number;
+  disabled?: boolean;
   onAnswer: (questionId: number, answer: string) => void;
 }
 
-function getOptionState(
-  option: string,
-  selectedAnswer: string | null,
-  correctAnswer: string,
-  isLocked: boolean,
-): 'idle' | 'selected_correct' | 'selected_wrong' | 'revealed_correct' {
-  if (!isLocked || !selectedAnswer) return 'idle';
-  if (option === selectedAnswer && option === correctAnswer) return 'selected_correct';
-  if (option === selectedAnswer && option !== correctAnswer) return 'selected_wrong';
-  if (option === correctAnswer) return 'revealed_correct';
+type OptionState = 'idle' | 'selected' | 'pending' | 'selected_correct' | 'selected_wrong' | 'revealed_correct';
+
+function normalizeDisplayAnswer(value: string | undefined): string {
+  return (value ?? '').trim().toLowerCase();
+}
+
+function getOptionState(option: string, question: ChatQuizQuestion): OptionState {
+  if (!question.userAnswer) return 'idle';
+
+  const isSelected = option === question.userAnswer;
+  const isCorrectAnswer = normalizeDisplayAnswer(option) === normalizeDisplayAnswer(question.correctAnswer);
+
+  if (question.status === 'pending' && isSelected) return 'pending';
+  if (question.status === 'correct' && isSelected) return 'selected_correct';
+  if (question.status === 'incorrect' && isSelected) return 'selected_wrong';
+  if (question.status === 'incorrect' && isCorrectAnswer) return 'revealed_correct';
+  if (isSelected) return 'selected';
   return 'idle';
 }
 
@@ -41,7 +47,7 @@ function OptionButton({
   onPress,
 }: {
   label: string;
-  state: ReturnType<typeof getOptionState>;
+  state: OptionState;
   disabled: boolean;
   onPress: () => void;
 }) {
@@ -67,7 +73,9 @@ function OptionButton({
         ? Colors.error
         : state === 'revealed_correct'
           ? Colors.success
-          : Colors.surfaceContainerLowest;
+          : state === 'selected' || state === 'pending'
+            ? Colors.primaryFixed
+            : Colors.surfaceContainerLowest;
 
   const borderColor =
     state === 'selected_correct'
@@ -76,22 +84,21 @@ function OptionButton({
         ? Colors.error
         : state === 'revealed_correct'
           ? Colors.success
-          : Colors.outlineVariant;
+          : state === 'selected' || state === 'pending'
+            ? Colors.primary
+            : Colors.outlineVariant;
 
   const textColor =
     state === 'selected_correct' || state === 'selected_wrong' || state === 'revealed_correct'
       ? Colors.white
       : Colors.text;
 
-  const iconColor = Colors.white;
-
   return (
     <Animated.View style={animatedStyle}>
-      {/* a11y: Quiz options announce only the answer text for fast scanning. */}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={label}
-        accessibilityState={{ disabled }}
+        accessibilityState={{ disabled, selected: state !== 'idle' }}
         disabled={disabled}
         onPress={handlePress}
         style={[styles.optionButton, { backgroundColor, borderColor }]}
@@ -100,12 +107,12 @@ function OptionButton({
           <Text style={[styles.optionText, { color: textColor }]} numberOfLines={3}>
             {label}
           </Text>
-          {state === 'selected_correct' ? (
-            <MaterialCommunityIcons name="check-circle" size={20} color={iconColor} />
+          {state === 'pending' ? (
+            <ActivityIndicator size="small" color={Colors.primary} />
+          ) : state === 'selected_correct' || state === 'revealed_correct' ? (
+            <MaterialCommunityIcons name="check-circle" size={20} color={Colors.white} />
           ) : state === 'selected_wrong' ? (
-            <MaterialCommunityIcons name="close-circle" size={20} color={iconColor} />
-          ) : state === 'revealed_correct' ? (
-            <MaterialCommunityIcons name="check-circle" size={20} color={iconColor} />
+            <MaterialCommunityIcons name="close-circle" size={20} color={Colors.white} />
           ) : null}
         </View>
       </Pressable>
@@ -115,15 +122,17 @@ function OptionButton({
 
 function ShortAnswerSection({
   isLocked,
+  isPending,
   isCorrect,
   selectedAnswer,
   correctAnswer,
   onSubmit,
 }: {
   isLocked: boolean;
+  isPending: boolean;
   isCorrect: boolean | undefined;
   selectedAnswer: string | null;
-  correctAnswer: string;
+  correctAnswer?: string;
   onSubmit: (answer: string) => void;
 }) {
   const [textInput, setTextInput] = useState('');
@@ -134,76 +143,73 @@ function ShortAnswerSection({
     onSubmit(trimmed);
   }, [textInput, isLocked, onSubmit]);
 
+  if (!isLocked) {
+    return (
+      <View style={styles.shortAnswerInputRow}>
+        <TextInput
+          style={styles.shortAnswerInput}
+          placeholder="Type your answer..."
+          placeholderTextColor={Colors.placeholder}
+          value={textInput}
+          onChangeText={setTextInput}
+          editable={!isLocked}
+          returnKeyType="send"
+          onSubmitEditing={handleSubmit}
+          accessibilityLabel="Type your answer"
+        />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Submit answer"
+          disabled={!textInput.trim() || isLocked}
+          onPress={handleSubmit}
+          style={({ pressed }) => [
+            styles.shortAnswerSubmitButton,
+            (!textInput.trim() || isLocked) && styles.shortAnswerSubmitDisabled,
+            pressed && styles.optionPressed,
+          ]}
+        >
+          <MaterialCommunityIcons name="send" size={18} color={Colors.white} />
+        </Pressable>
+      </View>
+    );
+  }
+
   return (
-    <View style={styles.shortAnswerContainer}>
-      {!isLocked ? (
-        <View style={styles.shortAnswerInputRow}>
-          {/* a11y: Short-answer input is labeled as an answer field. */}
-          <TextInput
-            style={styles.shortAnswerInput}
-            placeholder="Type your answer..."
-            placeholderTextColor={Colors.placeholder}
-            value={textInput}
-            onChangeText={setTextInput}
-            editable={!isLocked}
-            returnKeyType="send"
-            onSubmitEditing={handleSubmit}
-            accessibilityLabel="Type your answer"
-          />
-          {/* a11y: Submit button is the only icon-only control in short answers. */}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Submit answer"
-            disabled={!textInput.trim() || isLocked}
-            onPress={handleSubmit}
-            style={({ pressed }) => [
-              styles.shortAnswerSubmitButton,
-              (!textInput.trim() || isLocked) && styles.shortAnswerSubmitDisabled,
-              pressed && styles.optionPressed,
-            ]}
-          >
-            <MaterialCommunityIcons name="send" size={18} color={Colors.white} />
-          </Pressable>
+    <View style={styles.shortAnswerFeedback}>
+      <View style={styles.shortAnswerResultRow}>
+        <Text style={styles.shortAnswerLabel}>Your answer: </Text>
+        <Text
+          style={[
+            styles.shortAnswerValue,
+            isCorrect === true ? styles.shortAnswerCorrect : isCorrect === false ? styles.shortAnswerWrong : null,
+          ]}
+        >
+          {selectedAnswer}
+        </Text>
+        {isPending ? <ActivityIndicator size="small" color={Colors.primary} /> : null}
+        {isCorrect === true ? (
+          <MaterialCommunityIcons name="check-circle" size={18} color={Colors.success} />
+        ) : isCorrect === false ? (
+          <MaterialCommunityIcons name="close-circle" size={18} color={Colors.error} />
+        ) : null}
+      </View>
+      {isCorrect === false && correctAnswer ? (
+        <View style={styles.shortAnswerResultRow}>
+          <Text style={styles.shortAnswerLabel}>Correct answer: </Text>
+          <Text style={[styles.shortAnswerValue, styles.shortAnswerCorrect]}>
+            {correctAnswer}
+          </Text>
         </View>
-      ) : (
-        <View style={styles.shortAnswerFeedback}>
-          <View style={styles.shortAnswerResultRow}>
-            <Text style={styles.shortAnswerLabel}>Your answer: </Text>
-            <Text
-              style={[
-                styles.shortAnswerValue,
-                isCorrect ? styles.shortAnswerCorrect : styles.shortAnswerWrong,
-              ]}
-            >
-              {selectedAnswer}
-            </Text>
-            {isCorrect ? (
-              <MaterialCommunityIcons name="check-circle" size={18} color={Colors.success} />
-            ) : (
-              <MaterialCommunityIcons name="close-circle" size={18} color={Colors.error} />
-            )}
-          </View>
-          {!isCorrect && correctAnswer ? (
-            <View style={styles.shortAnswerResultRow}>
-              <Text style={styles.shortAnswerLabel}>Correct answer: </Text>
-              <Text style={[styles.shortAnswerValue, styles.shortAnswerCorrect]}>
-                {correctAnswer}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-      )}
+      ) : null}
     </View>
   );
 }
 
 function FeedbackSection({
   isCorrect,
-  xpEarned,
   explanation,
 }: {
   isCorrect: boolean;
-  xpEarned: number;
   explanation: string;
 }) {
   const scale = useSharedValue(0.97);
@@ -232,12 +238,6 @@ function FeedbackSection({
           <Text style={[styles.feedbackResultText, isCorrect ? styles.textCorrect : styles.textWrong]}>
             {isCorrect ? 'Correct!' : 'Not quite!'}
           </Text>
-          {isCorrect ? (
-            <View style={styles.xpBadge}>
-              <MaterialCommunityIcons name="star" size={14} color={Colors.white} />
-              <Text style={styles.xpBadgeText}>+{xpEarned} XP</Text>
-            </View>
-          ) : null}
         </View>
         {explanation ? <Text style={styles.explanationText}>{explanation}</Text> : null}
       </View>
@@ -249,23 +249,20 @@ function QuizQuestionCardComponent({
   question,
   questionIndex,
   totalQuestions,
+  disabled = false,
   onAnswer,
 }: QuizQuestionCardProps) {
-  const [selectedAnswer, setSelectedAnswer] = useState<string | null>(question.userAnswer ?? null);
-  const isLocked = question.userAnswer !== undefined || selectedAnswer !== null;
-
-  const isCorrect = isLocked
-    ? question.isCorrect ?? question.answer.trim().toLowerCase() === (selectedAnswer ?? '').trim().toLowerCase()
-    : undefined;
-
-  const xpEarned = isCorrect && isLocked ? (question.xpEarned ?? XP_PER_CORRECT) : 0;
+  const selectedAnswer = question.userAnswer ?? null;
+  const isPending = question.status === 'pending';
+  const hasServerResult = question.status === 'correct' || question.status === 'incorrect';
+  const isLocked = Boolean(selectedAnswer) || disabled || isPending || hasServerResult;
+  const isCorrect = hasServerResult ? Boolean(question.isCorrect) : undefined;
 
   const handleOptionPress = useCallback(
     (option: string) => {
       if (isLocked) return;
 
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
-      setSelectedAnswer(option);
       onAnswer(question.id, option);
     },
     [isLocked, onAnswer, question.id],
@@ -276,7 +273,6 @@ function QuizQuestionCardComponent({
       if (isLocked) return;
 
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
-      setSelectedAnswer(answer);
       onAnswer(question.id, answer);
     },
     [isLocked, onAnswer, question.id],
@@ -310,33 +306,37 @@ function QuizQuestionCardComponent({
       {isShortAnswer ? (
         <ShortAnswerSection
           isLocked={isLocked}
+          isPending={isPending}
           isCorrect={isCorrect}
           selectedAnswer={selectedAnswer}
-          correctAnswer={question.answer}
+          correctAnswer={question.correctAnswer}
           onSubmit={handleShortAnswer}
         />
       ) : (
         <View style={styles.optionsContainer}>
-          {options.map((option) => {
-            const state = getOptionState(option, selectedAnswer, question.answer, isLocked);
-            return (
-              <OptionButton
-                key={option}
-                label={option}
-                state={state}
-                disabled={isLocked}
-                onPress={() => handleOptionPress(option)}
-              />
-            );
-          })}
+          {options.map((option) => (
+            <OptionButton
+              key={option}
+              label={option}
+              state={getOptionState(option, question)}
+              disabled={isLocked}
+              onPress={() => handleOptionPress(option)}
+            />
+          ))}
         </View>
       )}
 
-      {isLocked && isCorrect !== undefined ? (
+      {isPending ? (
+        <View style={styles.pendingRow}>
+          <ActivityIndicator size="small" color={Colors.primary} />
+          <Text style={styles.pendingText}>Waiting for server</Text>
+        </View>
+      ) : null}
+
+      {hasServerResult && isCorrect !== undefined ? (
         <FeedbackSection
           isCorrect={isCorrect}
-          xpEarned={xpEarned}
-          explanation={question.explanation}
+          explanation={question.explanation ?? ''}
         />
       ) : null}
     </View>
@@ -344,6 +344,8 @@ function QuizQuestionCardComponent({
 }
 
 export const QuizQuestionCard = memo(QuizQuestionCardComponent);
+
+const Sizing_minTapTarget = 44;
 
 const styles = StyleSheet.create({
   card: {
@@ -406,9 +408,6 @@ const styles = StyleSheet.create({
   optionPressed: {
     transform: [{ scale: 0.96 }],
   },
-  shortAnswerContainer: {
-    gap: Spacing.sm,
-  },
   shortAnswerInputRow: {
     flexDirection: 'row',
     gap: Spacing.sm,
@@ -457,6 +456,19 @@ const styles = StyleSheet.create({
   shortAnswerWrong: {
     color: Colors.error,
   },
+  pendingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    backgroundColor: Colors.primaryFixed,
+    borderRadius: Radii.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  pendingText: {
+    ...Typography.captionMedium,
+    color: Colors.primary,
+  },
   feedbackContainer: {
     borderRadius: Radii.md,
     paddingHorizontal: Spacing.md,
@@ -483,25 +495,9 @@ const styles = StyleSheet.create({
   textWrong: {
     color: Colors.error,
   },
-  xpBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-    backgroundColor: Colors.success,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 2,
-    borderRadius: Radii.full,
-  },
-  xpBadgeText: {
-    ...Typography.captionMedium,
-    color: Colors.white,
-    fontSize: 12,
-  },
   explanationText: {
     ...Typography.caption,
     color: Colors.textSecondary,
     lineHeight: 20,
   },
 });
-
-const Sizing_minTapTarget = 44;

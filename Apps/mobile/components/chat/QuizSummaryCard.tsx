@@ -1,4 +1,4 @@
-import { memo, useEffect } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Animated, { Easing, FadeIn, useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
@@ -17,8 +17,37 @@ function getMotivationalMessage(scorePercentage: number): string {
   return 'Keep going \u2014 every question makes you smarter! \uD83E\uDDE0';
 }
 
-function XpBadge({ totalXp }: { totalXp: number }) {
+function useCountUp(target: number): number {
+  const [value, setValue] = useState(0);
+
+  useEffect(() => {
+    const safeTarget = Math.max(0, Math.floor(target));
+    if (safeTarget === 0) {
+      setValue(0);
+      return;
+    }
+
+    const startedAt = Date.now();
+    const durationMs = 900;
+    const intervalId = setInterval(() => {
+      const progress = Math.min(1, (Date.now() - startedAt) / durationMs);
+      setValue(Math.round(safeTarget * progress));
+      if (progress >= 1) {
+        clearInterval(intervalId);
+      }
+    }, 16);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [target]);
+
+  return value;
+}
+
+function XpBadge({ xpEarned }: { xpEarned: number }) {
   const scale = useSharedValue(0);
+  const animatedXp = useCountUp(xpEarned);
 
   useEffect(() => {
     scale.value = withSpring(1, { damping: 8, stiffness: 200, overshootClamping: false });
@@ -35,7 +64,7 @@ function XpBadge({ totalXp }: { totalXp: number }) {
     >
       <View style={styles.xpBadgeContainer}>
         <MaterialCommunityIcons name="star-four-points" size={24} color={Colors.white} />
-        <Text style={styles.xpBadgeNumber}>+{totalXp}</Text>
+        <Text style={styles.xpBadgeNumber}>+{animatedXp}</Text>
         <Text style={styles.xpBadgeLabel}>XP</Text>
       </View>
     </Animated.View>
@@ -47,7 +76,7 @@ function QuizSummaryCardComponent({ summary, onTryAnother }: QuizSummaryCardProp
 
   return (
     <View style={styles.card}>
-      <Text style={styles.celebrationEmoji}>{'\uD83C\uDF89'}</Text>
+      <Text style={styles.celebrationEmoji}>{summary.isPerfect ? '\uD83C\uDFC6' : '\uD83C\uDF89'}</Text>
 
       <Text style={styles.title}>Quiz Complete!</Text>
 
@@ -55,7 +84,22 @@ function QuizSummaryCardComponent({ summary, onTryAnother }: QuizSummaryCardProp
         You got {summary.correctCount}/{summary.totalQuestions} right
       </Text>
 
-      <XpBadge totalXp={summary.totalXp} />
+      <XpBadge xpEarned={summary.xpEarned} />
+
+      <View style={styles.xpDetails}>
+        <View style={styles.xpDetailPill}>
+          <Text style={styles.xpDetailLabel}>Bonus</Text>
+          <Text style={styles.xpDetailValue}>+{summary.bonusXp}</Text>
+        </View>
+        <View style={styles.xpDetailPill}>
+          <Text style={styles.xpDetailLabel}>Total XP</Text>
+          <Text style={styles.xpDetailValue}>{summary.totalXp}</Text>
+        </View>
+        <View style={styles.xpDetailPill}>
+          <Text style={styles.xpDetailLabel}>Streak</Text>
+          <Text style={styles.xpDetailValue}>{summary.streakMultiplier}x</Text>
+        </View>
+      </View>
 
       <Text style={styles.motivationalText}>{motivationalMessage}</Text>
 
@@ -118,6 +162,28 @@ const styles = StyleSheet.create({
     ...Typography.captionMedium,
     color: Colors.white,
     opacity: 0.9,
+  },
+  xpDetails: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+  },
+  xpDetailPill: {
+    alignItems: 'center',
+    backgroundColor: Colors.primaryFixed,
+    borderRadius: Radii.lg,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    minWidth: 82,
+  },
+  xpDetailLabel: {
+    ...Typography.caption,
+    color: Colors.textSecondary,
+  },
+  xpDetailValue: {
+    ...Typography.bodySemiBold,
+    color: Colors.primary,
   },
   motivationalText: {
     ...Typography.bodyMedium,

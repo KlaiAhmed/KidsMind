@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
 import { MessageActionBar } from '@/components/chat/MessageActionBar';
@@ -19,6 +19,7 @@ interface MessageBubbleProps {
   onLongPressMessage?: (text: string) => void;
   onRetryAiMessage?: (aiMessageId: string) => void;
   onQuizAnswer?: (questionId: number, answer: string) => void;
+  onQuizRetrySubmit?: (quizId: string) => void;
   onQuizTryAnother?: () => void;
 }
 
@@ -43,10 +44,12 @@ function MessageBubbleComponent({
   onLongPressMessage,
   onRetryAiMessage,
   onQuizAnswer,
+  onQuizRetrySubmit,
   onQuizTryAnother,
 }: MessageBubbleProps) {
   const isAiMessage = message.sender === 'ai';
   const hasSafetyFlags = message.safetyFlags.length > 0;
+  const hasQuizPayload = Array.isArray(message.quiz);
   const hasQuiz = Boolean(message.quiz && message.quiz.length > 0);
   const hasQuizScore = Boolean(message.quizScore);
   const isStreamingPlaceholder = message.status === 'streaming' && message.content.trim().length === 0;
@@ -78,9 +81,11 @@ function MessageBubbleComponent({
     );
   }
 
-  if (hasQuiz) {
-    const questions = message.quiz as ChatQuizQuestion[];
+  if (hasQuizPayload) {
+    const questions = (message.quiz ?? []) as ChatQuizQuestion[];
     const introText = message.content;
+    const quizStatus = message.quizStatus ?? 'displaying';
+    const isQuizInteractionDisabled = quizStatus === 'submitting' || quizStatus === 'results' || quizStatus === 'error';
 
     return (
       <View style={[styles.row, styles.rowLeft]}>
@@ -94,15 +99,46 @@ function MessageBubbleComponent({
               <Text style={styles.timeText}>{formatTimeLabel(message.createdAt)}</Text>
             </View>
           ) : null}
-          {questions.map((question, index) => (
-            <QuizQuestionCard
-              key={question.id}
-              question={question}
-              questionIndex={index}
-              totalQuestions={questions.length}
-              onAnswer={onQuizAnswer ?? (() => {})}
-            />
-          ))}
+          {questions.length > 0 ? (
+            questions.map((question, index) => (
+              <QuizQuestionCard
+                key={question.id}
+                question={question}
+                questionIndex={index}
+                totalQuestions={questions.length}
+                disabled={isQuizInteractionDisabled}
+                onAnswer={onQuizAnswer ?? (() => {})}
+              />
+            ))
+          ) : (
+            <View style={[styles.quizStatusPanel, styles.quizErrorPanel]}>
+              <MaterialCommunityIcons name="alert-circle-outline" size={18} color={Colors.errorText} />
+              <Text style={styles.quizErrorText}>This quiz did not include any questions.</Text>
+            </View>
+          )}
+          {quizStatus === 'submitting' ? (
+            <View style={styles.quizStatusPanel}>
+              <ActivityIndicator size="small" color={Colors.primary} />
+              <Text style={styles.quizStatusText}>Checking answers...</Text>
+            </View>
+          ) : null}
+          {quizStatus === 'error' ? (
+            <View style={[styles.quizStatusPanel, styles.quizErrorPanel]}>
+              <MaterialCommunityIcons name="wifi-alert" size={18} color={Colors.errorText} />
+              <Text style={styles.quizErrorText}>{message.quizError ?? 'Could not submit the quiz.'}</Text>
+              {onQuizRetrySubmit ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Retry quiz submission"
+                  onPress={() => onQuizRetrySubmit(message.id)}
+                  style={({ pressed }) => [styles.retryButton, pressed ? styles.retryButtonPressed : null]}
+                >
+                  <MaterialCommunityIcons name="refresh" size={16} color={Colors.white} />
+                  <Text style={styles.retryText}>Retry</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
         </View>
       </View>
     );
@@ -212,6 +248,8 @@ function areMessageBubblePropsEqual(previous: MessageBubbleProps, next: MessageB
   const hasStructuredContent =
     previous.message.quiz ||
     next.message.quiz ||
+    previous.message.quizStatus !== next.message.quizStatus ||
+    previous.message.quizError !== next.message.quizError ||
     previous.message.quizScore ||
     next.message.quizScore ||
     previous.message.safetyFlags.length > 0 ||
@@ -226,6 +264,7 @@ function areMessageBubblePropsEqual(previous: MessageBubbleProps, next: MessageB
     previous.onLongPressMessage === next.onLongPressMessage &&
     previous.onRetryAiMessage === next.onRetryAiMessage &&
     previous.onQuizAnswer === next.onQuizAnswer &&
+    previous.onQuizRetrySubmit === next.onQuizRetrySubmit &&
     previous.onQuizTryAnother === next.onQuizTryAnother
   );
 }
@@ -305,6 +344,28 @@ const styles = StyleSheet.create({
   quizCardWrapper: {
     maxWidth: '88%',
     gap: Spacing.sm,
+  },
+  quizStatusPanel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    borderRadius: Radii.md,
+    backgroundColor: Colors.surfaceContainer,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  quizStatusText: {
+    ...Typography.captionMedium,
+    color: Colors.primary,
+  },
+  quizErrorPanel: {
+    alignItems: 'flex-start',
+    backgroundColor: Colors.errorContainer,
+  },
+  quizErrorText: {
+    ...Typography.caption,
+    color: Colors.errorText,
+    flex: 1,
   },
   errorRow: {
     flexDirection: 'row',
