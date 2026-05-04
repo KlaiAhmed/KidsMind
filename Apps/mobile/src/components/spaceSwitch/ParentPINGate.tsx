@@ -79,12 +79,10 @@ interface PinDotProps {
   index: number;
   isFilled: boolean;
   isError: boolean;
-  isSuccess: boolean;
   dotOpacity: SharedValue<number>;
-  successCheckmarkStyle: AnimatedStyle<ViewStyle>;
 }
 
-function PinDot({ index, isFilled, isError, isSuccess, dotOpacity, successCheckmarkStyle }: PinDotProps) {
+function PinDot({ index, isFilled, isError, dotOpacity }: PinDotProps) {
   const dotAnimatedStyle = useAnimatedStyle(() => ({
     opacity: dotOpacity.value,
   }));
@@ -99,16 +97,7 @@ function PinDot({ index, isFilled, isError, isSuccess, dotOpacity, successCheckm
         dotAnimatedStyle,
       ]}
     >
-      {isFilled && !isSuccess && <View style={styles.pinDotInner} />}
-      {isFilled && isSuccess && index === 3 && (
-        <Animated.View style={[styles.successCheckmark, successCheckmarkStyle]}>
-          <MaterialCommunityIcons
-            color={Colors.success}
-            name="check-bold"
-            size={16}
-          />
-        </Animated.View>
-      )}
+      {isFilled && <View style={styles.pinDotInner} />}
     </Animated.View>
   );
 }
@@ -448,19 +437,26 @@ export function ParentPINGate({
             )}
           </View>
 
-          <Animated.View style={[styles.pinDisplay, shakeAnimatedStyle]}>
-            {Array.from({ length: 4 }).map((_, index) => (
-              <PinDot
-                key={index}
-                index={index}
-                isFilled={index < pin.length}
-                isError={gateState === 'error' && pin.length === 0 && !isLockedOut}
-                isSuccess={gateState === 'success'}
-                dotOpacity={dotOpacityValues[index]}
-                successCheckmarkStyle={successCheckmarkStyle}
+<Animated.View style={[styles.pinDisplay, shakeAnimatedStyle]}>
+          {Array.from({ length: 4 }).map((_, index) => (
+            <PinDot
+              key={index}
+              index={index}
+              isFilled={index < pin.length}
+              isError={gateState === 'error' && pin.length === 0 && !isLockedOut}
+              dotOpacity={dotOpacityValues[index]}
+            />
+          ))}
+          {gateState === 'success' && (
+            <Animated.View style={[styles.successCheckmark, successCheckmarkStyle]}>
+              <MaterialCommunityIcons
+                color={Colors.success}
+                name="check-bold"
+                size={20}
               />
-            ))}
-          </Animated.View>
+            </Animated.View>
+          )}
+        </Animated.View>
 
           {isLockedOut ? (
             <View style={styles.lockoutContainer}>
@@ -591,7 +587,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
   },
   successCheckmark: {
-    position: 'absolute',
+    marginBottom: Spacing.md,
   },
   errorContainer: {
     flexDirection: 'row',
