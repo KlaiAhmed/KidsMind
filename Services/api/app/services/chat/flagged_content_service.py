@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from models.chat.chat_history import ChatHistory
@@ -59,17 +60,18 @@ def save_chat_turn_with_optional_flag(
     ai_response: str,
     ai_moderation_result: dict[str, Any] | None = None,
 ) -> tuple[ChatHistory, ChatHistory]:
+    ai_blocked = bool(ai_moderation_result and ai_moderation_result.get("blocked"))
     user_row = ChatHistory(session_id=session_id, role="user", content=user_message)
     assistant_row = ChatHistory(
         session_id=session_id,
         role="assistant",
         content=ai_response,
-        is_flagged=bool(ai_moderation_result and ai_moderation_result.get("blocked")),
-        flag_category=str(ai_moderation_result.get("category") or "blocked") if ai_moderation_result else None,
-        flag_reason=str(ai_moderation_result.get("reason") or "Content flagged by moderation") if ai_moderation_result else None,
-        moderation_score=ai_moderation_result.get("score") if ai_moderation_result else None,
-        moderation_raw=_normalize_raw(ai_moderation_result.get("raw")) if ai_moderation_result else None,
-        flagged_at=datetime.now(timezone.utc) if ai_moderation_result and ai_moderation_result.get("blocked") else None,
+        is_flagged=ai_blocked,
+        flag_category=str(ai_moderation_result.get("category") or "blocked") if ai_blocked else None,
+        flag_reason=str(ai_moderation_result.get("reason") or "Content flagged by moderation") if ai_blocked else None,
+        moderation_score=ai_moderation_result.get("score") if ai_blocked else None,
+        moderation_raw=_normalize_raw(ai_moderation_result.get("raw")) if ai_blocked else None,
+        flagged_at=datetime.now(timezone.utc) if ai_blocked else None,
     )
     db.add_all([user_row, assistant_row])
     db.flush()
@@ -84,12 +86,24 @@ def update_session_flag_counters(
     session_id: UUID,
     increment_by: int = 1,
 ) -> ChatSession:
+    updated_count = (
+        db.query(ChatSession)
+        .filter(ChatSession.id == session_id)
+        .update(
+            {
+                ChatSession.has_flagged_content: True,
+                ChatSession.flagged_message_count: func.coalesce(ChatSession.flagged_message_count, 0) + increment_by,
+            },
+            synchronize_session=False,
+        )
+    )
+    if updated_count == 0:
+        raise RuntimeError(f"Chat session {session_id} not found while updating flag counters")
+
     session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
     if not session:
         raise RuntimeError(f"Chat session {session_id} not found while updating flag counters")
 
-    session.has_flagged_content = True
-    session.flagged_message_count = int(session.flagged_message_count or 0) + increment_by
     db.flush()
     return session
 

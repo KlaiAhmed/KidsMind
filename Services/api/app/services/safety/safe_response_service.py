@@ -29,9 +29,11 @@ def build_safe_child_message(*, age_group: str | None, language: str | None = No
     return message
 
 
-def build_flagged_stream_payload(*, message_id: str, safe_message: str) -> dict[str, str]:
+def build_flagged_stream_payload(*, message_id: str, safe_message: str) -> dict[str, str | bool]:
     return {
         "type": "flagged",
         "message_id": message_id,
         "message": safe_message,
+        "content": safe_message,
+        "flagged": True,
     }

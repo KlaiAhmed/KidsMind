@@ -41,6 +41,7 @@ class ChatHistory(Base):
 
     __table_args__ = (
         Index("ix_chat_history_session_created_at", "session_id", "created_at"),
+        Index("ix_chat_history_session_flagged", "session_id", "is_flagged"),
     )
 
     session = relationship("ChatSession", back_populates="history")
