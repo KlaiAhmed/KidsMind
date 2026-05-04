@@ -1320,6 +1320,7 @@ export function useChatSession({
 
       transcriptionSnapshotRef.current = state.inputText;
       transcriptionBufferRef.current = state.inputText;
+      transcriptionCommittedRef.current = state.inputText;
       clearTranscriptionStream();
 
       let finalText = '';
