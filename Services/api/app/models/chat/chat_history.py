@@ -6,7 +6,7 @@ Layer: Model
 Domain: Chat
 """
 
-from sqlalchemy import Column, DateTime, Enum, ForeignKey, Index, Integer, Text, func
+from sqlalchemy import Boolean, Column, DateTime, Enum, Float, ForeignKey, Index, Integer, JSON, Text, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -31,6 +31,12 @@ class ChatHistory(Base):
     session_id = Column(UUID(as_uuid=True), ForeignKey("chat_sessions.id", ondelete="CASCADE"), nullable=False)
     role = Column(Enum("user", "assistant", name="chat_history_role"), nullable=False)
     content = Column(Text, nullable=False)
+    is_flagged = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    flag_category = Column(Text, nullable=True)
+    flag_reason = Column(Text, nullable=True)
+    moderation_score = Column(Float, nullable=True)
+    moderation_raw = Column(JSON, nullable=True)
+    flagged_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
 
     __table_args__ = (

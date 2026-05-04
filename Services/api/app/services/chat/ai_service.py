@@ -136,6 +136,47 @@ class AIService:
 
         return str(content or "")
 
+    @staticmethod
+    def _parse_quiz_json_text(text: str) -> dict:
+        normalized = text.strip()
+        if normalized.startswith("```"):
+            lines = normalized.splitlines()
+            if lines and lines[0].strip().startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            normalized = "\n".join(lines).strip()
+
+        start = normalized.find("{")
+        end = normalized.rfind("}")
+        if start >= 0 and end >= start:
+            normalized = normalized[start:end + 1]
+
+        parsed = json.loads(normalized)
+        if not isinstance(parsed, dict):
+            raise ValueError("Quiz generation returned JSON that was not an object")
+        return parsed
+
+    @classmethod
+    def _coerce_quiz_payload(cls, response) -> dict:
+        if isinstance(response, dict):
+            return dict(response)
+
+        text = cls._extract_message_text(response)
+        if text:
+            return cls._parse_quiz_json_text(text)
+
+        if hasattr(response, "model_dump"):
+            dumped = response.model_dump()
+            if isinstance(dumped, dict):
+                content = dumped.get("content")
+                if isinstance(content, str) and content.strip():
+                    return cls._parse_quiz_json_text(content)
+                if "intro" in dumped or "questions" in dumped:
+                    return dumped
+
+        raise ValueError("Quiz generation returned no parseable payload")
+
     async def stream_chat_text(
         self,
         user: dict,
@@ -238,15 +279,12 @@ class AIService:
                     "elapsed_seconds": round(elapsed, 3),
                 },
             )
-            if isinstance(response, dict):
-                payload = dict(response)
-            elif hasattr(response, "model_dump"):
-                payload = response.model_dump()
-            else:
-                payload = {"intro": "", "questions": []}
+            payload = self._coerce_quiz_payload(response)
 
             payload.setdefault("intro", "")
             payload.setdefault("questions", [])
+            if not isinstance(payload["questions"], list) or len(payload["questions"]) == 0:
+                raise ValueError("Quiz generation returned no questions")
             payload["quiz_id"] = payload.get("quiz_id") or str(uuid4())
             payload["subject"] = subject
             payload["topic"] = topic

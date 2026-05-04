@@ -152,6 +152,11 @@ class ChatHistoryService:
                     {
                         "role": row.role,
                         "content": row.content,
+                        "is_flagged": getattr(row, "is_flagged", False),
+                        "flag_category": getattr(row, "flag_category", None),
+                        "flag_reason": getattr(row, "flag_reason", None),
+                        "moderation_score": getattr(row, "moderation_score", None),
+                        "flagged_at": row.flagged_at.isoformat() if getattr(row, "flagged_at", None) else None,
                         "created_at": row.created_at.isoformat() if row.created_at else None,
                     }
                 )

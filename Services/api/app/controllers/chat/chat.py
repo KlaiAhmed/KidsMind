@@ -7,6 +7,7 @@ Domain: Chat
 """
 
 import asyncio
+import hashlib
 import json
 import time
 from collections.abc import AsyncGenerator
@@ -34,18 +35,27 @@ from models.quiz.quiz_question import QuizQuestion
 from models.user.user import User
 from schemas.chat.chat_schema import ChatSessionClose, ChatSessionCreate
 from services.chat.ai_service import ai_service
+from services.chat.flagged_content_service import (
+    persist_flagged_message_and_notify_parent,
+    save_chat_turn_with_optional_flag,
+    save_flagged_chat_message,
+    update_session_flag_counters,
+)
 from services.gamification.badge_award_service import evaluate_and_award
 from services.chat.chat_history import chat_history_service
 from services.chat.chat_session_service import create_session_for_child
 from services.child.child_profile_context_cache import get_child_profile_context
 from services.gamification.gamification_service import process_first_chat, process_login
+from services.safety.safe_response_service import build_flagged_stream_payload, build_safe_child_message
 from utils.safety.get_moderation_service import get_moderation_service
 from utils.shared.logger import logger
-from utils.chat.sse import format_chat_delta, format_chat_end, format_chat_error, format_chat_start, new_message_id
+from utils.chat.sse import format_chat_delta, format_chat_end, format_chat_error, format_chat_start, format_sse, new_message_id
 from utils.chat.validate_token_limit import validate_token_limit_by_source
 
 DEFAULT_CHAT_HISTORY_LIMIT = 200
 MAX_CHAT_HISTORY_LIMIT = 500
+QUIZ_TEMPLATE_CACHE_TTL_SECONDS = 24 * 60 * 60
+QUIZ_QUESTION_TYPES = {"mcq", "true_false", "short_answer"}
 
 
 def _resolve_owned_child_profile(
@@ -326,6 +336,13 @@ async def get_history_controller(
                     "role": row.role,
                     "content": row.content,
                     "created_at": message_created_at,
+                    "is_flagged": bool(getattr(row, "is_flagged", False)),
+                    "flag_category": getattr(row, "flag_category", None),
+                    "flag_reason": getattr(row, "flag_reason", None),
+                    "moderation_score": getattr(row, "moderation_score", None),
+                    "flagged_at": row.flagged_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+                    if getattr(row, "flagged_at", None) is not None and row.flagged_at.tzinfo is not None
+                    else (row.flagged_at.replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z") if getattr(row, "flagged_at", None) is not None else None),
                 }
             )
 
@@ -399,23 +416,57 @@ async def chat_message_controller(
     external_client: httpx.AsyncClient,
     background_tasks: BackgroundTasks,
 ) -> dict | StreamingResponse:
-    
     request_start = time.perf_counter()
 
     child_profile, profile_context = await _load_owned_child_profile_context(
-        db=db, redis=redis, user_id=user_id, child_id=child_id,
+        db=db,
+        redis=redis,
+        user_id=user_id,
+        child_id=child_id,
     )
     if child_profile.is_paused:
         raise HTTPException(status_code=403, detail="Child profile is paused — chat is disabled")
 
     validate_token_limit_by_source(text=text, context=context, input_source=input_source)
 
+    chat_session = await _resolve_or_create_session(db, child_profile.id, session_id)
+
+    normalized_user_id = str(user_id)
+    normalized_child_id = str(child_profile.id)
+    normalized_session_id = str(chat_session.id)
+    safe_message = build_safe_child_message(
+        age_group=str(profile_context.get("age_group") or "default"),
+        language=str(profile_context.get("language") or settings.DEFAULT_LANGUAGE),
+    )
+
     moderation_fn = get_moderation_service()
+
+    async def _persist_flagged_input(moderation_result: dict[str, Any]) -> None:
+        flagged_row = save_flagged_chat_message(
+            db,
+            session_id=chat_session.id,
+            role="user",
+            content=text,
+            moderation_result=moderation_result,
+        )
+        update_session_flag_counters(db, session_id=chat_session.id)
+        persist_flagged_message_and_notify_parent(
+            db,
+            session_id=chat_session.id,
+            child_id=child_profile.id,
+            parent_id=user_id,
+            message_id=flagged_row.id,
+            category=str(moderation_result.get("category") or "blocked"),
+            message_preview=text[:160],
+            moderation_result=moderation_result,
+        )
+        db.commit()
+
     moderation_result = await moderation_fn(
         message=text,
         context=context,
         client=external_client,
-        language=profile_context.get("language", settings.DEFAULT_LANGUAGE),
+        language=str(profile_context.get("language") or settings.DEFAULT_LANGUAGE),
     )
     if moderation_result.get("blocked"):
         block_category = str(moderation_result.get("category") or "blocked")
@@ -425,10 +476,40 @@ async def chat_message_controller(
             actor_role=AuditActorRole.SYSTEM,
             action=AuditAction.MODERATION_BLOCK,
             resource="chat_session",
-            resource_id=session_id,
+            resource_id=chat_session.id,
             after_state={
                 "child_id": str(child_profile.id),
                 "block_category": block_category,
+                "failure_kind": moderation_result.get("failure_kind"),
+                "stage": "input",
+            },
+        )
+
+        try:
+            await _persist_flagged_input(moderation_result)
+        except Exception:
+            db.rollback()
+            logger.exception(
+                "Failed to persist flagged input",
+                extra={
+                    "child_id": normalized_child_id,
+                    "session_id": normalized_session_id,
+                    "failure_kind": moderation_result.get("failure_kind"),
+                },
+            )
+
+        request_duration = time.perf_counter() - request_start
+        logger.warning(
+            "Flagged chat input handled",
+            extra={
+                "user_id": normalized_user_id,
+                "child_id": normalized_child_id,
+                "session_id": normalized_session_id,
+                "block_category": block_category,
+                "failure_kind": moderation_result.get("failure_kind"),
+                "total_duration_seconds": round(request_duration, 3),
+                "stream": stream,
+                "event": "flagged_event",
             },
         )
 
@@ -436,7 +517,9 @@ async def chat_message_controller(
             message_id = new_message_id()
 
             async def _blocked_stream() -> AsyncGenerator[bytes, None]:
-                yield format_chat_error("moderation_block", "Message blocked by moderation", message_id)
+                yield format_chat_start(message_id=message_id, child_id=normalized_child_id)
+                yield format_chat_delta(safe_message)
+                yield format_chat_end(message_id=message_id)
 
             return StreamingResponse(
                 _blocked_stream(),
@@ -445,13 +528,14 @@ async def chat_message_controller(
                 background=background_tasks,
             )
 
-        raise HTTPException(status_code=400, detail="text contains inappropriate content for your age.")
-
-    chat_session = await _resolve_or_create_session(db, child_profile.id, session_id)
-
-    normalized_user_id = str(user_id)
-    normalized_child_id = str(child_profile.id)
-    normalized_session_id = str(chat_session.id)
+        return {
+            "message_id": new_message_id(),
+            "child_id": normalized_child_id,
+            "session_id": normalized_session_id,
+            "type": "flagged",
+            "message": safe_message,
+            "content": safe_message,
+        }
 
     user_dict = {
         "id": normalized_user_id,
@@ -462,12 +546,10 @@ async def chat_message_controller(
     if stream:
         msg_id = new_message_id()
         start_event = format_chat_start(message_id=msg_id, child_id=normalized_child_id)
-        end_event = format_chat_end(message_id=msg_id)
         error_event_fn = lambda code, msg: format_chat_error(code, msg, msg_id)
 
         async def _sse_generator() -> AsyncGenerator[bytes, None]:
-            stream_completed = False
-            accumulated_text = ""
+            buffered_chunks: list[str] = []
             try:
                 yield start_event
                 async for chunk_text in ai_service.stream_chat_text(
@@ -476,40 +558,91 @@ async def chat_message_controller(
                     text=text,
                     context=context,
                 ):
-                    if not chunk_text:
-                        continue
-                    accumulated_text += chunk_text
-                    delta = format_chat_delta(chunk_text)
-                    yield delta
-                stream_completed = True
-                yield end_event
+                    if chunk_text:
+                        buffered_chunks.append(chunk_text)
+
+                full_response = "".join(buffered_chunks)
+                output_moderation = await moderation_fn(
+                    message=full_response,
+                    context=f"AI output for child {normalized_child_id}",
+                    client=external_client,
+                    language=str(profile_context.get("language") or settings.DEFAULT_LANGUAGE),
+                )
+
+                if output_moderation.get("blocked"):
+                    background_tasks.add_task(
+                        write_audit_log,
+                        actor_id=user_id,
+                        actor_role=AuditActorRole.SYSTEM,
+                        action=AuditAction.MODERATION_BLOCK,
+                        resource="chat_session",
+                        resource_id=chat_session.id,
+                        after_state={
+                            "child_id": str(child_profile.id),
+                            "block_category": output_moderation.get("category"),
+                            "failure_kind": output_moderation.get("failure_kind"),
+                            "stage": "output",
+                        },
+                    )
+                    assistant_row = save_chat_turn_with_optional_flag(
+                        db,
+                        session_id=chat_session.id,
+                        user_message=text,
+                        ai_response=full_response,
+                        ai_moderation_result=output_moderation,
+                    )[1]
+                    update_session_flag_counters(db, session_id=chat_session.id)
+                    persist_flagged_message_and_notify_parent(
+                        db,
+                        session_id=chat_session.id,
+                        child_id=child_profile.id,
+                        parent_id=user_id,
+                        message_id=assistant_row.id,
+                        category=str(output_moderation.get("category") or "blocked"),
+                        message_preview=full_response[:160],
+                        moderation_result=output_moderation,
+                    )
+                    db.commit()
+                    yield format_chat_delta(safe_message)
+                    yield format_chat_end(message_id=msg_id)
+                    return
+
+                for chunk_text in buffered_chunks:
+                    yield format_chat_delta(chunk_text)
+
+                db_result = await run_in_threadpool(
+                    save_chat_turn_with_optional_flag,
+                    db,
+                    session_id=chat_session.id,
+                    user_message=text,
+                    ai_response=full_response,
+                    ai_moderation_result=None,
+                )
+                db.commit()
+                yield format_chat_end(message_id=msg_id)
+                await _run_gamification(db, child_profile.id, user_id)
+                logger.info(
+                    "Chat message completed",
+                    extra={
+                        "user_id": normalized_user_id,
+                        "child_id": normalized_child_id,
+                        "session_id": normalized_session_id,
+                        "stream": True,
+                        "flagged": False,
+                    },
+                )
+                _ = db_result
             except AIRateLimitError:
                 yield error_event_fn("rate_limit", "AI service rate limit exceeded")
                 return
             except Exception:
+                db.rollback()
                 logger.exception(
                     "Chat message stream failed",
                     extra={"user_id": normalized_user_id, "child_id": normalized_child_id},
                 )
                 yield error_event_fn("internal_error", "Stream interrupted")
                 return
-            finally:
-                if stream_completed and accumulated_text.strip():
-                    try:
-                        await chat_history_service.save_turn_to_db(
-                            db=db,
-                            session_id=chat_session.id,
-                            user_message=text,
-                            ai_response=accumulated_text,
-                        )
-                        db.commit()
-                    except Exception:
-                        db.rollback()
-                        logger.exception(
-                            "Failed persisting chat message stream turn",
-                            extra={"child_id": normalized_child_id, "session_id": normalized_session_id},
-                        )
-                    await _run_gamification(db, child_profile.id, user_id)
 
         return StreamingResponse(
             _sse_generator(),
@@ -528,6 +661,80 @@ async def chat_message_controller(
     ):
         full_text += chunk_text
     ai_duration = time.perf_counter() - ai_start
+
+    output_moderation = await moderation_fn(
+        message=full_text,
+        context=f"AI output for child {normalized_child_id}",
+        client=external_client,
+        language=str(profile_context.get("language") or settings.DEFAULT_LANGUAGE),
+    )
+
+    if output_moderation.get("blocked"):
+        try:
+            background_tasks.add_task(
+                write_audit_log,
+                actor_id=user_id,
+                actor_role=AuditActorRole.SYSTEM,
+                action=AuditAction.MODERATION_BLOCK,
+                resource="chat_session",
+                resource_id=chat_session.id,
+                after_state={
+                    "child_id": str(child_profile.id),
+                    "block_category": output_moderation.get("category"),
+                    "failure_kind": output_moderation.get("failure_kind"),
+                    "stage": "output",
+                },
+            )
+            assistant_row = save_chat_turn_with_optional_flag(
+                db,
+                session_id=chat_session.id,
+                user_message=text,
+                ai_response=full_text,
+                ai_moderation_result=output_moderation,
+            )[1]
+            update_session_flag_counters(db, session_id=chat_session.id)
+            persist_flagged_message_and_notify_parent(
+                db,
+                session_id=chat_session.id,
+                child_id=child_profile.id,
+                parent_id=user_id,
+                message_id=assistant_row.id,
+                category=str(output_moderation.get("category") or "blocked"),
+                message_preview=full_text[:160],
+                moderation_result=output_moderation,
+            )
+            db.commit()
+        except Exception:
+            db.rollback()
+            logger.exception(
+                "Failed persisting flagged AI output",
+                extra={"child_id": normalized_child_id, "session_id": normalized_session_id},
+            )
+
+        request_duration = time.perf_counter() - request_start
+        logger.warning(
+            "Flagged AI output replaced with safe response",
+            extra={
+                "user_id": normalized_user_id,
+                "child_id": normalized_child_id,
+                "session_id": normalized_session_id,
+                "block_category": output_moderation.get("category"),
+                "failure_kind": output_moderation.get("failure_kind"),
+                "total_duration_seconds": round(request_duration, 3),
+                "ai_duration_seconds": round(ai_duration, 3),
+                "stream": False,
+                "event": "flagged_event",
+            },
+        )
+
+        return {
+            "message_id": new_message_id(),
+            "child_id": normalized_child_id,
+            "session_id": normalized_session_id,
+            "type": "flagged",
+            "message": safe_message,
+            "content": safe_message,
+        }
 
     try:
         await chat_history_service.save_turn_to_db(
@@ -556,6 +763,7 @@ async def chat_message_controller(
             "total_duration_seconds": round(request_duration, 3),
             "ai_duration_seconds": round(ai_duration, 3),
             "stream": False,
+            "flagged": False,
         },
     )
 
@@ -564,6 +772,123 @@ async def chat_message_controller(
         "child_id": normalized_child_id,
         "session_id": normalized_session_id,
         "content": full_text,
+    }
+
+
+def _quiz_template_cache_key(
+    *,
+    child_id: UUID,
+    profile_context: dict[str, str | bool],
+    subject: str,
+    topic: str,
+    level: str,
+    question_count: int,
+    context: str,
+) -> str:
+    payload = {
+        "child_id": str(child_id),
+        "age_group": profile_context.get("age_group"),
+        "education_stage": profile_context.get("education_stage"),
+        "language": profile_context.get("language"),
+        "is_accelerated": profile_context.get("is_accelerated"),
+        "is_below_expected_stage": profile_context.get("is_below_expected_stage"),
+        "subject": subject.strip().lower(),
+        "topic": topic.strip().lower(),
+        "level": level,
+        "question_count": question_count,
+        "context": context or "",
+    }
+    digest = hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+    return f"kidsmind:quiz-template:v1:{child_id}:{digest}"
+
+
+def _as_clean_string(value: Any, fallback: str = "") -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if value is None:
+        return fallback
+    return str(value).strip()
+
+
+def _normalize_quiz_options(value: Any) -> list[str] | None:
+    if not isinstance(value, list):
+        return None
+    options = [_as_clean_string(option) for option in value]
+    options = [option for option in options if option]
+    return options or None
+
+
+def _normalize_quiz_template(payload: dict, *, subject: str, topic: str, level: str) -> dict:
+    raw_questions = payload.get("questions")
+    if not isinstance(raw_questions, list):
+        raise HTTPException(status_code=502, detail="Quiz generation returned invalid questions.")
+
+    questions: list[dict[str, Any]] = []
+    for raw_question in raw_questions:
+        if not isinstance(raw_question, dict):
+            continue
+
+        prompt = _as_clean_string(raw_question.get("prompt"))
+        answer = _as_clean_string(raw_question.get("answer"))
+        if not prompt or not answer:
+            continue
+
+        question_type = _as_clean_string(raw_question.get("type"), "mcq")
+        if question_type not in QUIZ_QUESTION_TYPES:
+            question_type = "mcq"
+
+        questions.append(
+            {
+                "type": question_type,
+                "prompt": prompt,
+                "options": _normalize_quiz_options(raw_question.get("options")),
+                "answer": answer,
+                "explanation": _as_clean_string(raw_question.get("explanation")),
+            }
+        )
+
+    if not questions:
+        raise HTTPException(status_code=502, detail="Quiz generation returned no usable questions.")
+
+    return {
+        "intro": _as_clean_string(payload.get("intro"), "Here is a quiz to try."),
+        "subject": subject,
+        "topic": topic,
+        "level": level,
+        "questions": questions,
+    }
+
+
+def _deserialize_quiz_options(options: str | None) -> list[str] | None:
+    if not options:
+        return None
+    try:
+        parsed = json.loads(options)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, list):
+        return None
+    normalized = [_as_clean_string(option) for option in parsed]
+    normalized = [option for option in normalized if option]
+    return normalized or None
+
+
+def _build_quiz_response(quiz_obj: Quiz, questions: list[QuizQuestion]) -> dict:
+    return {
+        "quiz_id": str(quiz_obj.id),
+        "subject": quiz_obj.subject,
+        "topic": quiz_obj.topic,
+        "level": quiz_obj.level,
+        "intro": quiz_obj.intro or "",
+        "questions": [
+            {
+                "id": question.id,
+                "type": question.type,
+                "prompt": question.prompt,
+                "options": _deserialize_quiz_options(question.options),
+            }
+            for question in questions
+        ],
     }
 
 
@@ -586,28 +911,104 @@ async def quiz_generate_controller(
     child_profile, profile_context = await _load_owned_child_profile_context(
         db=db, redis=redis, user_id=user_id, child_id=child_id,
     )
+    normalized_user_id = str(user_id)
+    normalized_child_id = str(child_profile.id)
 
     validate_token_limit_by_source(text=context, context="", input_source=None)
 
     moderation_fn = get_moderation_service()
-    await moderation_fn(message=f"Quiz: {subject} - {topic}", context=context, client=external_client, language=profile_context.get("language", settings.DEFAULT_LANGUAGE))
-
-    normalized_user_id = str(user_id)
-    normalized_child_id = str(child_profile.id)
-
-    try:
-        quiz_data = await ai_service.generate_quiz(
-            profile_context=profile_context,
-            subject=subject,
-            topic=topic,
-            level=level,
-            question_count=question_count,
-            context=context,
+    quiz_moderation = await moderation_fn(
+        message=f"Quiz: {subject} - {topic}",
+        context=context,
+        client=external_client,
+        language=str(profile_context.get("language") or settings.DEFAULT_LANGUAGE),
+    )
+    if quiz_moderation.get("blocked"):
+        safe_message = build_safe_child_message(
+            age_group=str(profile_context.get("age_group") or "default"),
+            language=str(profile_context.get("language") or settings.DEFAULT_LANGUAGE),
         )
-    except AIRateLimitError:
-        raise HTTPException(status_code=429, detail="AI service rate limit exceeded")
-    except (TimeoutError, asyncio.TimeoutError):
-        raise HTTPException(status_code=504, detail="Quiz generation timed out")
+        logger.warning(
+            "Quiz generation blocked by moderation",
+            extra={
+                "user_id": normalized_user_id,
+                "child_id": normalized_child_id,
+                "subject": subject,
+                "topic": topic,
+                "failure_kind": quiz_moderation.get("failure_kind"),
+                "block_category": quiz_moderation.get("category"),
+                "event": "flagged_event",
+            },
+        )
+        raise HTTPException(status_code=400, detail=safe_message)
+
+    cache_key = _quiz_template_cache_key(
+        child_id=child_profile.id,
+        profile_context=profile_context,
+        subject=subject,
+        topic=topic,
+        level=level,
+        question_count=question_count,
+        context=context,
+    )
+
+    quiz_template: dict | None = None
+    cache_hit = False
+    try:
+        cached_template = await redis.get(cache_key)
+        if cached_template:
+            quiz_template = _normalize_quiz_template(
+                json.loads(cached_template),
+                subject=subject,
+                topic=topic,
+                level=level,
+            )
+            cache_hit = True
+    except (json.JSONDecodeError, HTTPException):
+        logger.warning(
+            "Ignoring invalid cached quiz template",
+            extra={"child_id": normalized_child_id, "subject": subject, "topic": topic},
+        )
+    except Exception:
+        logger.exception(
+            "Quiz template cache read failed",
+            extra={"child_id": normalized_child_id, "subject": subject, "topic": topic},
+        )
+
+    if quiz_template is None:
+        try:
+            quiz_data = await ai_service.generate_quiz(
+                profile_context=profile_context,
+                subject=subject,
+                topic=topic,
+                level=level,
+                question_count=question_count,
+                context=context,
+            )
+            quiz_template = _normalize_quiz_template(
+                quiz_data,
+                subject=subject,
+                topic=topic,
+                level=level,
+            )
+        except AIRateLimitError:
+            raise HTTPException(status_code=429, detail="AI service rate limit exceeded")
+        except (TimeoutError, asyncio.TimeoutError):
+            raise HTTPException(status_code=504, detail="Quiz generation timed out")
+        except ValueError:
+            raise HTTPException(status_code=502, detail="Quiz generation returned invalid JSON.")
+
+        try:
+            await redis.setex(
+                cache_key,
+                QUIZ_TEMPLATE_CACHE_TTL_SECONDS,
+                json.dumps(quiz_template, ensure_ascii=False),
+            )
+        except Exception:
+            logger.exception(
+                "Quiz template cache write failed",
+                extra={"child_id": normalized_child_id, "subject": subject, "topic": topic},
+            )
 
     ai_duration = time.perf_counter() - request_start
     logger.info(
@@ -619,15 +1020,11 @@ async def quiz_generate_controller(
             "topic": topic,
             "level": level,
             "duration_seconds": round(ai_duration, 3),
+            "cache_hit": cache_hit,
         },
     )
 
-    quiz_id_str = quiz_data.get("quiz_id", str(uuid4()))
-    try:
-        quiz_uuid = UUID(quiz_id_str)
-    except ValueError:
-        quiz_uuid = uuid4()
-        quiz_data["quiz_id"] = str(quiz_uuid)
+    quiz_uuid = uuid4()
 
     quiz_obj = Quiz(
         id=quiz_uuid,
@@ -635,24 +1032,28 @@ async def quiz_generate_controller(
         subject=subject,
         topic=topic,
         level=level,
-        intro=quiz_data.get("intro", ""),
+        intro=quiz_template.get("intro", ""),
     )
     db.add(quiz_obj)
+    db.flush()
 
-    for q in quiz_data.get("questions", []):
+    question_objs: list[QuizQuestion] = []
+    for q in quiz_template.get("questions", []):
         options_str = None
         if q.get("options"):
-            options_str = json.dumps(q["options"])
-        db.add(QuizQuestion(
-            id=q.get("id"),
+            options_str = json.dumps(q["options"], ensure_ascii=False)
+        question_obj = QuizQuestion(
             quiz_id=quiz_uuid,
             type=q.get("type", "mcq"),
             prompt=q.get("prompt", ""),
             options=options_str,
             answer=q.get("answer", ""),
             explanation=q.get("explanation", ""),
-        ))
+        )
+        db.add(question_obj)
+        question_objs.append(question_obj)
 
+    db.flush()
     db.commit()
 
-    return quiz_data
+    return _build_quiz_response(quiz_obj, question_objs)

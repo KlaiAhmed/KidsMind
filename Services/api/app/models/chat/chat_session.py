@@ -8,7 +8,7 @@ Domain: Chat
 
 from uuid import uuid4
 
-from sqlalchemy import Column, DateTime, ForeignKey, Index, func, text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -41,6 +41,8 @@ class ChatSession(Base):
     )
     started_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     ended_at = Column(DateTime(timezone=True), nullable=True)
+    has_flagged_content = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    flagged_message_count = Column(Integer, nullable=False, default=0, server_default=text("0"))
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     child_profile = relationship("ChildProfile", back_populates="chat_sessions")
