@@ -1,13 +1,12 @@
 import { memo } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
 import { MessageActionBar } from '@/components/chat/MessageActionBar';
-import { QuizQuestionCard } from '@/components/chat/QuizQuestionCard';
-import { QuizSummaryCard } from '@/components/chat/QuizSummaryCard';
+import { QuizCard } from '@/components/chat/QuizCard';
 import { SafetyFlagBanner } from '@/components/chat/SafetyFlagBanner';
 import { ThinkingIndicator } from '@/components/chat/ThinkingIndicator';
-import type { ChatQuizQuestion, Message, QuizSummary } from '@/types/chat';
+import type { Message } from '@/types/chat';
 import type { AgeGroup } from '@/types/child';
 
 interface MessageBubbleProps {
@@ -19,8 +18,9 @@ interface MessageBubbleProps {
   onLongPressMessage?: (text: string) => void;
   onRetryAiMessage?: (aiMessageId: string) => void;
   onQuizAnswer?: (questionId: number, answer: string) => void;
+  onQuizSubmit?: (quizId: string) => void;
   onQuizRetrySubmit?: (quizId: string) => void;
-  onQuizTryAnother?: () => void;
+  onQuizTryAnother?: (topic?: string) => void;
 }
 
 function formatTimeLabel(isoDate: string): string {
@@ -44,14 +44,14 @@ function MessageBubbleComponent({
   onLongPressMessage,
   onRetryAiMessage,
   onQuizAnswer,
+  onQuizSubmit,
   onQuizRetrySubmit,
   onQuizTryAnother,
 }: MessageBubbleProps) {
   const isAiMessage = message.sender === 'ai';
   const hasSafetyFlags = message.safetyFlags.length > 0;
-  const hasQuizPayload = Array.isArray(message.quiz);
-  const hasQuiz = Boolean(message.quiz && message.quiz.length > 0);
-  const hasQuizScore = Boolean(message.quizScore);
+  const hasQuizPayload = Boolean(message.quizStatus || Array.isArray(message.quiz) || message.quizScore);
+  const hasQuiz = hasQuizPayload;
   const isStreamingPlaceholder = message.status === 'streaming' && message.content.trim().length === 0;
   const shouldShowThinkingIndicator = isTypingPlaceholder || isStreamingPlaceholder;
   const isErrorMessage = message.status === 'error';
@@ -64,81 +64,29 @@ function MessageBubbleComponent({
         ? styles.messageTextCompact
         : styles.messageTextDefault;
 
-  if (hasQuizScore) {
+  if (hasQuizPayload) {
     return (
       <View style={[styles.row, styles.rowLeft]}>
         <View style={styles.aiAvatarBadge}>
           <MaterialCommunityIcons name="robot-happy-outline" size={16} color={Colors.primary} />
         </View>
         <View style={styles.quizCardWrapper}>
-          <QuizSummaryCard
-            summary={message.quizScore as QuizSummary}
-            onTryAnother={onQuizTryAnother}
+          <QuizCard
+            quizId={message.id}
+            intro={message.content}
+            questions={message.quiz ?? []}
+            state={message.quizStatus ?? 'ready'}
+            summary={message.quizScore}
+            error={message.quizError}
+            subject={message.quizSubject}
+            topic={message.quizTopic}
+            requestedAt={message.quizRequestedAt}
+            onAnswer={onQuizAnswer ?? (() => {})}
+            onSubmit={onQuizSubmit ?? (() => {})}
+            onRetrySubmit={onQuizRetrySubmit ?? (() => {})}
+            onTryAnother={onQuizTryAnother ?? (() => {})}
           />
           <Text style={styles.timeText}>{formatTimeLabel(message.createdAt)}</Text>
-        </View>
-      </View>
-    );
-  }
-
-  if (hasQuizPayload) {
-    const questions = (message.quiz ?? []) as ChatQuizQuestion[];
-    const introText = message.content;
-    const quizStatus = message.quizStatus ?? 'displaying';
-    const isQuizInteractionDisabled = quizStatus === 'submitting' || quizStatus === 'results' || quizStatus === 'error';
-
-    return (
-      <View style={[styles.row, styles.rowLeft]}>
-        <View style={styles.aiAvatarBadge}>
-          <MaterialCommunityIcons name="robot-happy-outline" size={16} color={Colors.primary} />
-        </View>
-        <View style={styles.quizCardWrapper}>
-          {introText ? (
-            <View style={[styles.bubble, styles.aiBubble]}>
-              <Text style={[bubbleTextSizeStyle, styles.aiText]}>{introText}</Text>
-              <Text style={styles.timeText}>{formatTimeLabel(message.createdAt)}</Text>
-            </View>
-          ) : null}
-          {questions.length > 0 ? (
-            questions.map((question, index) => (
-              <QuizQuestionCard
-                key={question.id}
-                question={question}
-                questionIndex={index}
-                totalQuestions={questions.length}
-                disabled={isQuizInteractionDisabled}
-                onAnswer={onQuizAnswer ?? (() => {})}
-              />
-            ))
-          ) : (
-            <View style={[styles.quizStatusPanel, styles.quizErrorPanel]}>
-              <MaterialCommunityIcons name="alert-circle-outline" size={18} color={Colors.errorText} />
-              <Text style={styles.quizErrorText}>This quiz did not include any questions.</Text>
-            </View>
-          )}
-          {quizStatus === 'submitting' ? (
-            <View style={styles.quizStatusPanel}>
-              <ActivityIndicator size="small" color={Colors.primary} />
-              <Text style={styles.quizStatusText}>Checking answers...</Text>
-            </View>
-          ) : null}
-          {quizStatus === 'error' ? (
-            <View style={[styles.quizStatusPanel, styles.quizErrorPanel]}>
-              <MaterialCommunityIcons name="wifi-alert" size={18} color={Colors.errorText} />
-              <Text style={styles.quizErrorText}>{message.quizError ?? 'Could not submit the quiz.'}</Text>
-              {onQuizRetrySubmit ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Retry quiz submission"
-                  onPress={() => onQuizRetrySubmit(message.id)}
-                  style={({ pressed }) => [styles.retryButton, pressed ? styles.retryButtonPressed : null]}
-                >
-                  <MaterialCommunityIcons name="refresh" size={16} color={Colors.white} />
-                  <Text style={styles.retryText}>Retry</Text>
-                </Pressable>
-              ) : null}
-            </View>
-          ) : null}
         </View>
       </View>
     );
@@ -150,7 +98,6 @@ function MessageBubbleComponent({
     !shouldShowThinkingIndicator &&
     !hasSafetyFlags &&
     !hasQuiz &&
-    !hasQuizScore &&
     message.content.trim().length > 0;
 
   return (
@@ -181,7 +128,6 @@ function MessageBubbleComponent({
                 onPress={() => onRetryAiMessage(message.id)}
                 style={({ pressed }) => [styles.retryButton, pressed ? styles.retryButtonPressed : null]}
               >
-                {/* a11y: Retry button is exposed inside failed AI messages. */}
                 <MaterialCommunityIcons name="refresh" size={16} color={Colors.white} />
                 <Text style={styles.retryText}>Retry</Text>
               </Pressable>
@@ -190,33 +136,33 @@ function MessageBubbleComponent({
           </View>
         ) : (
           <Pressable
-          accessibilityRole="text"
-          accessibilityLabel={
-            hasSafetyFlags
-              ? `${senderLabel} shared a safe learning redirection at ${formatTimeLabel(message.createdAt)}`
-              : `${senderLabel} said: ${message.content} at ${formatTimeLabel(message.createdAt)}`
-          }
-          onLongPress={() => {
-            if (!shouldShowThinkingIndicator && onLongPressMessage && message.content.trim().length > 0) {
-              onLongPressMessage(message.content);
+            accessibilityRole="text"
+            accessibilityLabel={
+              hasSafetyFlags
+                ? `${senderLabel} shared a safe learning redirection at ${formatTimeLabel(message.createdAt)}`
+                : `${senderLabel} said: ${message.content} at ${formatTimeLabel(message.createdAt)}`
             }
-          }}
-          style={[styles.bubble, isAiMessage ? styles.aiBubble : styles.childBubble]}
-        >
-          {shouldShowThinkingIndicator ? (
-            <ThinkingIndicator />
-          ) : hasSafetyFlags ? (
-            <SafetyFlagBanner flags={message.safetyFlags} />
-          ) : (
-            <Text
-              allowFontScaling
-              style={[bubbleTextSizeStyle, isAiMessage ? styles.aiText : styles.childText]}
-            >
-              {message.content}
-            </Text>
-          )}
+            onLongPress={() => {
+              if (!shouldShowThinkingIndicator && onLongPressMessage && message.content.trim().length > 0) {
+                onLongPressMessage(message.content);
+              }
+            }}
+            style={[styles.bubble, isAiMessage ? styles.aiBubble : styles.childBubble]}
+          >
+            {shouldShowThinkingIndicator ? (
+              <ThinkingIndicator />
+            ) : hasSafetyFlags ? (
+              <SafetyFlagBanner flags={message.safetyFlags} />
+            ) : (
+              <Text
+                allowFontScaling
+                style={[bubbleTextSizeStyle, isAiMessage ? styles.aiText : styles.childText]}
+              >
+                {message.content}
+              </Text>
+            )}
 
-          <Text style={styles.timeText}>{formatTimeLabel(message.createdAt)}</Text>
+            <Text style={styles.timeText}>{formatTimeLabel(message.createdAt)}</Text>
           </Pressable>
         )}
       </View>
@@ -252,6 +198,9 @@ function areMessageBubblePropsEqual(previous: MessageBubbleProps, next: MessageB
     previous.message.quizError !== next.message.quizError ||
     previous.message.quizScore ||
     next.message.quizScore ||
+    previous.message.quizSubject !== next.message.quizSubject ||
+    previous.message.quizTopic !== next.message.quizTopic ||
+    previous.message.quizRequestedAt !== next.message.quizRequestedAt ||
     previous.message.safetyFlags.length > 0 ||
     next.message.safetyFlags.length > 0 ||
     previous.message.safetyFlags.length !== next.message.safetyFlags.length;
@@ -264,6 +213,7 @@ function areMessageBubblePropsEqual(previous: MessageBubbleProps, next: MessageB
     previous.onLongPressMessage === next.onLongPressMessage &&
     previous.onRetryAiMessage === next.onRetryAiMessage &&
     previous.onQuizAnswer === next.onQuizAnswer &&
+    previous.onQuizSubmit === next.onQuizSubmit &&
     previous.onQuizRetrySubmit === next.onQuizRetrySubmit &&
     previous.onQuizTryAnother === next.onQuizTryAnother
   );
@@ -345,28 +295,6 @@ const styles = StyleSheet.create({
     maxWidth: '88%',
     gap: Spacing.sm,
   },
-  quizStatusPanel: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-    borderRadius: Radii.md,
-    backgroundColor: Colors.surfaceContainer,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-  },
-  quizStatusText: {
-    ...Typography.captionMedium,
-    color: Colors.primary,
-  },
-  quizErrorPanel: {
-    alignItems: 'flex-start',
-    backgroundColor: Colors.errorContainer,
-  },
-  quizErrorText: {
-    ...Typography.caption,
-    color: Colors.errorText,
-    flex: 1,
-  },
   errorRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -389,7 +317,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.xs,
   },
   retryButtonPressed: {
-    transform: [{ scale: 0.96 }],
+    transform: [{ scale: 0.98 }],
     opacity: 0.9,
   },
   retryText: {
