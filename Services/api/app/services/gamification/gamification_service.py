@@ -140,6 +140,20 @@ def process_quiz_completion(
 
     new_total = award_xp(db, child_id, xp_to_award)
 
+    logger.info(
+        "Quiz completion processed",
+        extra={
+            "child_id": str(child_id),
+            "xp_earned": xp_to_award,
+            "total_xp": new_total,
+            "total_quizzes": stats.total_quizzes_completed,
+            "total_perfect": stats.total_perfect_quizzes,
+            "is_perfect": is_perfect,
+            "new_subject": newly_explored_subject,
+            "streak_multiplier": multiplier,
+        },
+    )
+
     return GamificationQuizResult(
         xp_earned=xp_to_award,
         xp_total=new_total,
