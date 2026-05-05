@@ -12,13 +12,13 @@ interface SessionHeaderProps {
 }
 
 function formatDuration(totalSeconds: number): string {
-  const minutes = Math.floor(totalSeconds / 60)
-    .toString()
-    .padStart(2, '0');
-  const seconds = Math.floor(totalSeconds % 60)
-    .toString()
-    .padStart(2, '0');
-  return `${minutes}:${seconds}`;
+  if (totalSeconds < 3600) {
+    const minutes = Math.floor(totalSeconds / 60);
+    return `${minutes} min`;
+  }
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  return minutes > 0 ? `${hours} hr ${minutes} min` : `${hours} hr`;
 }
 
 function formatRemaining(seconds: number): string {
