@@ -440,17 +440,29 @@ function nullableNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
-function normalizeWeeklyInsight(value: ParentProgressApiResponse['weekly_insight']): string | null {
+function normalizeWeeklyInsight(value: ParentProgressApiResponse['weekly_insight']): {
+  summary: string | null;
+  topSubject: string | null;
+  engagementLevel: string;
+} {
   if (typeof value === 'string') {
     const normalized = value.trim();
-    return normalized.length > 0 ? normalized : null;
+    return {
+      summary: normalized.length > 0 ? normalized : null,
+      topSubject: null,
+      engagementLevel: '',
+    };
   }
 
   if (isRecord(value)) {
-    return normalizeOptionalString(value.summary);
+    return {
+      summary: normalizeOptionalString(value.summary),
+      topSubject: normalizeOptionalString(value.top_subject),
+      engagementLevel: normalizeOptionalString(value.engagement_level) ?? '',
+    };
   }
 
-  return null;
+  return { summary: null, topSubject: null, engagementLevel: '' };
 }
 
 export async function getParentOverview(
@@ -487,8 +499,9 @@ export async function getParentProgress(
         date: entry.date,
         sessions: entry.sessions,
         messages: entry.messages,
-        duration_seconds: 0,
+        duration_seconds: (entry.sessions ?? 0) * 10 * 60,
       }));
+  const weeklyInsightData = normalizeWeeklyInsight(response.weekly_insight);
 
   return {
     sessionActivity: sessionActivity.map((d) => ({
@@ -509,7 +522,8 @@ export async function getParentProgress(
       messages: numberOrZero(s.messages),
       xp: numberOrZero(s.xp),
     })),
-    weeklyInsight: normalizeWeeklyInsight(response.weekly_insight),
+    weeklyInsight: weeklyInsightData.summary,
+    weeklyInsightStructured: weeklyInsightData,
   };
 }
 
@@ -740,8 +754,8 @@ export async function getControlAudit(
   const entries = Array.isArray(response) ? response : response.entries;
 
   return entries.map((entry) => ({
-    action: entry.action,
+    action: normalizeOptionalString(entry.action) ?? 'Unknown action',
     details: normalizeOptionalString(entry.details) ?? normalizeOptionalString(entry.detail),
-    timestamp: entry.timestamp,
+    timestamp: normalizeOptionalString(entry.timestamp),
   }));
 }

@@ -1,5 +1,5 @@
 import type { ComponentProps, ReactNode } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -22,6 +22,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
+import { SkeletonBlock } from '@/src/components/parent/ParentDashboardStates';
 
 type IconName = ComponentProps<typeof MaterialCommunityIcons>['name'];
 type TrendDirection = 'up' | 'down' | 'flat';
@@ -80,6 +81,9 @@ interface DailyStreakMetricCardProps {
 interface DailyUsageDonutCardProps {
   todayMinutes: number;
   sevenDayAverageMinutes: number;
+  loading?: boolean;
+  errorMessage?: string | null;
+  isEmpty?: boolean;
 }
 
 interface MiniScoreBarProps {
@@ -376,17 +380,24 @@ function ActivityBar({ index, maxSessions, point }: ActivityBarProps) {
   const targetHeight =
     point.sessions > 0 ? Math.max(minimumHeight, (point.sessions / maxSessions) * chartHeight) : minimumHeight;
   const height = useSharedValue(0);
+  const hasAnimated = useRef(false);
   const animatedStyle = useAnimatedStyle(() => ({
     height: height.value,
   }));
 
   useEffect(() => {
+    if (hasAnimated.current) {
+      height.value = targetHeight;
+      return;
+    }
+
+    hasAnimated.current = true;
     height.value = 0;
     height.value = withDelay(
       index * 40,
-      withSpring(targetHeight, {
-        damping: 12,
-        stiffness: 180,
+      withTiming(targetHeight, {
+        duration: 600,
+        easing: Easing.out(Easing.cubic),
       }),
     );
   }, [height, index, targetHeight]);
@@ -416,8 +427,12 @@ function ActivityBar({ index, maxSessions, point }: ActivityBarProps) {
         />
       </View>
       <View style={styles.activityLabelBlock}>
-        <Text style={[styles.activityLabel, point.isToday ? styles.activityLabelToday : null]}>{point.label}</Text>
-        <Text style={styles.activityTodayLabel}>{point.isToday ? 'Today' : ' '}</Text>
+        <Text numberOfLines={1} style={[styles.activityLabel, point.isToday ? styles.activityLabelToday : null]}>
+          {point.label}
+        </Text>
+        <Text numberOfLines={1} style={styles.activityTodayLabel}>
+          {point.isToday ? 'Tdy' : ' '}
+        </Text>
       </View>
     </View>
   );
@@ -536,7 +551,16 @@ export function DailyStreakMetricCard({ isPersonalRecord, streakDays }: DailyStr
   );
 }
 
-export function DailyUsageDonutCard({ sevenDayAverageMinutes, todayMinutes }: DailyUsageDonutCardProps) {
+export function DailyUsageDonutCard({
+  errorMessage,
+  isEmpty = false,
+  loading = false,
+  sevenDayAverageMinutes,
+  todayMinutes,
+}: DailyUsageDonutCardProps) {
+  const hasError = Boolean(errorMessage?.trim());
+  const isLoading = loading && !hasError;
+  const isEmptyState = !isLoading && !hasError && isEmpty;
   const progress = todayMinutes / Math.max(todayMinutes, sevenDayAverageMinutes, 1);
   const averageColor = getDeltaColor(todayMinutes, sevenDayAverageMinutes);
   const donutSize = Spacing.xxl * 4 + Spacing.sm;
@@ -546,59 +570,139 @@ export function DailyUsageDonutCard({ sevenDayAverageMinutes, todayMinutes }: Da
     <View style={styles.usageCard}>
       <Text style={styles.usageTitle}>7-Day Activity</Text>
 
-      <View style={styles.donutWrap}>
-        <SegmentedRing
-          center={
-            <View style={styles.donutCenterCopy}>
-              <AnimatedNumberText
-                duration={600}
-                formatter={(value) => `${Math.round(value)}`}
-                style={styles.donutValue}
-                target={todayMinutes}
-              />
-              <Text style={styles.donutLabel}>MINUTES TODAY</Text>
-            </View>
-          }
-          duration={1000}
-          fillColor={Colors.primary}
-          progress={progress}
-          segments={72}
-          size={donutSize}
-          thickness={donutThickness}
-          trackColor={Colors.surfaceContainerHigh}
-        />
-      </View>
-
-      <View style={styles.usageStatsRow}>
-        <View style={styles.usageStat}>
-          <Text style={styles.usageStatLabel}>Today</Text>
-          <AnimatedNumberText
-            formatter={(value) => `${Math.round(value)}m`}
-            style={styles.usageStatValue}
-            target={todayMinutes}
-          />
+      {hasError ? (
+        <View style={styles.usageErrorState}>
+          <MaterialCommunityIcons color={Colors.textSecondary} name="alert-circle-outline" size={18} />
+          <Text style={styles.usageErrorText}>{errorMessage}</Text>
         </View>
+      ) : (
+        <>
+          <View style={styles.donutWrap}>
+            <SegmentedRing
+              center={
+                isLoading ? (
+                  <View style={styles.donutLoadingCopy}>
+                    <SkeletonBlock style={styles.donutLoadingValue} />
+                    <SkeletonBlock style={styles.donutLoadingLabel} />
+                  </View>
+                ) : (
+                  <View style={styles.donutCenterCopy}>
+                    <AnimatedNumberText
+                      duration={600}
+                      formatter={(value) => `${Math.round(value)}`}
+                      style={styles.donutValue}
+                      target={todayMinutes}
+                    />
+                    <Text style={styles.donutLabel}>{isEmptyState ? 'No activity yet' : 'MINUTES TODAY'}</Text>
+                  </View>
+                )
+              }
+              duration={1000}
+              fillColor={Colors.primary}
+              progress={isLoading ? 0 : progress}
+              segments={72}
+              size={donutSize}
+              thickness={donutThickness}
+              trackColor={Colors.surfaceContainerHigh}
+            />
+          </View>
 
-        <View style={styles.usageDivider} />
+          <View style={styles.usageStatsRow}>
+            {isLoading ? (
+              <>
+                <View style={styles.usageStat}>
+                  <SkeletonBlock style={styles.usageStatSkeletonLabel} />
+                  <SkeletonBlock style={styles.usageStatSkeletonValue} />
+                </View>
 
-        <View style={styles.usageStat}>
-          <Text style={styles.usageStatLabel}>7-day avg</Text>
-          <AnimatedNumberText
-            formatter={(value) => `${Math.round(value)}m`}
-            style={[styles.usageStatValue, { color: averageColor }]}
-            target={sevenDayAverageMinutes}
-          />
-        </View>
-      </View>
+                <View style={styles.usageDivider} />
+
+                <View style={styles.usageStat}>
+                  <SkeletonBlock style={styles.usageStatSkeletonLabel} />
+                  <SkeletonBlock style={styles.usageStatSkeletonValue} />
+                </View>
+              </>
+            ) : (
+              <>
+                <View style={styles.usageStat}>
+                  <Text style={styles.usageStatLabel}>Today</Text>
+                  <AnimatedNumberText
+                    formatter={(value) => `${Math.round(value)}m`}
+                    style={styles.usageStatValue}
+                    target={todayMinutes}
+                  />
+                </View>
+
+                <View style={styles.usageDivider} />
+
+                <View style={styles.usageStat}>
+                  <Text style={styles.usageStatLabel}>7-day avg</Text>
+                  <AnimatedNumberText
+                    formatter={(value) => `${Math.round(value)}m`}
+                    style={[styles.usageStatValue, { color: averageColor }]}
+                    target={sevenDayAverageMinutes}
+                  />
+                </View>
+              </>
+            )}
+          </View>
+
+          {isEmptyState ? <Text style={styles.usageEmptyHint}>No activity yet</Text> : null}
+        </>
+      )}
     </View>
   );
 }
 
-export function SevenDayActivityChart({ series }: { series: SevenDayActivityPoint[] }) {
+export function SevenDayActivityChart({
+  errorMessage,
+  loading = false,
+  series,
+}: {
+  errorMessage?: string | null;
+  loading?: boolean;
+  series: SevenDayActivityPoint[];
+}) {
   const { width } = useWindowDimensions();
   const maxSessions = Math.max(...series.map((point) => point.sessions), 1);
   const chartMinWidth = Spacing.xxl * 7;
   const shouldScroll = width < chartMinWidth + Spacing.xl;
+  const isEmpty = series.length === 0 || series.every((point) => point.sessions === 0);
+
+  if (errorMessage?.trim()) {
+    return (
+      <View style={styles.activityState}>
+        <MaterialCommunityIcons color={Colors.textSecondary} name="alert-circle-outline" size={18} />
+        <Text style={styles.activityStateText}>{errorMessage}</Text>
+      </View>
+    );
+  }
+
+  if (loading) {
+    return (
+      <View style={styles.activityLoadingState}>
+        <View style={styles.activityLoadingBars}>
+          {Array.from({ length: 7 }).map((_, index) => (
+            <View key={`loading-bar-${index}`} style={styles.activityLoadingColumn}>
+              <SkeletonBlock style={styles.activityLoadingCount} />
+              <SkeletonBlock style={[styles.activityLoadingBar, { height: Spacing.xxl + index * 2 }]} />
+              <SkeletonBlock style={styles.activityLoadingLabel} />
+            </View>
+          ))}
+        </View>
+      </View>
+    );
+  }
+
+  if (isEmpty) {
+    return (
+      <View style={styles.activityState}>
+        <MaterialCommunityIcons color={Colors.textSecondary} name="chart-bar" size={18} />
+        <Text style={styles.activityStateText}>No activity in the last 7 days.</Text>
+      </View>
+    );
+  }
+
   const chart = (
     <View style={[styles.activityGrid, shouldScroll ? { width: chartMinWidth } : null]}>
       {series.map((point, index) => (
@@ -709,9 +813,62 @@ const styles = StyleSheet.create({
   },
   usageCard: {
     borderRadius: Radii.xl,
-    backgroundColor: Colors.surface,
-    padding: Spacing.lg,
-    gap: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.outline,
+    backgroundColor: Colors.surfaceContainerLowest,
+    padding: Spacing.md,
+    gap: Spacing.md,
+    minHeight: Spacing.xxxl + Spacing.xxl + Spacing.xl + Spacing.md,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  usageErrorState: {
+    minHeight: Spacing.xxl + Spacing.xxl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+  },
+  usageErrorText: {
+    ...Typography.caption,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+  donutLoadingCopy: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+  },
+  donutLoadingValue: {
+    width: 52,
+    height: 24,
+    borderRadius: Radii.full,
+    backgroundColor: Colors.surfaceContainerHigh,
+  },
+  donutLoadingLabel: {
+    width: 88,
+    height: 12,
+    borderRadius: Radii.full,
+    backgroundColor: Colors.surfaceContainerHigh,
+  },
+  usageEmptyHint: {
+    ...Typography.caption,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+  usageStatSkeletonLabel: {
+    width: 48,
+    height: 12,
+    borderRadius: Radii.full,
+    backgroundColor: Colors.surfaceContainerHigh,
+  },
+  usageStatSkeletonValue: {
+    width: 56,
+    height: 22,
+    borderRadius: Radii.full,
+    backgroundColor: Colors.surfaceContainerHigh,
   },
   usageTitle: {
     ...Typography.title,
@@ -746,6 +903,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     gap: Spacing.xs,
+    minWidth: 0,
   },
   usageStatLabel: {
     ...Typography.caption,
@@ -774,6 +932,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     gap: Spacing.xs,
+    minWidth: 0,
   },
   activityCount: {
     ...Typography.caption,
@@ -787,15 +946,17 @@ const styles = StyleSheet.create({
   },
   activityBar: {
     width: '100%',
-    borderRadius: Radii.full,
+    borderRadius: 0,
   },
   activityLabelBlock: {
     minHeight: Spacing.xl,
     alignItems: 'center',
+    width: '100%',
   },
   activityLabel: {
     ...Typography.label,
     color: Colors.textSecondary,
+    textAlign: 'center',
   },
   activityLabelToday: {
     color: Colors.primary,
@@ -803,5 +964,50 @@ const styles = StyleSheet.create({
   activityTodayLabel: {
     ...Typography.caption,
     color: Colors.primary,
+    textAlign: 'center',
+  },
+  activityState: {
+    minHeight: Spacing.xxl + Spacing.xxl + Spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+  },
+  activityStateText: {
+    ...Typography.caption,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+  activityLoadingState: {
+    minHeight: Spacing.xxl + Spacing.xxl + Spacing.lg,
+    justifyContent: 'center',
+  },
+  activityLoadingBars: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+  },
+  activityLoadingColumn: {
+    flex: 1,
+    alignItems: 'center',
+    gap: Spacing.xs,
+    minWidth: 0,
+  },
+  activityLoadingCount: {
+    width: 12,
+    height: 12,
+    borderRadius: Radii.full,
+    backgroundColor: Colors.surfaceContainerHigh,
+  },
+  activityLoadingBar: {
+    width: '100%',
+    borderRadius: 0,
+    backgroundColor: Colors.surfaceContainerHigh,
+  },
+  activityLoadingLabel: {
+    width: 12,
+    height: 12,
+    borderRadius: Radii.full,
+    backgroundColor: Colors.surfaceContainerHigh,
   },
 });
