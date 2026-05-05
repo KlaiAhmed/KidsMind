@@ -1,3 +1,5 @@
+import 'react-native-gesture-handler';
+import 'react-native-reanimated';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
@@ -69,6 +71,8 @@ function RootNavigator() {
       />
       <Stack.Screen name="badges" />
       <Stack.Screen name="settings" />
+      <Stack.Screen name="audit-logs" />
+      <Stack.Screen name="session-drill-down" />
       <Stack.Screen name="modal" options={{ presentation: 'modal', headerShown: true, title: 'Modal' }} />
       <Stack.Screen name="splash" />
       <Stack.Screen name="onboarding" />

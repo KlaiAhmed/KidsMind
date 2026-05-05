@@ -63,7 +63,7 @@ const hiddenBadgesScreenOptions = {
 export default function ChildTabLayout() {
   const router = useRouter();
   const pathname = usePathname();
-  const showPinGate = !pathname.includes('/chat');
+  const showPinGate = !pathname.includes('/chat') && !pathname.includes('/explore') && !pathname.includes('/profile') && !pathname.includes('/badges');
 
   const {
     isLoading,

@@ -254,6 +254,7 @@ export interface ProgressDashboard {
   results: ProgressResult[];
   subjectMastery: SubjectMasteryItem[];
   weeklyInsight: string | null;
+  weeklyInsightStructured: WeeklyInsight | null;
 }
 
 export interface ParentHistorySession {
