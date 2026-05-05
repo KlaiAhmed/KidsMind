@@ -28,6 +28,7 @@ import { ContentPrivacyEditModal } from '@/src/components/parent/controls/Conten
 import { LearningEditModal } from '@/src/components/parent/controls/LearningEditModal';
 import { TimeLimitsEditModal } from '@/src/components/parent/controls/TimeLimitsEditModal';
 import { ParentChildSwitcher } from '@/src/components/parent/ParentChildSwitcher';
+import { AuditLogRow, getAuditLogKey } from '@/src/components/parent/AuditLogRow';
 import {
   ErrorCard,
   ParentDashboardEmptyState,
@@ -41,7 +42,7 @@ import {
   SUBJECT_LABEL_MAP,
   SUBJECT_OPTIONS,
 } from '@/src/utils/childProfileWizard';
-import type { AuditEntry, NotificationPrefs, SubjectKey } from '@/types/child';
+import type { NotificationPrefs, SubjectKey } from '@/types/child';
 
 type ControlsScreenState = 'loading' | 'ready' | 'error' | 'empty';
 
@@ -205,7 +206,6 @@ export default function ParentalControlsScreen({
 
   const [activeModal, setActiveModal] = useState<'time' | 'learning' | 'content' | null>(null);
   const [notificationError, setNotificationError] = useState<string | null>(null);
-  const [auditExpanded, setAuditExpanded] = useState(false);
 
   const notificationPrefsQuery = useQuery({
     queryKey: ['parent-dashboard', 'notification-prefs', user?.id],
@@ -254,7 +254,6 @@ export default function ParentalControlsScreen({
   function handleChildSelect(childId: string) {
     setActiveModal(null);
     setNotificationError(null);
-    setAuditExpanded(false);
     notificationMutation.reset();
     selectChild(childId);
   }
@@ -299,7 +298,6 @@ export default function ParentalControlsScreen({
   const notificationPrefs = notificationPrefsQuery.data;
   const updatingAlertKey = notificationMutation.isPending ? notificationMutation.variables?.key : null;
   const auditEntries = auditQuery.data ?? [];
-  const displayedAuditEntries = auditExpanded ? auditEntries : auditEntries.slice(0, 10);
 
   if (initialState === 'loading' || isChildDataResolving) {
     return (
@@ -573,7 +571,17 @@ export default function ParentalControlsScreen({
           </View>
 
           <View style={styles.auditCard}>
-            <Text style={styles.auditBadgeLabel}>Control Audit</Text>
+            <View style={styles.auditHeader}>
+              <Text style={styles.auditTitle}>Activity Log</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="View all activity logs"
+                onPress={() => router.push('/audit-logs' as never)}
+                style={({ pressed }) => [styles.viewAllButton, pressed ? styles.pressed : null]}
+              >
+                <Text style={styles.viewAllText}>View all</Text>
+              </Pressable>
+            </View>
             {auditQuery.isPending ? (
               <View style={styles.auditList}>
                 <SkeletonBlock style={styles.auditSkeletonRow} />
@@ -589,41 +597,12 @@ export default function ParentalControlsScreen({
                 title="Control audit unavailable"
               />
             ) : auditEntries.length === 0 ? (
-              <Text style={styles.auditBody}>No audit entries yet</Text>
+              <Text style={styles.auditEmptyText}>No activity logs found.</Text>
             ) : (
               <View style={styles.auditList}>
-                {displayedAuditEntries.map((entry: AuditEntry, index) => (
-                  <View key={`${entry.action}-${entry.timestamp ?? index}`} style={styles.auditRow}>
-                    <View style={styles.auditDot} />
-                    <View style={styles.auditCopy}>
-                      <Text style={styles.auditAction}>{entry.action}</Text>
-                      {entry.details ? (
-                        <Text style={styles.auditBody} numberOfLines={2}>
-                          {entry.details}
-                        </Text>
-                      ) : null}
-                      <Text style={styles.auditBody}>
-                        {entry.timestamp
-                          ? new Intl.DateTimeFormat(undefined, {
-                              month: 'short',
-                              day: 'numeric',
-                              hour: 'numeric',
-                              minute: '2-digit',
-                            }).format(new Date(entry.timestamp))
-                          : 'Unknown time'}
-                      </Text>
-                    </View>
-                  </View>
+                {auditEntries.slice(0, 10).map((entry, index) => (
+                  <AuditLogRow key={getAuditLogKey(entry, index)} entry={entry} />
                 ))}
-                {auditEntries.length > 10 ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={auditExpanded ? 'Show fewer audit entries' : 'View all audit entries'}
-                    onPress={() => setAuditExpanded((current) => !current)}
-                  >
-                    <Text style={styles.auditLink}>{auditExpanded ? 'Show less' : 'View all'}</Text>
-                  </Pressable>
-                ) : null}
               </View>
             )}
           </View>
@@ -1002,49 +981,43 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   auditCard: {
-    gap: Spacing.sm,
+    borderRadius: Radii.xl,
+    borderWidth: 1,
+    borderColor: Colors.outline,
+    backgroundColor: Colors.surfaceContainerLowest,
+    padding: Spacing.md,
+    gap: Spacing.md,
   },
-  auditBadgeLabel: {
-    ...Typography.label,
+  auditHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  auditTitle: {
+    ...Typography.title,
+    color: Colors.text,
+  },
+  viewAllButton: {
+    minHeight: 36,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.sm,
+  },
+  viewAllText: {
+    ...Typography.captionMedium,
     color: Colors.primary,
   },
   auditList: {
-    gap: Spacing.sm,
-  },
-  auditSkeletonRow: {
-    height: 42,
-    borderRadius: Radii.lg,
-    backgroundColor: Colors.surfaceContainerHigh,
-  },
-  auditErrorState: {
     gap: Spacing.xs,
   },
-  auditRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
+  auditSkeletonRow: {
+    height: 52,
+    borderRadius: Radii.sm,
+    backgroundColor: Colors.surfaceContainerHigh,
   },
-  auditDot: {
-    width: 8,
-    height: 8,
-    borderRadius: Radii.full,
-    backgroundColor: Colors.primary,
-  },
-  auditCopy: {
-    flex: 1,
-    gap: 2,
-  },
-  auditAction: {
-    ...Typography.captionMedium,
-    color: Colors.text,
-  },
-  auditBody: {
+  auditEmptyText: {
     ...Typography.caption,
-    color: Colors.textSecondary,
-  },
-  auditLink: {
-    ...Typography.captionMedium,
-    color: Colors.primary,
+    color: Colors.textTertiary,
   },
   feedbackState: {
     flex: 1,

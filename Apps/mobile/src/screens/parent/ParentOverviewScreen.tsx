@@ -15,6 +15,7 @@ import Animated, { useSharedValue, withSpring } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 
 import { AppRefreshControl } from '@/src/components/AppRefreshControl';
+import ActivityBarChart from '@/src/components/parent/ActivityBarChart';
 import { ActivityFlaggedBanner } from '@/src/components/parent/ActivityFlaggedBanner';
 import { ParentChildSwitcher } from '@/src/components/parent/ParentChildSwitcher';
 import {
@@ -460,6 +461,8 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
           </Pressable>
         </View>
 
+        <ActivityBarChart data={progressQuery.data?.dailyUsage ?? []} loading={progressQuery.isPending} />
+
         <ParentChildSwitcher
           activeChildId={selectedChildId}
           profiles={children}
@@ -599,25 +602,25 @@ export default function ParentOverviewScreen({ initialState }: ParentOverviewScr
             <Text style={styles.outlineActionLabel}>Manage Rules</Text>
           </Pressable>
 
-            {children.length < 5 ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Add a new child profile"
-                onPress={handleAddChild}
-                style={({ pressed }) => [styles.outlineAction, pressed ? styles.pressed : null]}
-              >
-                <MaterialCommunityIcons color={Colors.primary} name="account-plus-outline" size={20} />
-                <Text style={styles.outlineActionLabel}>Add New Child</Text>
-              </Pressable>
-            ) : null}
+          {children.length < 5 ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Add a new child profile"
+              onPress={handleAddChild}
+              style={({ pressed }) => [styles.outlineAction, pressed ? styles.pressed : null]}
+            >
+              <MaterialCommunityIcons color={Colors.primary} name="account-plus-outline" size={20} />
+              <Text style={styles.outlineActionLabel}>Add New Child</Text>
+            </Pressable>
+          ) : null}
 
-        <View style={styles.inlineNote}>
-          <MaterialCommunityIcons color={Colors.textSecondary} name="information-outline" size={16} />
-          <Text style={styles.inlineNoteText}>
-            Report export will appear here when the backend exposes downloadable parent reports.
-          </Text>
+          <View style={styles.inlineNote}>
+            <MaterialCommunityIcons color={Colors.textSecondary} name="information-outline" size={16} />
+            <Text style={styles.inlineNoteText}>
+              Report export will appear here when the backend exposes downloadable parent reports.
+            </Text>
+          </View>
         </View>
-      </View>
 
       <ChildSwitchModal
         childAvatar={activeChild ? getChildAvatarSource(activeChild) : undefined}

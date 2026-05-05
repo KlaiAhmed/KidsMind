@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -10,6 +10,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { AppRefreshControl } from '@/src/components/AppRefreshControl';
 import { ParentChildSwitcher } from '@/src/components/parent/ParentChildSwitcher';
@@ -23,7 +24,7 @@ import {
   ParentDashboardErrorState,
   SkeletonBlock,
 } from '@/src/components/parent/ParentDashboardStates';
-import { Colors, Radii, Spacing, Typography } from '@/constants/theme';
+import { Colors, Radii, Shadows, Spacing, Typography } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { getParentProgress } from '@/services/parentDashboardService';
 import { useParentDashboardChild } from '@/src/hooks/useParentDashboardChild';
@@ -61,6 +62,98 @@ function formatDateTime(value: string | null | undefined): string {
 function getSubjectLabel(subject: string): string {
   const normalized = subject.toLowerCase() as SubjectKey;
   return SUBJECT_LABEL_MAP[normalized] ?? subject;
+}
+
+function formatInsightLevel(value: string | null | undefined): string {
+  if (!value) {
+    return '—';
+  }
+
+  return value
+    .replace(/_/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+interface WeeklyInsightCardProps {
+  activeDays: number;
+  errorMessage?: string | null;
+  isEmpty: boolean;
+  loading: boolean;
+  messageCount: number;
+  topSubject: string | null;
+  engagementLevel: string | null;
+}
+
+function WeeklyInsightCard({
+  activeDays,
+  engagementLevel,
+  errorMessage,
+  isEmpty,
+  loading,
+  messageCount,
+  topSubject,
+}: WeeklyInsightCardProps) {
+  const opacity = useSharedValue(0);
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+  }));
+
+  useEffect(() => {
+    opacity.value = withTiming(1, {
+      duration: 320,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [opacity]);
+
+  const rows = [
+    { label: 'Messages sent', value: `${messageCount}` },
+    { label: 'Active days', value: `${activeDays}` },
+    { label: 'Top subject', value: topSubject ?? '—' },
+    { label: 'Engagement', value: formatInsightLevel(engagementLevel) },
+  ];
+
+  return (
+    <Animated.View style={[styles.surfaceCard, styles.weeklyInsightCard, animatedStyle]}>
+      <View style={styles.weeklyInsightAccent} />
+
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Weekly Insight</Text>
+        <MaterialCommunityIcons color={Colors.primary} name="book-open-variant" size={18} />
+      </View>
+
+      {errorMessage?.trim() ? (
+        <View style={styles.weeklyInsightInlineState}>
+          <MaterialCommunityIcons color={Colors.textSecondary} name="alert-circle-outline" size={18} />
+          <Text style={styles.weeklyInsightInlineText}>{errorMessage}</Text>
+        </View>
+      ) : loading ? (
+        <View style={styles.weeklyInsightStats}>
+          {rows.map((row) => (
+            <View key={row.label} style={styles.weeklyInsightRow}>
+              <SkeletonBlock style={styles.weeklyInsightLabelSkeleton} />
+              <SkeletonBlock style={styles.weeklyInsightValueSkeleton} />
+            </View>
+          ))}
+        </View>
+      ) : (
+        <View style={styles.weeklyInsightStats}>
+          {rows.map((row) => (
+            <View key={row.label} style={styles.weeklyInsightRow}>
+              <Text numberOfLines={1} style={styles.weeklyInsightLabel}>
+                {row.label}
+              </Text>
+              <Text numberOfLines={1} style={[styles.weeklyInsightValue, isEmpty ? styles.weeklyInsightValueEmpty : null]}>
+                {row.value}
+              </Text>
+            </View>
+          ))}
+
+          {isEmpty ? <Text style={styles.weeklyInsightEmptyHint}>No activity yet</Text> : null}
+        </View>
+      )}
+    </Animated.View>
+  );
 }
 
 function buildSevenDayActivitySeries(activity: ProgressDashboard['sessionActivity']): SevenDayActivityPoint[] {
@@ -125,21 +218,36 @@ export default function ChildProgressScreen({
   });
 
   const progress = progressQuery.data;
+  const sessionActivity = useMemo(() => progress?.sessionActivity ?? [], [progress?.sessionActivity]);
   const todayKey = getDateKey(new Date());
   const todayActivity = useMemo(
-    () => progress?.sessionActivity.filter((point) => point.date.slice(0, 10) === todayKey) ?? [],
-    [progress?.sessionActivity, todayKey],
+    () => sessionActivity.filter((point) => point.date.slice(0, 10) === todayKey),
+    [sessionActivity, todayKey],
   );
   const todayMinutes = Math.round(
     todayActivity.reduce((sum, point) => sum + point.durationSeconds, 0) / 60,
   );
   const sevenDayAverageMinutes = Math.round(
-    (progress?.sessionActivity.reduce((sum, point) => sum + point.durationSeconds, 0) ?? 0) / 60 / 7,
+    sessionActivity.reduce((sum, point) => sum + point.durationSeconds, 0) / 60 / 7,
   );
   const sevenDaySeries = useMemo(
-    () => buildSevenDayActivitySeries(progress?.sessionActivity ?? []),
-    [progress?.sessionActivity],
+    () => buildSevenDayActivitySeries(sessionActivity),
+    [sessionActivity],
   );
+  const totalMessages = useMemo(
+    () => sessionActivity.reduce((sum, point) => sum + point.messages, 0),
+    [sessionActivity],
+  );
+  const activeDaysCount = useMemo(
+    () => sessionActivity.filter((point) => point.sessions > 0).length,
+    [sessionActivity],
+  );
+  const progressErrorMessage = progressQuery.isError ? errorMessage : null;
+  const isActivityEmpty =
+    sessionActivity.length === 0 ||
+    sessionActivity.every((point) => point.sessions === 0 && point.messages === 0 && point.durationSeconds === 0);
+  const weeklyTopSubject = progress?.weeklyInsightStructured?.topSubject ? getSubjectLabel(progress.weeklyInsightStructured.topSubject) : null;
+  const weeklyEngagementLevel = progress?.weeklyInsightStructured?.engagementLevel ?? null;
   const recentResults = useMemo(
     () =>
       [...(progress?.results ?? [])]
@@ -195,12 +303,11 @@ export default function ChildProgressScreen({
     );
   }
 
-  if (progressQuery.isError || initialState === 'error') {
+  if (initialState === 'error') {
     return (
       <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
         <ParentDashboardErrorState
-          error={progressQuery.error}
-          message={initialState === 'error' ? errorMessage : undefined}
+          message={errorMessage}
           onRetry={handleRefresh}
           title="Progress dashboard paused"
         />
@@ -239,27 +346,32 @@ export default function ChildProgressScreen({
         />
 
         {/* Part D audit: Progress shows activity over time only; daily limits remain editable/readable in Controls. */}
-        <DailyUsageDonutCard sevenDayAverageMinutes={sevenDayAverageMinutes} todayMinutes={todayMinutes} />
+        <DailyUsageDonutCard
+          errorMessage={progressErrorMessage}
+          isEmpty={isActivityEmpty}
+          loading={progressQuery.isPending}
+          sevenDayAverageMinutes={sevenDayAverageMinutes}
+          todayMinutes={todayMinutes}
+        />
 
         <View style={styles.surfaceCard}>
           <Text style={styles.sectionTitle}>Activity Last 7 Days</Text>
-          <SevenDayActivityChart series={sevenDaySeries} />
+          <SevenDayActivityChart
+            errorMessage={progressErrorMessage}
+            loading={progressQuery.isPending}
+            series={sevenDaySeries}
+          />
         </View>
 
-        <View style={styles.surfaceCard}>
-          <Text style={styles.sectionTitle}>Weekly Insight</Text>
-          {progress?.weeklyInsight ? (
-            <Text style={styles.insightBody}>{progress.weeklyInsight}</Text>
-          ) : (
-            <View style={styles.emptyInlineState}>
-              <MaterialCommunityIcons color={Colors.textSecondary} name="star-four-points-outline" size={24} />
-              <Text style={styles.emptyInlineTitle}>No weekly insight yet</Text>
-              <Text style={styles.emptyInlineBody}>
-                Weekly guidance will appear after more learning activity is available.
-              </Text>
-            </View>
-          )}
-        </View>
+        <WeeklyInsightCard
+          activeDays={activeDaysCount}
+          engagementLevel={weeklyEngagementLevel}
+          errorMessage={progressErrorMessage}
+          isEmpty={isActivityEmpty}
+          loading={progressQuery.isPending}
+          messageCount={totalMessages}
+          topSubject={weeklyTopSubject}
+        />
 
         <View style={styles.surfaceCard}>
           <Text style={styles.sectionTitle}>Subject Mastery</Text>
@@ -374,6 +486,11 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surfaceContainerLowest,
     padding: Spacing.md,
     gap: Spacing.md,
+    shadowColor: Shadows.card.shadowColor,
+    shadowOffset: Shadows.card.shadowOffset,
+    shadowOpacity: Shadows.card.shadowOpacity,
+    shadowRadius: Shadows.card.shadowRadius,
+    elevation: Shadows.card.elevation,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -388,6 +505,75 @@ const styles = StyleSheet.create({
   insightBody: {
     ...Typography.body,
     color: Colors.text,
+  },
+  weeklyInsightCard: {
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  weeklyInsightAccent: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: Spacing.xs / 2,
+    borderTopLeftRadius: Radii.xl,
+    borderBottomLeftRadius: Radii.xl,
+    backgroundColor: Colors.primary,
+  },
+  weeklyInsightInlineState: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+    paddingVertical: Spacing.xs,
+  },
+  weeklyInsightInlineText: {
+    ...Typography.caption,
+    color: Colors.textSecondary,
+    flexShrink: 1,
+    textAlign: 'center',
+  },
+  weeklyInsightStats: {
+    gap: Spacing.sm,
+  },
+  weeklyInsightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+  },
+  weeklyInsightLabel: {
+    ...Typography.caption,
+    color: Colors.textSecondary,
+    flex: 1,
+    minWidth: 0,
+  },
+  weeklyInsightValue: {
+    ...Typography.bodySemiBold,
+    color: Colors.text,
+    textAlign: 'right',
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  weeklyInsightValueEmpty: {
+    color: Colors.textSecondary,
+  },
+  weeklyInsightEmptyHint: {
+    ...Typography.caption,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+  weeklyInsightLabelSkeleton: {
+    width: 92,
+    height: 12,
+    borderRadius: Radii.full,
+    backgroundColor: Colors.surfaceContainerHigh,
+  },
+  weeklyInsightValueSkeleton: {
+    width: 72,
+    height: 14,
+    borderRadius: Radii.full,
+    backgroundColor: Colors.surfaceContainerHigh,
   },
   masteryList: {
     gap: Spacing.md,

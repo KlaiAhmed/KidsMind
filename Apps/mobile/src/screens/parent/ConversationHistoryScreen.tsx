@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -67,7 +67,7 @@ function getSessionTitle(session: ParentHistorySession): string {
   return `Conversation ${session.sessionId.slice(-6)}`;
 }
 
-function getDayLabel(value: string | null | undefined): string {
+function getDayLabel(value: string | null | undefined, rangeDays: 7 | 30): string {
   if (!value) {
     return 'Earlier';
   }
@@ -82,18 +82,40 @@ function getDayLabel(value: string | null | undefined): string {
     return 'Today';
   }
 
-  if (diffDays === 1) {
-    return 'Yesterday';
+  if (rangeDays === 7) {
+    if (diffDays === 1) {
+      return 'Yesterday';
+    }
+
+    return new Intl.DateTimeFormat(undefined, {
+      month: 'short',
+      day: 'numeric',
+    }).format(targetDate);
   }
 
-  return new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-  }).format(targetDate);
+  // rangeDays === 30
+  if (diffDays <= 6) {
+    return 'Earlier this week';
+  }
+
+  // For older days within 30-day view, show the week range (Mon – Sun)
+  const day = startOfTarget.getDay(); // 0 (Sun) - 6 (Sat)
+  // compute Monday of that week
+  const mondayOffset = (day + 6) % 7; // days back to Monday
+  const monday = new Date(startOfTarget);
+  monday.setDate(startOfTarget.getDate() - mondayOffset);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+
+  const fmt = (d: Date) =>
+    new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(d);
+
+  return `${fmt(monday)} – ${fmt(sunday)}`;
 }
 
 function groupSessionsByDay(
   sessions: ParentHistorySession[],
+  rangeDays: 7 | 30,
 ): {
   label: string;
   sessions: ParentHistorySession[];
@@ -101,7 +123,7 @@ function groupSessionsByDay(
   const groups = new Map<string, ParentHistorySession[]>();
 
   for (const session of sessions) {
-    const label = getDayLabel(session.lastMessageAt ?? session.startedAt);
+    const label = getDayLabel(session.lastMessageAt ?? session.startedAt, rangeDays);
     const existing = groups.get(label) ?? [];
     existing.push(session);
     groups.set(label, existing);
@@ -145,29 +167,46 @@ export default function ConversationHistoryScreen({
 
   const initialSearch = typeof params.topic === 'string' ? params.topic : '';
   const [searchValue, setSearchValue] = useState(initialSearch);
+  const [debouncedSearch, setDebouncedSearch] = useState(initialSearch);
   const [rangeDays, setRangeDays] = useState<7 | 30>(7);
+  const [rangeExpanded, setRangeExpanded] = useState(false);
   const [flaggedOnly, setFlaggedOnly] = useState(params.flaggedOnly === 'true');
   const [selectedSessionIds, setSelectedSessionIds] = useState<string[]>([]);
   const [bulkDeleteError, setBulkDeleteError] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const longPressedSessionIdRef = useRef<string | null>(null);
+  const selectionModeRef = useRef(false);
 
   useEffect(() => {
-    setSearchValue(typeof params.topic === 'string' ? params.topic : '');
+    const nextSearch = typeof params.topic === 'string' ? params.topic : '';
+    setSearchValue(nextSearch);
+    setDebouncedSearch(nextSearch);
   }, [params.topic]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchValue.trim()), 400);
+    return () => clearTimeout(timer);
+  }, [searchValue]);
 
   useEffect(() => {
     setFlaggedOnly(params.flaggedOnly === 'true');
   }, [params.flaggedOnly]);
 
+  const selectionMode = selectedSessionIds.length > 0;
+
+  useEffect(() => {
+    selectionModeRef.current = selectionMode;
+  }, [selectionMode]);
+
   const historyParams = useMemo(
     () => ({
       limit: 50,
       offset: 0,
-      search: searchValue.trim() || undefined,
+      search: debouncedSearch || undefined,
       flaggedOnly,
       days: rangeDays,
     }),
-    [flaggedOnly, rangeDays, searchValue],
+    [debouncedSearch, flaggedOnly, rangeDays],
   );
 
   const historyQuery = useQuery({
@@ -198,15 +237,15 @@ export default function ConversationHistoryScreen({
   });
 
   const exportMutation = useMutation({
-  mutationFn: async () => {
-    const response = await exportHistory(user!.id, activeChild!.id);
-    if (!response.downloadUrl) {
-      throw new Error('Export failed. Please try again.');
-    }
+    mutationFn: async () => {
+      const response = await exportHistory(user!.id, activeChild!.id);
+      if (!response.downloadUrl) {
+        throw new Error('Export failed. Please try again.');
+      }
 
-    await Linking.openURL(response.downloadUrl);
-    return response;
-  },
+      await Linking.openURL(response.downloadUrl);
+      return response;
+    },
     onMutate: () => {
       setExportError(null);
     },
@@ -220,8 +259,7 @@ export default function ConversationHistoryScreen({
   });
 
   const sessions = useMemo(() => historyQuery.data?.sessions ?? [], [historyQuery.data?.sessions]);
-  const groupedSessions = useMemo(() => groupSessionsByDay(sessions), [sessions]);
-  const selectionMode = selectedSessionIds.length > 0;
+  const groupedSessions = useMemo(() => groupSessionsByDay(sessions, rangeDays), [sessions, rangeDays]);
 
   function handleChildSelect(childId: string) {
     bulkDeleteMutation.reset();
@@ -245,21 +283,27 @@ export default function ConversationHistoryScreen({
   }
 
   function enterSelectionMode(sessionId: string) {
+    longPressedSessionIdRef.current = sessionId;
     setSelectedSessionIds((current) => (current.includes(sessionId) ? current : [...current, sessionId]));
+    setTimeout(() => {
+      if (longPressedSessionIdRef.current === sessionId) {
+        longPressedSessionIdRef.current = null;
+      }
+    }, 700);
   }
 
   const handleRefresh = useCallback(async () => {
     const invalidationParams = {
       limit: 50,
       offset: 0,
-      search: searchValue.trim() || undefined,
+      search: debouncedSearch || undefined,
       flaggedOnly,
       days: rangeDays,
     };
     await queryClient.invalidateQueries({
       queryKey: ['parent-dashboard', 'history', user?.id, activeChild?.id, invalidationParams],
     });
-  }, [queryClient, user?.id, activeChild?.id, searchValue, flaggedOnly, rangeDays]);
+  }, [queryClient, user?.id, activeChild?.id, debouncedSearch, flaggedOnly, rangeDays]);
 
   function confirmBulkDelete(sessionIds: string[], title: string, message: string) {
     if (sessionIds.length === 0 || bulkDeleteMutation.isPending) {
@@ -401,15 +445,50 @@ export default function ConversationHistoryScreen({
         </View>
 
         <ScrollView horizontal contentContainerStyle={styles.filtersRow} showsHorizontalScrollIndicator={false}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Toggle history date range"
-            disabled={historyQuery.isFetching}
-            onPress={() => setRangeDays((current) => (current === 7 ? 30 : 7))}
-            style={({ pressed }) => [styles.filterChipPrimary, pressed ? styles.pressed : null]}
-          >
-            <Text style={styles.filterChipPrimaryLabel}>{rangeDays === 7 ? 'Last 7 Days' : 'Last 30 Days'}</Text>
-          </Pressable>
+          <View style={styles.rangeWrapper}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Toggle history date range"
+              disabled={historyQuery.isFetching}
+              onPress={() => setRangeExpanded((v) => !v)}
+              style={({ pressed }) => [styles.filterChipPrimary, styles.rangeToggle, pressed ? styles.pressed : null]}
+            >
+              <MaterialCommunityIcons
+                name={rangeExpanded ? 'chevron-up' : 'chevron-down'}
+                size={16}
+                color={Colors.textSecondary}
+                style={{ marginRight: 4 }}
+              />
+              <Text style={[styles.filterChipPrimaryLabel, styles.rangeText]}>Last {rangeDays} days</Text>
+            </Pressable>
+
+            {rangeExpanded && (
+              <View style={styles.rangeDropdown}>
+                {([7, 30] as const).map((days) => (
+                  <Pressable
+                    key={days}
+                    onPress={() => {
+                      setRangeDays(days);
+                      setRangeExpanded(false);
+                    }}
+                    style={[
+                      styles.rangeOption,
+                      rangeDays === days ? styles.rangeOptionActive : null,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.rangeOptionText,
+                        rangeDays === days ? styles.rangeOptionTextActive : null,
+                      ]}
+                    >
+                      Last {days} days
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
+          </View>
 
           <Pressable
             accessibilityRole="switch"
@@ -499,11 +578,25 @@ export default function ConversationHistoryScreen({
                     <Pressable
                       key={session.sessionId}
                       accessibilityRole="button"
-                      accessibilityLabel={`${selected ? 'Deselect' : 'Select'} ${getSessionTitle(session)}`}
+                      accessibilityLabel={
+                        selectionMode
+                          ? `${selected ? 'Deselect' : 'Select'} ${getSessionTitle(session)}`
+                          : `Open ${getSessionTitle(session)}`
+                      }
                       onLongPress={() => enterSelectionMode(session.sessionId)}
                       onPress={() => {
-                        if (selectionMode) {
+                        if (longPressedSessionIdRef.current === session.sessionId) {
+                          longPressedSessionIdRef.current = null;
+                          return;
+                        }
+
+                        if (selectionModeRef.current) {
                           toggleSelection(session.sessionId);
+                        } else {
+                          void router.push({
+                            pathname: '/session-drill-down',
+                            params: { sessionId: session.sessionId },
+                          } as never);
                         }
                       }}
                       style={({ pressed }) => [
@@ -691,6 +784,50 @@ const styles = StyleSheet.create({
     ...Typography.captionMedium,
     color: Colors.primary,
   },
+  rangeWrapper: {
+    position: 'relative',
+  },
+  rangeToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 42,
+    borderRadius: Radii.full,
+    paddingHorizontal: Spacing.md,
+    backgroundColor: Colors.primaryFixed,
+    justifyContent: 'center',
+  },
+  rangeText: {
+    ...Typography.captionMedium,
+    color: Colors.primary,
+  },
+  rangeDropdown: {
+    position: 'absolute',
+    top: 48,
+    left: 0,
+    zIndex: 10,
+    borderRadius: Radii.lg,
+    borderWidth: 1,
+    borderColor: Colors.outline,
+    backgroundColor: Colors.surface,
+    paddingVertical: Spacing.xs,
+    minWidth: 160,
+    elevation: 4,
+  },
+  rangeOption: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  rangeOptionActive: {
+    backgroundColor: Colors.surfaceContainerLowest,
+  },
+  rangeOptionText: {
+    ...Typography.body,
+    color: Colors.text,
+  },
+  rangeOptionTextActive: {
+    ...Typography.bodySemiBold,
+    color: Colors.primary,
+  },
   filterChip: {
     minHeight: 42,
     borderRadius: Radii.full,
@@ -772,7 +909,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   groupLabel: {
-    ...Typography.label,
+    ...Typography.captionMedium,
     color: Colors.textSecondary,
   },
   threadList: {
