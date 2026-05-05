@@ -91,15 +91,7 @@ export function ContentPrivacyEditModal({ visible, child, onClose }: ContentPriv
     <Modal animationType="slide" onRequestClose={onClose} presentationStyle="pageSheet" visible={visible}>
       <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
         <View style={styles.header}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Cancel content settings edits"
-            disabled={isBusy}
-            onPress={onClose}
-            style={({ pressed }) => [styles.headerAction, pressed ? styles.pressed : null]}
-          >
-            <Text style={styles.headerActionText}>Cancel</Text>
-          </Pressable>
+          <View style={styles.headerSpacer} />
           <Text style={styles.headerTitle}>Edit Content Settings</Text>
           <View style={styles.headerSpacer} />
         </View>
@@ -214,15 +206,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.sm,
-  },
-  headerAction: {
-    minWidth: 72,
-    minHeight: 44,
-    justifyContent: 'center',
-  },
-  headerActionText: {
-    ...Typography.label,
-    color: Colors.primary,
   },
   headerTitle: {
     ...Typography.title,
